@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: herbarium_db
+    environment:
+      POSTGRES_USER: ${USERNAME:-herbarium}
+      POSTGRES_PASSWORD: ${PASSWORD:-herbarium}
+      POSTGRES_DB: ${DATABASE:-herbarium}
+    ports: ["5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${USERNAME:-herbarium} -d ${DATABASE:-herbarium}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: herbarium_backend
+    env_file:
+      - backend/config/.env
+    depends_on:
+      db:
+        condition: service_healthy
+    ports: ["8000:8000"]
+    command: ["sh", "-c", "python -m backend.scripts.create_models && python -m backend.scripts.create_admin && exec python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000"]
+
+volumes:
+  pgdata:
