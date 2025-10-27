@@ -14,6 +14,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 12
+    networks: [appnet]
 
   backend:
     build:
@@ -27,6 +28,25 @@ services:
         condition: service_healthy
     ports: ["8000:8000"]
     command: ["sh", "-c", "python -m backend.scripts.create_models && python -m backend.scripts.create_admin && exec python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000"]
+    networks: [appnet]
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # If your React code reads import.meta.env.VITE_API_URL, you can point it at /api
+        VITE_API_URL: /api
+    container_name: herbarium_frontend
+    depends_on:
+      backend:
+        condition: service_started
+    ports:
+      - "3000:80"   # http://localhost:3000
+    networks: [appnet]
 
 volumes:
   pgdata:
+
+networks:
+  appnet:

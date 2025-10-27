@@ -497,89 +497,161 @@ class ResourceRelationship(Base):
 
 class Occurrence(Base):
     """Registro núcleo: ejemplar/avistamiento (DwC: Occurrence).
-
-    Incluye términos Occurrence + algunos record-level. Los términos Event/Location/
-    Taxon/Organism se normalizan vía FKs.
+    Para herbario (pliegos), mantenemos lo esencial y dejamos comentado lo prescindible.
     """
 
     __tablename__ = "occurrence"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+
+    # ---- Identificación única del registro ----
     occurrenceID: Mapped[Optional[String]] = mapped_column(String(255), unique=True, index=True)
-    # Identificador global del registro (recomendado URI/UUID)
+    # ↑ Recomendado (UUID/URI) para interoperabilidad DwC-Archive/GBIF.
 
-    # Identificación de catálogo / colecciones
+    # ---- Identificación de catálogo / colecciones ----
     catalogNumber: Mapped[Optional[String]] = mapped_column(String(100), index=True)
-    otherCatalogNumbers: Mapped[Optional[String]] = mapped_column(String(255))
     recordNumber: Mapped[Optional[String]] = mapped_column(String(100))
+    # otherCatalogNumbers: Mapped[Optional[String]] = mapped_column(String(255))
+    # ↑ Suele ser útil solo si mantienes códigos históricos o duplicados; si no, omítelo.
 
-    # Quien registró
+    # ---- Quién registró ----
     recordedBy: Mapped[Optional[String]] = mapped_column(String(255))
     recordedByID: Mapped[Optional[String]] = mapped_column(String(255))
+    # ↑ recordedByID solo si normalizas agentes; si no usas Agent/ORCID, puedes omitirlo.
 
-    # Abundancia y atributos biológicos
+    # ---- Abundancia y atributos biológicos ----
     individualCount: Mapped[Optional[Integer]] = mapped_column(Integer)
-    organismQuantity: Mapped[Optional[String]] = mapped_column(String(100))
-    organismQuantityType: Mapped[Optional[String]] = mapped_column(String(100))
-    sex: Mapped[Optional[String]] = mapped_column(String(50))
-    lifeStage: Mapped[Optional[String]] = mapped_column(String(50))
-    reproductiveCondition: Mapped[Optional[String]] = mapped_column(String(100))
-    behavior: Mapped[Optional[String]] = mapped_column(String(255))
+    # organismQuantity: Mapped[Optional[String]] = mapped_column(String(100))          # para monitoreo/censos, rara vez en pliegos
+    # organismQuantityType: Mapped[Optional[String]] = mapped_column(String(100))      # ídem
+    # sex: Mapped[Optional[String]] = mapped_column(String(50))                        # en plantas casi no aplica
+    # lifeStage: Mapped[Optional[String]] = mapped_column(String(50))                  # puedes reflejar fenología en remarks
+    # reproductiveCondition: Mapped[Optional[String]] = mapped_column(String(100))     # fenología suele ir en remarks o MoF
+    # behavior: Mapped[Optional[String]] = mapped_column(String(255))                  # no aplica a pliegos de herbario
 
-    establishmentMeans: Mapped[Optional[String]] = mapped_column(String(100))
-    pathway: Mapped[Optional[String]] = mapped_column(String(255))
-    degreeOfEstablishment: Mapped[Optional[String]] = mapped_column(String(100))
+    # ---- Establecimiento / invasiones (útil si trabajas exóticas) ----
+    # establishmentMeans: Mapped[Optional[String]] = mapped_column(String(100))        # "native", "introduced", "cultivated"...
+    # pathway: Mapped[Optional[String]] = mapped_column(String(255))                   # vía de introducción; nicho de invasoras
+    # degreeOfEstablishment: Mapped[Optional[String]] = mapped_column(String(100))     # grado de establecimiento
     occurrenceStatus: Mapped[Optional[String]] = mapped_column(String(50))  # present/absent
+    # ↑ Mantener, por claridad en exportes (aunque casi siempre "present").
 
-    preparations: Mapped[Optional[String]] = mapped_column(String(255))
-    disposition: Mapped[Optional[String]] = mapped_column(String(255))
+    # ---- Curaduría ----
+    preparations: Mapped[Optional[String]] = mapped_column(String(255))  # p.ej. "herbarium sheet"
+    disposition: Mapped[Optional[String]] = mapped_column(String(255))   # p.ej. "in collection", "on loan"
 
-    associatedMedia: Mapped[Optional[Text]] = mapped_column(Text())
-    associatedReferences: Mapped[Optional[Text]] = mapped_column(Text())
-    associatedSequences: Mapped[Optional[Text]] = mapped_column(Text())
-    associatedTaxa: Mapped[Optional[Text]] = mapped_column(Text())
+    # ---- Asociados (mejor normalizar en tablas específicas) ----
+    # associatedMedia: Mapped[Optional[Text]] = mapped_column(Text())       # usa tabla Multimedia en su lugar
+    # associatedReferences: Mapped[Optional[Text]] = mapped_column(Text())  # usa tabla Reference si la tienes
+    # associatedSequences: Mapped[Optional[Text]] = mapped_column(Text())   # enlaza por campo específico/tabla si aplica
+    # associatedTaxa: Mapped[Optional[Text]] = mapped_column(Text())        # usa ResourceRelationship/Identification
 
     occurrenceRemarks: Mapped[Optional[Text]] = mapped_column(Text())
+    # Campo libre súper útil: fenología, sustrato, microhábitat, notas de etiqueta.
 
-    # Record-level (metadatos)
-    type: Mapped[Optional[String]] = mapped_column(String(100))
-    modified: Mapped[Optional[DateTime]] = mapped_column(DateTime)
-    language: Mapped[Optional[String]] = mapped_column(String(50))
-    license: Mapped[Optional[String]] = mapped_column(String(255))
+    # ---- Record-level (metadatos de publicación) ----
+    # type: Mapped[Optional[String]] = mapped_column(String(100))           # suele ser "PhysicalObject"; prescindible
+    modified: Mapped[Optional[DateTime]] = mapped_column(DateTime)          # marca de última edición (útil)
+    # language: Mapped[Optional[String]] = mapped_column(String(50))        # solo si mezclas idiomas y te importa declararlo
+    license: Mapped[Optional[String]] = mapped_column(String(255))          # p.ej. "CC BY 4.0"
     rightsHolder: Mapped[Optional[String]] = mapped_column(String(255))
     accessRights: Mapped[Optional[String]] = mapped_column(String(255))
-    bibliographicCitation: Mapped[Optional[Text]] = mapped_column(Text())
-    references: Mapped[Optional[String]] = mapped_column(String(500))
-    informationWithheld: Mapped[Optional[Text]] = mapped_column(Text())
-    dataGeneralizations: Mapped[Optional[Text]] = mapped_column(Text())
-    dynamicProperties: Mapped[Optional[Text]] = mapped_column(Text())
+    bibliographicCitation: Mapped[Optional[Text]] = mapped_column(Text())   # rara vez en el registro; más en Reference/Multimedia
+    # references: Mapped[Optional[String]] = mapped_column(String(500))     # URL ficha pública; úsalo si no tienes Reference
+    # informationWithheld: Mapped[Optional[Text]] = mapped_column(Text())   # útil si ocultas coordenadas de especies sensibles
+    # dataGeneralizations: Mapped[Optional[Text]] = mapped_column(Text())   # explica generalizaciones de datos (coordenadas)
+    # dynamicProperties: Mapped[Optional[Text]] = mapped_column(Text())     # JSON libre para extensiones rápidas
 
-    institutionCode: Mapped[Optional[String]] = mapped_column(String(100))
-    collectionCode: Mapped[Optional[String]] = mapped_column(String(100))
+    # ---- Códigos redundantes si ya normalizas Collection ----
+    # institutionCode: Mapped[Optional[String]] = mapped_column(String(100)) # mejor inferir vía collection->institution
+    # collectionCode: Mapped[Optional[String]] = mapped_column(String(100))  # si ya tienes FK a Collection, puede omitirse
 
-    # Normalización con tablas de autoridad
+    # ---- Normalización con tablas de autoridad ----
     collection_id: Mapped[Optional[int]] = mapped_column(ForeignKey("collection.id"))
-    collection: Mapped[Optional[Collection]] = relationship("Collection", back_populates="occurrences")
+    collection: Mapped[Optional["Collection"]] = relationship("Collection", back_populates="occurrences")
 
-    # Enlaces principales
+    # ---- Enlaces principales (lo clave para herbario) ----
     event_id: Mapped[Optional[int]] = mapped_column(ForeignKey("event.id"), index=True)
     location_id: Mapped[Optional[int]] = mapped_column(ForeignKey("location.id"), index=True)
     geological_context_id: Mapped[Optional[int]] = mapped_column(ForeignKey("geological_context.id"))
     taxon_id: Mapped[Optional[int]] = mapped_column(ForeignKey("taxon.id"), index=True)
     organism_id: Mapped[Optional[int]] = mapped_column(ForeignKey("organism.id"))
 
-    event: Mapped[Optional[Event]] = relationship("Event", back_populates="occurrences")
-    location: Mapped[Optional[Location]] = relationship("Location", back_populates="occurrences")
-    geological_context: Mapped[Optional[GeologicalContext]] = relationship("GeologicalContext", back_populates="occurrences")
-    taxon: Mapped[Optional[Taxon]] = relationship("Taxon", back_populates="occurrences")
-    organism: Mapped[Optional[Organism]] = relationship("Organism", back_populates="occurrences")
+    event: Mapped[Optional["Event"]] = relationship("Event", back_populates="occurrences")
+    location: Mapped[Optional["Location"]] = relationship("Location", back_populates="occurrences")
+    geological_context: Mapped[Optional["GeologicalContext"]] = relationship("GeologicalContext", back_populates="occurrences")
+    taxon: Mapped[Optional["Taxon"]] = relationship("Taxon", back_populates="occurrences")
+    organism: Mapped[Optional["Organism"]] = relationship("Organism", back_populates="occurrences")
 
-    # Relaciones dependientes
-    identifications: Mapped[List[Identification]] = relationship("Identification", back_populates="occurrence")
-    measurements: Mapped[List[MeasurementOrFact]] = relationship("MeasurementOrFact", back_populates="occurrence")
-    media: Mapped[List[Multimedia]] = relationship("Multimedia", back_populates="occurrence")
-    relationships: Mapped[List[ResourceRelationship]] = relationship("ResourceRelationship", back_populates="occurrence")
+    # ---- Relaciones dependientes (muy útiles) ----
+    identifications: Mapped[List["Identification"]] = relationship("Identification", back_populates="occurrence")
+    measurements: Mapped[List["MeasurementOrFact"]] = relationship("MeasurementOrFact", back_populates="occurrence")
+    media: Mapped[List["Multimedia"]] = relationship("Multimedia", back_populates="occurrence")
+    relationships: Mapped[List["ResourceRelationship"]] = relationship("ResourceRelationship", back_populates="occurrence")
 
+
+"""
+class Occurrence(Base):
+
+    __tablename__ = "occurrence"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+
+    # ---- Identificación única del registro ----
+    occurrenceID: Mapped[Optional[String]] = mapped_column(String(255), unique=True, index=True)
+    # ↑ Recomendado (UUID/URI) para interoperabilidad DwC-Archive/GBIF.
+
+    # ---- Identificación de catálogo / colecciones ----
+    catalogNumber: Mapped[Optional[String]] = mapped_column(String(100), index=True)
+    recordNumber: Mapped[Optional[String]] = mapped_column(String(100))
+
+    # ---- Quién registró ----
+    recordedBy: Mapped[Optional[String]] = mapped_column(String(255))
+    recordedByID: Mapped[Optional[String]] = mapped_column(String(255))
+
+    # ---- Abundancia y atributos biológicos ----
+    individualCount: Mapped[Optional[Integer]] = mapped_column(Integer)
+
+    # ---- Establecimiento / invasiones (útil si trabajas exóticas) ----
+    occurrenceStatus: Mapped[Optional[String]] = mapped_column(String(50))  # present/absent
+    # ↑ Mantener, por claridad en exportes (aunque casi siempre "present").
+
+    # ---- Curaduría ----
+    preparations: Mapped[Optional[String]] = mapped_column(String(255))  # p.ej. "herbarium sheet"
+    disposition: Mapped[Optional[String]] = mapped_column(String(255))   # p.ej. "in collection", "on loan"
+
+    occurrenceRemarks: Mapped[Optional[Text]] = mapped_column(Text())
+    # Campo libre súper útil: fenología, sustrato, microhábitat, notas de etiqueta.
+
+    # ---- Record-level (metadatos de publicación) ----
+    modified: Mapped[Optional[DateTime]] = mapped_column(DateTime)          # marca de última edición (útil)
+    license: Mapped[Optional[String]] = mapped_column(String(255))          # p.ej. "CC BY 4.0"
+    rightsHolder: Mapped[Optional[String]] = mapped_column(String(255))
+    accessRights: Mapped[Optional[String]] = mapped_column(String(255))
+    bibliographicCitation: Mapped[Optional[Text]] = mapped_column(Text())   # rara vez en el registro; más en Reference/Multimedia
+
+    # ---- Normalización con tablas de autoridad ----
+    collection_id: Mapped[Optional[int]] = mapped_column(ForeignKey("collection.id"))
+    collection: Mapped[Optional["Collection"]] = relationship("Collection", back_populates="occurrences")
+
+    # ---- Enlaces principales (lo clave para herbario) ----
+    event_id: Mapped[Optional[int]] = mapped_column(ForeignKey("event.id"), index=True)
+    location_id: Mapped[Optional[int]] = mapped_column(ForeignKey("location.id"), index=True)
+    geological_context_id: Mapped[Optional[int]] = mapped_column(ForeignKey("geological_context.id"))
+    taxon_id: Mapped[Optional[int]] = mapped_column(ForeignKey("taxon.id"), index=True)
+    organism_id: Mapped[Optional[int]] = mapped_column(ForeignKey("organism.id"))
+
+    event: Mapped[Optional["Event"]] = relationship("Event", back_populates="occurrences")
+    location: Mapped[Optional["Location"]] = relationship("Location", back_populates="occurrences")
+    geological_context: Mapped[Optional["GeologicalContext"]] = relationship("GeologicalContext", back_populates="occurrences")
+    taxon: Mapped[Optional["Taxon"]] = relationship("Taxon", back_populates="occurrences")
+    organism: Mapped[Optional["Organism"]] = relationship("Organism", back_populates="occurrences")
+
+    # ---- Relaciones dependientes (muy útiles) ----
+    identifications: Mapped[List["Identification"]] = relationship("Identification", back_populates="occurrence")
+    measurements: Mapped[List["MeasurementOrFact"]] = relationship("MeasurementOrFact", back_populates="occurrence")
+    media: Mapped[List["Multimedia"]] = relationship("Multimedia", back_populates="occurrence")
+    relationships: Mapped[List["ResourceRelationship"]] = relationship("ResourceRelationship", back_populates="occurrence")
+"""
 
 
 Index("ix_location_latlon", Location.decimalLatitude, Location.decimalLongitude)
