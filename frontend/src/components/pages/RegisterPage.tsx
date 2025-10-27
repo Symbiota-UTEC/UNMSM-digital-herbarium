@@ -3,6 +3,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Leaf, Loader2 } from "lucide-react";
 import { toast } from "sonner@2.0.3";
@@ -12,6 +13,14 @@ interface RegisterPageProps {
 }
 
 export function RegisterPage({ onNavigate }: RegisterPageProps) {
+  // Mock de instituciones disponibles - en producción vendrían del backend
+  const institutions = [
+    'Universidad Nacional de Botánica',
+    'Instituto de Investigación Amazónica',
+    'Jardín Botánico Nacional',
+    'Academia de Ciencias Naturales'
+  ];
+
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -22,6 +31,10 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.institution) {
+      toast.error('Por favor selecciona una institución');
+      return;
+    }
     setLoading(true);
     
     // Simular envío
@@ -77,13 +90,21 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
             
             <div className="space-y-2">
               <Label htmlFor="institution">Institución / Universidad</Label>
-              <Input
-                id="institution"
+              <Select
                 value={formData.institution}
-                onChange={handleChange}
-                placeholder="Universidad Nacional de Botánica"
-                required
-              />
+                onValueChange={(value) => setFormData(prev => ({...prev, institution: value}))}
+              >
+                <SelectTrigger id="institution">
+                  <SelectValue placeholder="Selecciona tu institución" />
+                </SelectTrigger>
+                <SelectContent>
+                  {institutions.map((inst) => (
+                    <SelectItem key={inst} value={inst}>
+                      {inst}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             
             <div className="space-y-2">

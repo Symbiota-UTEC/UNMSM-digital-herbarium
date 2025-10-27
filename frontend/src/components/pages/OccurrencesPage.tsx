@@ -8,7 +8,7 @@ import { Textarea } from "../ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { Badge } from "../ui/badge";
-import { Plus, MapPin, Calendar, Leaf } from "lucide-react";
+import { Plus, MapPin, Calendar, Leaf, Eye } from "lucide-react";
 import { toast } from "sonner@2.0.3";
 
 interface Occurrence {
@@ -24,7 +24,11 @@ interface Occurrence {
   notes: string;
 }
 
-export function OccurrencesPage() {
+interface OccurrencesPageProps {
+  onNavigate: (page: string) => void;
+}
+
+export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
   const [occurrences, setOccurrences] = useState<Occurrence[]>([
     {
       id: '1',
@@ -64,39 +68,8 @@ export function OccurrencesPage() {
     }
   ]);
 
-  const [open, setOpen] = useState(false);
-  const [newOccurrence, setNewOccurrence] = useState({
-    specimenCode: '',
-    collection: '',
-    scientificName: '',
-    location: '',
-    latitude: '',
-    longitude: '',
-    date: '',
-    collector: '',
-    notes: ''
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const occurrence: Occurrence = {
-      id: Date.now().toString(),
-      ...newOccurrence
-    };
-    setOccurrences([occurrence, ...occurrences]);
-    setNewOccurrence({
-      specimenCode: '',
-      collection: '',
-      scientificName: '',
-      location: '',
-      latitude: '',
-      longitude: '',
-      date: '',
-      collector: '',
-      notes: ''
-    });
-    setOpen(false);
-    toast.success('Ocurrencia registrada exitosamente');
+  const handleViewClick = (occurrenceId: string) => {
+    onNavigate('occurrence-detail', { occurrenceId });
   };
 
   return (
@@ -109,133 +82,10 @@ export function OccurrencesPage() {
           </p>
         </div>
         
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Nueva Ocurrencia
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Registrar Nueva Ocurrencia</DialogTitle>
-              <DialogDescription>
-                Documenta los detalles del espécimen recolectado
-              </DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="specimenCode">Código del Espécimen</Label>
-                  <Input
-                    id="specimenCode"
-                    value={newOccurrence.specimenCode}
-                    onChange={(e) => setNewOccurrence({...newOccurrence, specimenCode: e.target.value})}
-                    placeholder="FAM-2024-003"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="collection">Colección</Label>
-                  <Select
-                    value={newOccurrence.collection}
-                    onValueChange={(value) => setNewOccurrence({...newOccurrence, collection: value})}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecciona una colección" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Flora Amazónica 2024">Flora Amazónica 2024</SelectItem>
-                      <SelectItem value="Herbáceas Andinas">Herbáceas Andinas</SelectItem>
-                      <SelectItem value="Plantas Medicinales Locales">Plantas Medicinales Locales</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="scientificName">Nombre Científico</Label>
-                <Input
-                  id="scientificName"
-                  value={newOccurrence.scientificName}
-                  onChange={(e) => setNewOccurrence({...newOccurrence, scientificName: e.target.value})}
-                  placeholder="Genus species"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="location">Ubicación</Label>
-                <Input
-                  id="location"
-                  value={newOccurrence.location}
-                  onChange={(e) => setNewOccurrence({...newOccurrence, location: e.target.value})}
-                  placeholder="Localidad, Región"
-                  required
-                />
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="latitude">Latitud</Label>
-                  <Input
-                    id="latitude"
-                    value={newOccurrence.latitude}
-                    onChange={(e) => setNewOccurrence({...newOccurrence, latitude: e.target.value})}
-                    placeholder="-12.0464"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="longitude">Longitud</Label>
-                  <Input
-                    id="longitude"
-                    value={newOccurrence.longitude}
-                    onChange={(e) => setNewOccurrence({...newOccurrence, longitude: e.target.value})}
-                    placeholder="-77.0428"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="date">Fecha de Recolección</Label>
-                  <Input
-                    id="date"
-                    type="date"
-                    value={newOccurrence.date}
-                    onChange={(e) => setNewOccurrence({...newOccurrence, date: e.target.value})}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="collector">Recolector</Label>
-                  <Input
-                    id="collector"
-                    value={newOccurrence.collector}
-                    onChange={(e) => setNewOccurrence({...newOccurrence, collector: e.target.value})}
-                    placeholder="Nombre del recolector"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="notes">Notas / Observaciones</Label>
-                <Textarea
-                  id="notes"
-                  value={newOccurrence.notes}
-                  onChange={(e) => setNewOccurrence({...newOccurrence, notes: e.target.value})}
-                  rows={3}
-                  placeholder="Descripción del hábitat, características del espécimen..."
-                />
-              </div>
-
-              <Button type="submit" className="w-full">Registrar Ocurrencia</Button>
-            </form>
-          </DialogContent>
-        </Dialog>
+        <Button onClick={() => onNavigate('new-occurrence')}>
+          <Plus className="h-4 w-4 mr-2" />
+          Nueva Ocurrencia
+        </Button>
       </div>
 
       <Card>
@@ -255,6 +105,7 @@ export function OccurrencesPage() {
                 <TableHead>Ubicación</TableHead>
                 <TableHead>Fecha</TableHead>
                 <TableHead>Recolector</TableHead>
+                <TableHead>Acciones</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -285,6 +136,16 @@ export function OccurrencesPage() {
                     </div>
                   </TableCell>
                   <TableCell className="text-sm">{occurrence.collector}</TableCell>
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleViewClick(occurrence.id)}
+                      title="Ver detalles"
+                    >
+                      <Eye className="h-4 w-4" />
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

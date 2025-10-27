@@ -38,7 +38,7 @@ export function HomePage({ onNavigate }: HomePageProps) {
           <Leaf className="h-16 w-16 text-primary mx-auto mb-6" />
           <h1 className="text-5xl mb-4">Herbario Digital</h1>
           <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
-            Plataforma desarrollada por la UNMSM para la gestión y catalogación de especímenes botánicos.
+            Plataforma profesional para la gestión y catalogación de especímenes botánicos.
             Digitaliza tus colecciones de hojas secas y comparte conocimiento científico.
           </p>
           <div className="flex gap-4 justify-center">

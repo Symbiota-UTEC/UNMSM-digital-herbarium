@@ -5,6 +5,9 @@ interface User {
   name: string;
   email: string;
   role: 'admin' | 'user';
+  institution?: string;
+  institutionId?: string;
+  institutionAdmin?: boolean;
 }
 
 interface AuthContextType {
@@ -28,9 +31,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (email === 'admin@botanica.com') {
       setUser({
         id: '1',
-        name: 'Administrador',
+        name: 'Administrador del Sistema',
         email: email,
         role: 'admin'
+      });
+    } else if (email === 'admin.inst@botanica.com') {
+      // Admin de institución
+      setUser({
+        id: '3',
+        name: 'Admin Institución',
+        email: email,
+        role: 'user',
+        institution: 'Universidad Nacional de Botánica',
+        institutionId: '1',
+        institutionAdmin: true
       });
     } else {
       // Usuario normal
@@ -38,7 +52,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         id: '2',
         name: 'Usuario Botánico',
         email: email,
-        role: 'user'
+        role: 'user',
+        institution: 'Universidad Nacional de Botánica',
+        institutionId: '1'
       });
     }
   };

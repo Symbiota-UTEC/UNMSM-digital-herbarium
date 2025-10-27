@@ -6,29 +6,81 @@ import { HomePage } from './components/pages/HomePage';
 import { LoginPage } from './components/pages/LoginPage';
 import { RegisterPage } from './components/pages/RegisterPage';
 import { CollectionsPage } from './components/pages/CollectionsPage';
+import { CollectionDetailPage } from './components/pages/CollectionDetailPage';
 import { OccurrencesPage } from './components/pages/OccurrencesPage';
+import { NewOccurrencePage } from './components/pages/NewOccurrencePage';
+import { OccurrenceDetailPage } from './components/pages/OccurrenceDetailPage';
 import { TaxonPage } from './components/pages/TaxonPage';
 import { ProfilePage } from './components/pages/ProfilePage';
 import { AdminPage } from './components/pages/AdminPage';
 import { MapPage } from './components/pages/MapPage';
 import { Toaster } from './components/ui/sonner';
 
+interface NavigationParams {
+  collectionId?: string;
+  collectionName?: string;
+  isOwner?: boolean;
+  occurrenceId?: string;
+}
+
 function AppContent() {
   const [currentPage, setCurrentPage] = useState('home');
+  const [navParams, setNavParams] = useState<NavigationParams>({});
   const { isAuthenticated } = useAuth();
+
+  const handleNavigation = (page: string, params?: NavigationParams) => {
+    setCurrentPage(page);
+    if (params) {
+      setNavParams(params);
+    }
+  };
 
   const renderPage = () => {
     switch (currentPage) {
       case 'home':
-        return <HomePage onNavigate={setCurrentPage} />;
+        return <HomePage onNavigate={handleNavigation} />;
       case 'login':
-        return <LoginPage onNavigate={setCurrentPage} />;
+        return <LoginPage onNavigate={handleNavigation} />;
       case 'register':
-        return <RegisterPage onNavigate={setCurrentPage} />;
+        return <RegisterPage onNavigate={handleNavigation} />;
       case 'collections':
-        return <CollectionsPage />;
+        return <CollectionsPage onNavigate={handleNavigation} />;
+      case 'collection-detail':
+        return (
+          <CollectionDetailPage 
+            collectionId={navParams.collectionId || ''}
+            collectionName={navParams.collectionName || ''}
+            isOwner={navParams.isOwner || false}
+            onNavigate={handleNavigation}
+          />
+        );
       case 'occurrences':
-        return <OccurrencesPage />;
+        return <OccurrencesPage onNavigate={handleNavigation} />;
+      case 'new-occurrence':
+        return <NewOccurrencePage onNavigate={handleNavigation} mode="create" />;
+      case 'edit-occurrence':
+        return (
+          <NewOccurrencePage 
+            onNavigate={handleNavigation} 
+            mode="edit"
+            occurrenceId={navParams.occurrenceId}
+            returnTo="collection"
+            collectionId={navParams.collectionId}
+            collectionName={navParams.collectionName}
+            isOwner={navParams.isOwner}
+          />
+        );
+      case 'occurrence-detail':
+        return (
+          <OccurrenceDetailPage
+            occurrenceId={navParams.occurrenceId || ''}
+            onNavigate={handleNavigation}
+            returnTo={navParams.collectionId ? 'collection' : 'occurrences'}
+            collectionId={navParams.collectionId}
+            collectionName={navParams.collectionName}
+            isOwner={navParams.isOwner}
+          />
+        );
       case 'taxon':
         return <TaxonPage />;
       case 'profile':
@@ -38,16 +90,16 @@ function AppContent() {
       case 'map':
         return <MapPage />;
       default:
-        return <HomePage onNavigate={setCurrentPage} />;
+        return <HomePage onNavigate={handleNavigation} />;
     }
   };
 
   return (
     <div className="min-h-screen bg-gray-50">
       {isAuthenticated ? (
-        <PrivateNavbar onNavigate={setCurrentPage} currentPage={currentPage} />
+        <PrivateNavbar onNavigate={handleNavigation} currentPage={currentPage} />
       ) : (
-        <PublicNavbar onNavigate={setCurrentPage} />
+        <PublicNavbar onNavigate={handleNavigation} />
       )}
       {renderPage()}
       <Toaster />

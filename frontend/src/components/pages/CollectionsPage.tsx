@@ -6,8 +6,10 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
-import { Plus, Folder, Calendar, MapPin, Upload, FileSpreadsheet } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { Plus, Folder, Calendar, MapPin, Upload, FileSpreadsheet, Users } from "lucide-react";
 import { toast } from "sonner@2.0.3";
+import { useAuth } from "../../contexts/AuthContext";
 
 interface Collection {
   id: string;
@@ -16,9 +18,26 @@ interface Collection {
   location: string;
   date: string;
   occurrencesCount: number;
+  institution: string;
+  ownerId: string;
 }
 
-export function CollectionsPage() {
+interface CollectionsPageProps {
+  onNavigate: (page: string, params?: { collectionId?: string; collectionName?: string; isOwner?: boolean }) => void;
+}
+
+export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
+  const { user } = useAuth();
+  const currentUserId = user?.id || '2';
+
+  // Mock de instituciones disponibles
+  const institutions = [
+    'Universidad Nacional de Botánica',
+    'Instituto de Investigación Amazónica',
+    'Jardín Botánico Nacional',
+    'Academia de Ciencias Naturales'
+  ];
+
   const [collections, setCollections] = useState<Collection[]>([
     {
       id: '1',
@@ -26,7 +45,9 @@ export function CollectionsPage() {
       description: 'Colección de especímenes recolectados en la región amazónica durante la expedición de marzo 2024',
       location: 'Amazonas, Brasil',
       date: '2024-03-15',
-      occurrencesCount: 45
+      occurrencesCount: 45,
+      institution: 'Universidad Nacional de Botánica',
+      ownerId: currentUserId
     },
     {
       id: '2',
@@ -34,7 +55,9 @@ export function CollectionsPage() {
       description: 'Muestras de plantas herbáceas de los Andes centrales',
       location: 'Cusco, Perú',
       date: '2024-01-20',
-      occurrencesCount: 32
+      occurrencesCount: 32,
+      institution: 'Instituto de Investigación Amazónica',
+      ownerId: currentUserId
     },
     {
       id: '3',
@@ -42,7 +65,9 @@ export function CollectionsPage() {
       description: 'Catálogo de plantas con usos medicinales tradicionales',
       location: 'Varios',
       date: '2023-11-10',
-      occurrencesCount: 28
+      occurrencesCount: 28,
+      institution: 'Jardín Botánico Nacional',
+      ownerId: 'other-user'
     }
   ]);
 
@@ -51,16 +76,22 @@ export function CollectionsPage() {
     name: '',
     description: '',
     location: '',
-    date: ''
+    date: '',
+    institution: ''
   });
   const [csvFile, setCsvFile] = useState<File | null>(null);
 
   const handleSubmitEmpty = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newCollection.institution) {
+      toast.error('Por favor selecciona una institución');
+      return;
+    }
     const collection: Collection = {
       id: Date.now().toString(),
       ...newCollection,
-      occurrencesCount: 0
+      occurrencesCount: 0,
+      ownerId: currentUserId
     };
     setCollections([collection, ...collections]);
     resetForm();
@@ -71,6 +102,10 @@ export function CollectionsPage() {
     e.preventDefault();
     if (!csvFile) {
       toast.error('Por favor selecciona un archivo CSV');
+      return;
+    }
+    if (!newCollection.institution) {
+      toast.error('Por favor selecciona una institución');
       return;
     }
 
@@ -85,7 +120,8 @@ export function CollectionsPage() {
       const collection: Collection = {
         id: Date.now().toString(),
         ...newCollection,
-        occurrencesCount
+        occurrencesCount,
+        ownerId: currentUserId
       };
       setCollections([collection, ...collections]);
       resetForm();
@@ -95,10 +131,21 @@ export function CollectionsPage() {
   };
 
   const resetForm = () => {
-    setNewCollection({ name: '', description: '', location: '', date: '' });
+    setNewCollection({ name: '', description: '', location: '', date: '', institution: '' });
     setCsvFile(null);
     setOpen(false);
   };
+
+  const handleCollectionClick = (collection: Collection) => {
+    onNavigate('collection-detail', {
+      collectionId: collection.id,
+      collectionName: collection.name,
+      isOwner: collection.ownerId === currentUserId
+    });
+  };
+
+  const myCollections = collections.filter(c => c.ownerId === currentUserId);
+  const sharedCollections = collections.filter(c => c.ownerId !== currentUserId);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -179,6 +226,24 @@ export function CollectionsPage() {
                     />
                   </div>
                   <div className="space-y-2">
+                    <Label htmlFor="institution-empty">Institución</Label>
+                    <Select
+                      value={newCollection.institution}
+                      onValueChange={(value) => setNewCollection({...newCollection, institution: value})}
+                    >
+                      <SelectTrigger id="institution-empty">
+                        <SelectValue placeholder="Selecciona una institución" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {institutions.map((inst) => (
+                          <SelectItem key={inst} value={inst}>
+                            {inst}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
                     <Label htmlFor="location-empty">Ubicación</Label>
                     <Input
                       id="location-empty"
@@ -241,6 +306,24 @@ export function CollectionsPage() {
                     />
                   </div>
                   <div className="space-y-2">
+                    <Label htmlFor="institution-csv">Institución</Label>
+                    <Select
+                      value={newCollection.institution}
+                      onValueChange={(value) => setNewCollection({...newCollection, institution: value})}
+                    >
+                      <SelectTrigger id="institution-csv">
+                        <SelectValue placeholder="Selecciona una institución" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {institutions.map((inst) => (
+                          <SelectItem key={inst} value={inst}>
+                            {inst}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
                     <Label htmlFor="location-csv">Ubicación</Label>
                     <Input
                       id="location-csv"
@@ -299,38 +382,97 @@ export function CollectionsPage() {
         </Dialog>
       </div>
 
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {collections.map((collection) => (
-          <Card key={collection.id} className="hover:shadow-lg transition-shadow cursor-pointer">
-            <CardHeader>
-              <div className="flex items-start justify-between">
-                <Folder className="h-8 w-8 text-primary" />
-                <span className="text-sm bg-red-50 text-primary px-2 py-1 rounded">
-                  {collection.occurrencesCount} ocurrencias
-                </span>
-              </div>
-              <CardTitle>{collection.name}</CardTitle>
-              <CardDescription>{collection.description}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2 text-sm text-muted-foreground">
-                <div className="flex items-center gap-2">
-                  <MapPin className="h-4 w-4" />
-                  {collection.location}
-                </div>
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4" />
-                  {new Date(collection.date).toLocaleDateString('es-ES', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                  })}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {myCollections.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-2xl mb-4">Mis Colecciones</h2>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {myCollections.map((collection) => (
+              <Card 
+                key={collection.id} 
+                className="hover:shadow-lg transition-shadow cursor-pointer"
+                onClick={() => handleCollectionClick(collection)}
+              >
+                <CardHeader>
+                  <div className="flex items-start justify-between">
+                    <Folder className="h-8 w-8 text-primary" />
+                    <span className="text-sm bg-red-50 text-primary px-2 py-1 rounded">
+                      {collection.occurrencesCount} ocurrencias
+                    </span>
+                  </div>
+                  <CardTitle>{collection.name}</CardTitle>
+                  <CardDescription>{collection.description}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2 text-sm text-muted-foreground">
+                    <div className="flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      {collection.institution}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <MapPin className="h-4 w-4" />
+                      {collection.location}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4" />
+                      {new Date(collection.date).toLocaleDateString('es-ES', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      })}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {sharedCollections.length > 0 && (
+        <div>
+          <h2 className="text-2xl mb-4">Colecciones Compartidas</h2>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {sharedCollections.map((collection) => (
+              <Card 
+                key={collection.id} 
+                className="hover:shadow-lg transition-shadow cursor-pointer"
+                onClick={() => handleCollectionClick(collection)}
+              >
+                <CardHeader>
+                  <div className="flex items-start justify-between">
+                    <Folder className="h-8 w-8 text-primary" />
+                    <span className="text-sm bg-red-50 text-primary px-2 py-1 rounded">
+                      {collection.occurrencesCount} ocurrencias
+                    </span>
+                  </div>
+                  <CardTitle>{collection.name}</CardTitle>
+                  <CardDescription>{collection.description}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2 text-sm text-muted-foreground">
+                    <div className="flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      {collection.institution}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <MapPin className="h-4 w-4" />
+                      {collection.location}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4" />
+                      {new Date(collection.date).toLocaleDateString('es-ES', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      })}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
