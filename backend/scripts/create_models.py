@@ -1,3 +1,4 @@
-from backend.config.database import create_data_base_models
+from backend.config.database import reset_database
 
-create_data_base_models()
+if __name__ == "__main__":
+    reset_database()

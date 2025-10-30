@@ -26,7 +26,7 @@ export function ProfilePage() {
             <CardHeader className="text-center">
               <Avatar className="h-24 w-24 mx-auto mb-4">
                 <AvatarFallback className="bg-primary text-white text-2xl">
-                  {user?.name.substring(0, 2).toUpperCase()}
+                  {user?.username.substring(0, 2).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
               <CardTitle>{user?.name}</CardTitle>

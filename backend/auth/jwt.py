@@ -47,14 +47,14 @@ def create_access_token(
 def create_user_token(
     *,
     user_id: int,
-    username: str,
+    email: str,
     agent_id: Optional[int] = None,
     expires_delta: Optional[timedelta] = None,
 ) -> str:
     """
-    Helper for auth: encodes user_id, username (sub), and optional agent_id.
+    Helper for auth: encodes user_id, email (sub), and optional agent_id.
     """
-    payload = {"sub": username, "user_id": user_id}
+    payload = {"sub": email, "user_id": user_id}
     if agent_id is not None:
         payload["agent_id"] = agent_id
     return create_access_token(payload, expires_delta=expires_delta)

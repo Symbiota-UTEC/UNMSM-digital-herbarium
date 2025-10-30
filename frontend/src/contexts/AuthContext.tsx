@@ -1,65 +1,93 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+
+enum Role {
+  Admin = 'admin',
+  InstitutionAdmin = 'institution_admin',
+  User = 'user',
+}
 
 interface User {
   id: string;
   name: string;
+  username: string;
   email: string;
-  role: 'admin' | 'user';
-  institution?: string;
+  role: Role;
   institutionId?: string;
-  institutionAdmin?: boolean;
+  institution?: string;
 }
+
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
 }
+
+const API_BASE = import.meta.env.VITE_API_URL;
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
 
-  const login = async (email: string, password: string) => {
-    // Mock login - en producción esto se conectaría a un backend
-    // Simular delay de red
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // Usuario demo admin
-    if (email === 'admin@botanica.com') {
-      setUser({
-        id: '1',
-        name: 'Administrador del Sistema',
-        email: email,
-        role: 'admin'
-      });
-    } else if (email === 'admin.inst@botanica.com') {
-      // Admin de institución
-      setUser({
-        id: '3',
-        name: 'Admin Institución',
-        email: email,
-        role: 'user',
-        institution: 'Universidad Nacional de Botánica',
-        institutionId: '1',
-        institutionAdmin: true
-      });
-    } else {
-      // Usuario normal
-      setUser({
-        id: '2',
-        name: 'Usuario Botánico',
-        email: email,
-        role: 'user',
-        institution: 'Universidad Nacional de Botánica',
-        institutionId: '1'
-      });
+  useEffect(() => {
+    console.log('[Auth] user actualizado:', user);
+  }, [user]);
+
+    const login = async (email: string, password: string) => {
+      try {
+        const response = await fetch(`${API_BASE}/auth/login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ email, password }),
+        });
+
+      if (!response.ok) {
+        const txt = await response.text();
+        console.error('Respuesta no OK:', txt);
+        throw new Error('Credenciales incorrectas');
+      }
+
+      const data = await response.json();
+      console.log('Datos crudos del backend:', JSON.stringify(data, null, 2));
+
+      if (!data.access_token || !data.user) {
+        throw new Error('Respuesta del servidor inválida');
+      }
+
+      localStorage.setItem('token', data.access_token);
+
+      const u = data.user;
+
+      const mappedUser: User = {
+        id: u.id,
+        name: u.name,
+        username: u.username,
+        email: u.email,
+        role: u.is_admin
+          ? Role.Admin
+          : u.is_institution_admin
+          ? Role.InstitutionAdmin
+          : Role.User,
+        institution: u.institution ?? null,
+        institutionId: u.institution_id ?? null,
+      };
+
+      setUser(mappedUser);
+      console.log('[Auth] setUser con:', mappedUser);
+
+      return mappedUser;
+    } catch (error) {
+      console.error('Error de login:', error);
+      throw new Error('Error al iniciar sesión');
     }
   };
 
   const logout = () => {
+    localStorage.removeItem('token');
     setUser(null);
   };
 

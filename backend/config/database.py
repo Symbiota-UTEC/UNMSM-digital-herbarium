@@ -36,5 +36,12 @@ def get_db() -> Iterator[SessionLocal]:
         db.close()
 
 
-def create_data_base_models() -> None:
+# def create_data_base_models() -> None:
+#     Base.metadata.create_all(bind=engine)
+#     print("[bootstrap] Database models created.")
+
+
+def reset_database():
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
+    print("[bootstrap] Database reset completed.")
