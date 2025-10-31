@@ -1,10 +1,10 @@
 # backend/routers/auth.py
 
 from datetime import timedelta, datetime
-from fastapi import APIRouter, Depends, HTTPException, status, Body
+from fastapi import APIRouter, Depends, HTTPException, status, Body, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import select, or_, and_
-from typing import Optional
+from sqlalchemy import select, or_, and_, func
+from typing import Optional, Literal, List
 
 from backend.config.database import get_db
 from backend.models.models import User, Institution, Agent, RegistrationRequest
@@ -12,9 +12,138 @@ from backend.utils.security import hash_password, verify_password
 from backend.auth.jwt import create_user_token, get_current_payload, get_current_user
 from backend.config.auth import access_token_expire_minutes
 
+from pydantic import BaseModel
+
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
+
+# --------- Schemas de salida (evitamos exponer hashed_password) ----------
+class RegistrationRequestItem(BaseModel):
+    id: int
+    username: str
+    email: str
+    institution_id: int
+    full_name: Optional[str]
+    given_name: Optional[str]
+    family_name: Optional[str]
+    orcid: Optional[str]
+    phone: Optional[str]
+    address: Optional[str]
+    status: Literal["pending", "approved", "rejected"]
+    created_at: datetime
+    reviewed_at: Optional[datetime] = None
+    reviewed_by_user_id: Optional[int] = None
+    resulting_user_id: Optional[int] = None
+
+    class Config:
+        from_attributes = True  # Pydantic v2 (equivalente a orm_mode=True)
+
+
+class RegistrationRequestPage(BaseModel):
+    requests: List[RegistrationRequestItem]
+    total: int
+    total_pages: int
+    limit: int
+    offset: int
+
+
+@router.get(
+    "/registration-requests",
+    summary="Listar solicitudes de registro (paginado, con permisos)",
+    response_model=RegistrationRequestPage,
+)
+def list_registration_requests(
+    limit: int = Query(10, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+
+    status_filter: Optional[Literal["pending", "approved", "rejected"]] = Query(None),
+    institution_id: Optional[int] = Query(None, ge=1),
+
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.is_superuser:
+        # Superuser: puede listar todo; si pasó institution_id, filtramos por él
+        where_clauses = []
+        if institution_id is not None:
+            where_clauses.append(RegistrationRequest.institution_id == institution_id)
+    elif current_user.is_institution_admin:
+        # Admin de institución: debe pasar institution_id y debe ser el suyo
+        if institution_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="institution_id es obligatorio para administradores de institución",
+            )
+        if institution_id != current_user.institution_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No puedes consultar solicitudes de otra institución",
+            )
+        where_clauses = [RegistrationRequest.institution_id == institution_id]
+    else:
+        # Ni superuser ni admin de institución
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para listar solicitudes de registro",
+        )
+
+    if status_filter is not None:
+        where_clauses.append(RegistrationRequest.status == status_filter)
+
+    base_stmt = select(RegistrationRequest)
+    if where_clauses:
+        base_stmt = base_stmt.where(and_(*where_clauses))
+
+    count_stmt = select(func.count()).select_from(RegistrationRequest)
+    if where_clauses:
+        count_stmt = count_stmt.where(and_(*where_clauses))
+
+    total = db.execute(count_stmt).scalar_one()
+
+    # más reciente primero
+    stmt = (
+        base_stmt
+        .order_by(RegistrationRequest.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+
+    items = db.execute(stmt).scalars().all()
+
+    # 5) Respuesta paginada
+    total_pages = (total + limit - 1) // limit if limit > 0 else 1
+
+    requests_payload = [
+        RegistrationRequestItem(
+            id=r.id,
+            username=r.username,
+            email=r.email,
+            institution_id=r.institution_id,
+            full_name=r.full_name,
+            given_name=r.given_name,
+            family_name=r.family_name,
+            orcid=r.orcid,
+            phone=r.phone,
+            address=r.address,
+            status=r.status,
+            created_at=r.created_at,
+            reviewed_at=r.reviewed_at,
+            reviewed_by_user_id=r.reviewed_by_user_id,
+            resulting_user_id=r.resulting_user_id,
+        )
+        for r in items
+    ]
+
+    return RegistrationRequestPage(
+        requests=requests_payload,
+        total=total,
+        total_pages=total_pages,
+        limit=limit,
+        offset=offset,
+    )
+
+# TODO: validar si el nuevo usuario a crear ha sido rejected anteriormente
 @router.post("/registration-request", summary="Creates a register request for a new user")
 def register_user(
     username: str = Body(..., embed=True),
@@ -108,14 +237,20 @@ def register_user(
     }
 
 
-@router.patch("/registration-request", summary="Accept a registration request")
-def accept_registration(
-    registration_request_id: int = Body(..., embed=True, ge=1),
+class UpdateRequestStatusBody(BaseModel):
+    registration_request_id: int
+    new_status: Literal["approved", "rejected"]
+
+
+@router.patch("/registration-request", summary="Update status of a registration request")
+def update_registration_request_status(
+    payload: UpdateRequestStatusBody = Body(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),  # Obtiene al usuario autenticado
+    current_user: User = Depends(get_current_user),
 ):
+    # 1) Cargar solicitud
     registration_request = db.execute(
-        select(RegistrationRequest).where(RegistrationRequest.id == registration_request_id)
+        select(RegistrationRequest).where(RegistrationRequest.id == payload.registration_request_id)
     ).scalar_one_or_none()
 
     if not registration_request:
@@ -124,21 +259,62 @@ def accept_registration(
             detail="Solicitud de registro no encontrada"
         )
 
+    # 2) Solo se permiten transiciones desde 'pending'
     if registration_request.status != "pending":
-        raise HTTPException(status_code=400, detail="La solicitud no está en estado pendiente")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La solicitud no está en estado 'pending'; no se puede actualizar"
+        )
 
-    institution = registration_request.institution
-
+    # 3) Permisos
+    institution = registration_request.institution  # relationship
     if not (
         current_user.is_superuser
         or (current_user.is_institution_admin and current_user.institution_id == institution.id)
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos para aceptar esta solicitud"
+            detail="No tienes permisos para actualizar esta solicitud"
         )
 
-    # Información del Curador
+    # 4) Rechazo: actualizar y salir
+    if payload.new_status == "rejected":
+        registration_request.status = "rejected"
+        registration_request.reviewed_by_user_id = current_user.id
+        registration_request.reviewed_at = datetime.utcnow()
+
+        db.add(registration_request)
+        db.commit()
+        db.refresh(registration_request)
+
+        return {
+            "message": "Solicitud de registro rechazada correctamente.",
+            "request": {
+                "id": registration_request.id,
+                "status": registration_request.status,
+                "username": registration_request.username,
+                "email": registration_request.email,
+                "institution_id": registration_request.institution_id,
+                "created_at": registration_request.created_at,
+                "reviewed_at": registration_request.reviewed_at,
+                "reviewed_by_user_id": registration_request.reviewed_by_user_id,
+            },
+        }
+
+    # 5) Aprobación: validar colisiones (por si se creó un usuario entre la solicitud y la aprobación)
+    #    Evitamos duplicados de username/email en tabla User.
+    existing_user = db.execute(
+        select(User).where(
+            or_(User.username == registration_request.username,
+                User.email == registration_request.email)
+        )
+    ).scalar_one_or_none()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ya existe un usuario con este username o email. No se puede aprobar."
+        )
+
     agent = Agent(
         givenName=registration_request.given_name,
         familyName=registration_request.family_name,
@@ -151,18 +327,16 @@ def accept_registration(
     db.commit()
     db.refresh(agent)
 
-    # Crear el usuario
     user = User(
         username=registration_request.username,
         email=registration_request.email,
-        hashed_password=hash_password(registration_request.hashed_password),
-        is_active=True,  # Se activa automáticamente
+        hashed_password=registration_request.hashed_password,
+        is_active=True,
         is_superuser=False,
         is_institution_admin=False,
-        institution_id=registration_request.institution_id,  # Asociar la institución de la solicitud
-        agent_id=agent.id,  # Asociar el agente al usuario
+        institution_id=registration_request.institution_id,
+        agent_id=agent.id,
     )
-
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -177,7 +351,7 @@ def accept_registration(
     db.refresh(registration_request)
 
     return {
-        "message": "Solicitud de registro aceptada correctamente.",
+        "message": "Solicitud de registro actualizada correctamente.",
         "request": {
             "id": registration_request.id,
             "status": registration_request.status,
@@ -185,6 +359,9 @@ def accept_registration(
             "email": registration_request.email,
             "institution_id": registration_request.institution_id,
             "created_at": registration_request.created_at,
+            "reviewed_at": registration_request.reviewed_at,
+            "reviewed_by_user_id": registration_request.reviewed_by_user_id,
+            "resulting_user_id": registration_request.resulting_user_id,
         },
         "user": {
             "id": user.id,
@@ -245,15 +422,4 @@ def login_user(
             "agent_id": user.agent_id,
             "institution_id": institution.id,
         },
-    }
-
-
-
-
-@router.get("/me", summary="Get current user info from JWT")
-def get_me(payload = Depends(get_current_payload)):
-    return {
-        "username": payload["sub"],
-        "user_id": payload["user_id"],
-        "agent_id": payload.get("agent_id"),
     }

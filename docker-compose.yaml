@@ -30,6 +30,22 @@ services:
     command: ["sh", "-c", "python -m backend.scripts.create_models && python -m backend.scripts.create_admin && exec python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000"]
     networks: [appnet]
 
+  frontend-dev:
+    image: node:20-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:8000/api
+    ports:
+      - "5173:5173"
+    depends_on:
+      backend:
+        condition: service_started
+    networks: [appnet]
+
   frontend:
     build:
       context: ./frontend
