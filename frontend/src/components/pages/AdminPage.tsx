@@ -134,6 +134,8 @@ interface RegistrationRequestPage {
   total_pages: number;
   limit: number;
   offset: number;
+  current_page: number;
+  remaining_pages: number;
 }
 
 const API_URL = import.meta.env.VITE_API_URL;
@@ -351,7 +353,7 @@ export function AdminPage() {
   const [requestNameFilter, setRequestNameFilter] = useState("");
   const [requestInstitutionFilter, setRequestInstitutionFilter] =
       useState("all");
-  const requestsPerPage = 5;
+  const requestsPerPage = 2;
 
   // Filtro de fecha para historial (rango)
   const [historyStartDateFilters, setHistoryStartDateFilters] = useState<
@@ -439,8 +441,11 @@ export function AdminPage() {
 
         const data = (await res.json()) as RegistrationRequestPage;
 
+        console.log("Usuarios cargados:", data.requests);
+
         setRegistrationRequests(data.requests);
         setRequestsTotal(data.total);
+        setTotalPages(data.total_pages);
       } catch (err) {
         console.error(err);
         toast.error("No se pudieron cargar las solicitudes de registro");
@@ -450,7 +455,7 @@ export function AdminPage() {
     };
 
     fetchRequests();
-  }, [token, user, requestsPage, requestInstitutionFilter]);
+  }, [token, user, requestsPage, currentPage, requestInstitutionFilter]);
 
   const stats = [
     {
@@ -486,6 +491,7 @@ export function AdminPage() {
   const [registrationRequests, setRegistrationRequests] = useState<RegistrationRequestItem[]>([]);
   const [isLoadingRequests, setIsLoadingRequests] = useState(false);
   const [requestsTotal, setRequestsTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
 
   const handleApproveRequest = async (requestId: number) => {
     try {
@@ -512,9 +518,11 @@ export function AdminPage() {
 
       toast.success("Solicitud aprobada correctamente");
 
+      setRegistrationRequests((prevRequests) =>
+          prevRequests.filter((req) => req.id !== requestId)
+      );
       // refrescamos la lista
       // (volvemos a pedir la página actual)
-      // la forma simple: volver a setRequestsPage para que dispare el useEffect
       setRequestsPage((p) => p); // o llamar fetchRequests si lo sacas a función
     } catch (err) {
       console.error(err);
@@ -544,6 +552,10 @@ export function AdminPage() {
         toast.error("No se pudo rechazar la solicitud");
         return;
       }
+
+      setRegistrationRequests((prevRequests) =>
+          prevRequests.filter((req) => req.id !== requestId)
+      );
 
       toast.success("Solicitud rechazada correctamente");
       setRequestsPage((p) => p);
@@ -662,6 +674,18 @@ export function AdminPage() {
     });
     setAdminSearchEmail(institution.admin_user?.email || "");
     setAdminEmailValidation({ isValid: null, message: "" });
+  };
+
+  const goToNextPage = () => {
+    if (requestsPage < totalPages) {
+      setRequestsPage(requestsPage + 1); // Siguiente página
+    }
+  };
+
+  const goToPreviousPage = () => {
+    if (requestsPage > 1) {
+      setRequestsPage(requestsPage - 1); // Página anterior
+    }
   };
 
   const validateAdminEmail = (email: string) => {
@@ -870,8 +894,6 @@ export function AdminPage() {
       ? allUsers.filter((u) => u.institutionId === user?.institutionId)
       : allUsers;
 
-  // Paginación
-  const totalPages = Math.ceil(filteredUsers.length / usersPerPage);
   const startIndex = (currentPage - 1) * usersPerPage;
   const endIndex = startIndex + usersPerPage;
   const currentUsers = filteredUsers.slice(startIndex, endIndex);
@@ -896,32 +918,6 @@ export function AdminPage() {
   const visibleInstitutions = filteredInstitutions.slice(
       startInstitutionsIndex,
       endInstitutionsIndex,
-  );
-
-  // Filtrar solicitudes pendientes
-  const filteredRequests = registrationRequests.filter((req) => {
-    const matchesName = req.full_name?.toLowerCase().includes(requestNameFilter.toLowerCase())
-        || req.username?.toLowerCase().includes(requestNameFilter.toLowerCase())
-        || req.email?.toLowerCase().includes(requestNameFilter.toLowerCase());
-
-    // si tienes un filtro por institución en el frontend
-    const matchesInstitution =
-        requestInstitutionFilter === "all" ||
-        requestInstitutionFilter === "" ||
-        String(req.institution_id) === requestInstitutionFilter;
-
-    return matchesName && matchesInstitution;
-  });
-
-  // Paginación de solicitudes pendientes
-  const totalRequestsPages = Math.ceil(
-      filteredRequests.length / requestsPerPage,
-  );
-  const startRequestsIndex = (requestsPage - 1) * requestsPerPage;
-  const endRequestsIndex = startRequestsIndex + requestsPerPage;
-  const visibleRequests = filteredRequests.slice(
-      startRequestsIndex,
-      endRequestsIndex,
   );
 
   const institutionOptions = institutions.map((inst) => ({
@@ -1607,12 +1603,12 @@ export function AdminPage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                {visibleRequests.length === 0 ? (
+                {registrationRequests.length === 0 ? (
                     <p className="text-sm text-muted-foreground text-center py-4">
                       No se encontraron solicitudes pendientes
                     </p>
                 ) : (
-                    visibleRequests.map((request) => (
+                    registrationRequests.map((request) => (
                         <div
                             key={request.id}
                             className="flex items-center gap-3 p-3 border rounded-lg"
@@ -1656,37 +1652,32 @@ export function AdminPage() {
                     ))
                 )}
               </div>
-              {filteredRequests.length > 0 && (
+              {registrationRequests.length > 0 && (
                   <div className="flex items-center justify-between mt-4 pt-4 border-t">
                     <Button
                         variant="outline"
                         size="sm"
-                        onClick={() =>
-                            setRequestsPage(Math.max(1, requestsPage - 1))
-                        }
-                        disabled={requestsPage === 1}
+                        onClick={goToPreviousPage} // Llama a la función para la página anterior
+                        disabled={requestsPage === 1} // Deshabilitar si ya está en la primera página
                     >
                       <ChevronLeft className="h-4 w-4 mr-1" />
                       Anterior
                     </Button>
                     <span className="text-sm text-muted-foreground">
-                  Página {requestsPage} de {totalRequestsPages}
-                </span>
+                      Página {requestsPage} de {totalPages}
+                    </span>
                     <Button
                         variant="outline"
                         size="sm"
-                        onClick={() =>
-                            setRequestsPage(
-                                Math.min(totalRequestsPages, requestsPage + 1),
-                            )
-                        }
-                        disabled={requestsPage === totalRequestsPages}
+                        onClick={goToNextPage} // Llama a la función para la página siguiente
+                        disabled={requestsPage === totalPages} // Deshabilitar si ya está en la última página
                     >
                       Siguiente
                       <ChevronRight className="h-4 w-4 ml-1" />
                     </Button>
                   </div>
               )}
+
             </CardContent>
           </Card>
         </div>

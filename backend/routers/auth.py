@@ -46,6 +46,8 @@ class RegistrationRequestPage(BaseModel):
     total_pages: int
     limit: int
     offset: int
+    current_page: int
+    remaining_pages: int
 
 
 @router.get(
@@ -135,12 +137,18 @@ def list_registration_requests(
         for r in items
     ]
 
+    total_pages = (total + limit - 1) // limit if limit > 0 else 1
+    current_page = (offset // limit) + 1
+    remaining_pages = total_pages - current_page
+
     return RegistrationRequestPage(
         requests=requests_payload,
         total=total,
         total_pages=total_pages,
         limit=limit,
         offset=offset,
+        current_page=current_page,
+        remaining_pages=remaining_pages
     )
 
 # TODO: validar si el nuevo usuario a crear ha sido rejected anteriormente
