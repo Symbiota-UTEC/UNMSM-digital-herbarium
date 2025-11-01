@@ -115,6 +115,7 @@ interface RegistrationRequestItem {
   username: string;
   email: string;
   institution_id: number;
+  institution_name: string;
   full_name?: string | null;
   given_name?: string | null;
   family_name?: string | null;
@@ -832,21 +833,15 @@ export function AdminPage() {
 
         const user = await response.json();
 
-        if (user) {
-          const adminInstitution = institutions.find(
-              (inst) =>
-                  inst.institution_admin_user_id === user.id &&
-                  inst.id !== editInstitution.id
-          );
-          if (adminInstitution) {
-            toast.error(`Este usuario ya es administrador de ${adminInstitution.name}`);
+        if (!user) {
+            toast.error("Usuario no encontrado");
             return;
-          }
+        }
 
-          newAdminUserId = user.id;
+        if (user.is_institution_admin && user.institution_id !== editInstitution.id) {
+            toast.error(`Este usuario ya es administrador de una institución`);
         } else {
-          toast.error("Usuario no encontrado");
-          return;
+            newAdminUserId = user.id;
         }
       } catch (error) {
         console.error("Error al verificar el correo:", error);
@@ -854,11 +849,12 @@ export function AdminPage() {
         return;
       }
     } else {
-      newAdminUserId = undefined;
+      newAdminUserId = null;
     }
 
     // Actualización de la institución (PATCH)
     try {
+        console.log("email", newAdminUserId);
       const res = await fetch(`${API_URL}/institutions/${editInstitution.id}`, {
         method: "PATCH",
         headers: {
@@ -1781,7 +1777,7 @@ export function AdminPage() {
                           </p>
                           <div className="flex items-center gap-2 mt-1">
                             <p className="text-xs text-muted-foreground truncate">
-                              {request.institution}
+                              {request.institution_name}
                             </p>
                             <span className="text-xs text-muted-foreground">•</span>
                             <p className="text-xs text-muted-foreground">
@@ -2177,7 +2173,7 @@ export function AdminPage() {
                                           validateAdminEmail(e.target.value);
                                       }}
                                       placeholder="admin@email.com"
-                                      disabled={isInstitutionAdmin || (isSystemAdmin &&  user.email === editForm.adminEmail)}
+                                      disabled={isInstitutionAdmin || (isSystemAdmin && user.email === editInstitution.adminEmail)}
                                   />
                               </div>
 

@@ -24,6 +24,7 @@ class RegistrationRequestItem(BaseModel):
     username: str
     email: str
     institution_id: int
+    institution_name: Optional[str]
     full_name: Optional[str]
     given_name: Optional[str]
     family_name: Optional[str]
@@ -48,6 +49,7 @@ class RegistrationRequestPage(BaseModel):
     offset: int
     current_page: int
     remaining_pages: int
+
 
 
 @router.get(
@@ -93,11 +95,11 @@ def list_registration_requests(
     if status_filter is not None:
         where_clauses.append(RegistrationRequest.status == status_filter)
 
-    base_stmt = select(RegistrationRequest)
+    base_stmt = select(RegistrationRequest).join(Institution, Institution.id == RegistrationRequest.institution_id)
     if where_clauses:
         base_stmt = base_stmt.where(and_(*where_clauses))
 
-    count_stmt = select(func.count()).select_from(RegistrationRequest)
+    count_stmt = select(func.count()).select_from(RegistrationRequest).join(Institution, Institution.id == RegistrationRequest.institution_id)
     if where_clauses:
         count_stmt = count_stmt.where(and_(*where_clauses))
 
@@ -113,15 +115,13 @@ def list_registration_requests(
 
     items = db.execute(stmt).scalars().all()
 
-    # 5) Respuesta paginada
-    total_pages = (total + limit - 1) // limit if limit > 0 else 1
-
     requests_payload = [
         RegistrationRequestItem(
             id=r.id,
             username=r.username,
             email=r.email,
             institution_id=r.institution_id,
+            institution_name=r.institution.institutionName,
             full_name=r.full_name,
             given_name=r.given_name,
             family_name=r.family_name,
