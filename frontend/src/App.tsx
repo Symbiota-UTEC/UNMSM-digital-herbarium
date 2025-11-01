@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { PublicNavbar } from './components/PublicNavbar';
 import { PrivateNavbar } from './components/PrivateNavbar';
@@ -27,6 +27,12 @@ function AppContent() {
   const [currentPage, setCurrentPage] = useState('home');
   const [navParams, setNavParams] = useState<NavigationParams>({});
   const { isAuthenticated } = useAuth();
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      setCurrentPage('collections');
+    }
+  }, [isAuthenticated]);
 
   const handleNavigation = (page: string, params?: NavigationParams) => {
     setCurrentPage(page);

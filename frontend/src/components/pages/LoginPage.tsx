@@ -90,7 +90,6 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
             <div className="mt-4 p-3 bg-blue-50 rounded-md text-xs">
               <p className="mb-1">Credenciales de prueba:</p>
               <p>Admin: admin@gmail.com</p>
-              <p>Usuario: cualquier otro email</p>
             </div>
           </div>
         </CardContent>
