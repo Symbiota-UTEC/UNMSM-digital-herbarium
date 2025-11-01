@@ -7,6 +7,7 @@ from backend.models import models as models_module
 from backend.routers import occurrence as occurrence_router
 from backend.routers import institutions as institutions_router
 from backend.routers import auth as auth_router
+from backend.routers import users as users_router
 
 models_module.Base.metadata.create_all(bind=engine)
 
@@ -28,6 +29,7 @@ app.add_middleware(
 app.include_router(occurrence_router.router, prefix="/api")
 app.include_router(auth_router.router, prefix="/api")
 app.include_router(institutions_router.router, prefix="/api")
+app.include_router(users_router.router, prefix="/api")
 
 @app.get("/", tags=["meta"])
 def root():

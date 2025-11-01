@@ -38,6 +38,53 @@ class UserPaginationResponse(BaseModel):
     offset: int
 
 
+
+@router.get("/by-email", response_model=UserOut, summary="Get user by email and optional institution")
+def get_user_by_email(
+        email: str = Query(...),
+        institution_id: Optional[int] = None,  # Filtro opcional
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user),
+):
+    # Si el usuario no es superadmin, debemos validar el acceso según su rol
+    if not current_user.is_superuser:
+        # Si no es superadmin, verificar si es admin de la institución
+        if current_user.is_institution_admin:
+            # Si el usuario es admin de institución, solo puede ver usuarios de su institución
+            if not institution_id or institution_id != current_user.institution_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="No tienes permisos para acceder a usuarios de otra institución",
+                )
+        else:
+            # Si no es admin de institución, solo puede consultar su propio correo
+            if email != current_user.email:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="No tienes permisos para acceder a este usuario",
+                )
+
+    # Realizar la búsqueda del usuario
+    if institution_id:
+        # Si se proporciona un institution_id, filtrar por email e institution_id
+        user = db.execute(
+            select(User).where(User.email == email, User.institution_id == institution_id)
+        ).scalar_one_or_none()
+    else:
+        # Si no se proporciona un institution_id, solo filtrar por email
+        user = db.execute(
+            select(User).where(User.email == email)
+        ).scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado o no tiene permisos para acceder a este usuario",
+        )
+
+    return user
+
+
 @router.get("/{user_id}", response_model=UserOut, summary="Get user by id")
 def get_user_by_id(
     user_id: int,
@@ -131,3 +178,44 @@ def get_users(
         limit=limit,
         offset=offset
     )
+
+
+@router.patch("/{user_id}/assign_admin", summary="Assign a user as an institution admin")
+def assign_institution_admin(
+    user_id: int,
+    institution_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para realizar esta acción",
+        )
+
+    user = db.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado",
+        )
+
+    institution = db.execute(select(Institution).where(Institution.id == institution_id)).scalar_one_or_none()
+    if not institution:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Institución no encontrada",
+        )
+
+    if user.institution_id != institution_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El usuario no está asociado con la institución proporcionada",
+        )
+
+    user.is_institution_admin = True
+    institution.institution_admin_user_id = current_user.id
+
+    db.commit()
+
+    return {"detail": "Usuario asignado como administrador de la institución"}

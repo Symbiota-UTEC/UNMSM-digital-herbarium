@@ -1,9 +1,9 @@
-import { Button } from "./ui/button";
-import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from "./ui/sheet";
-import { Separator } from "./ui/separator";
-import { Avatar, AvatarFallback } from "./ui/avatar";
-import { Menu, Home, User, LogOut, Shield, Folder, MapPin, Leaf, Map } from "lucide-react";
-import { useAuth } from "../contexts/AuthContext";
+import {Button} from "./ui/button";
+import {Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger} from "./ui/sheet";
+import {Separator} from "./ui/separator";
+import {Avatar, AvatarFallback} from "./ui/avatar";
+import {Folder, Home, Leaf, LogOut, Map, MapPin, Menu, Shield, User} from "lucide-react";
+import {Role, useAuth} from "../contexts/AuthContext";
 
 interface PrivateNavbarProps {
   onNavigate: (page: string) => void;
@@ -98,7 +98,7 @@ export function PrivateNavbar({ onNavigate, currentPage }: PrivateNavbarProps) {
                   })}
                 </div>
 
-                {user?.role === 'admin' && (
+                {(user?.role == Role.InstitutionAdmin || user.role == Role.Admin) && (
                   <>
                     <Separator className="mb-4" />
                     <Button

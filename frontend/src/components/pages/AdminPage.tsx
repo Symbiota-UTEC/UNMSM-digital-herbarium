@@ -76,7 +76,7 @@ interface AdminUserOut {
 }
 
 interface Institution {
-  id: number;
+  id?: number;
   institutionID?: string | null;
   institutionCode?: string | null;
   institutionName?: string | null;
@@ -90,7 +90,7 @@ interface Institution {
   admin_user?: AdminUserOut | null;
   // 👇 props de frontend para no romper nada
   name?: string;
-  usersCount?: number;
+  usersCount?: number; // TODO: count
 }
 
 interface UserDetail {
@@ -142,11 +142,19 @@ const API_URL = import.meta.env.VITE_API_URL;
 
 export function AdminPage() {
   const { user, token } = useAuth() as any;
-  const isSystemAdmin = user?.role === "admin";
-  const isInstitutionAdmin = user?.institutionAdmin;
+  const isSystemAdmin = user?.role === Role.Admin;
+  const isInstitutionAdmin = user?.role === Role.InstitutionAdmin;
 
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [isLoadingInstitutions, setIsLoadingInstitutions] = useState(false);
+
+  const generateUUID = () => {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  };
 
   // 👇 mock de usuarios lo dejamos igual
   const [allUsers] = useState<UserDetail[]>([
@@ -310,7 +318,16 @@ export function AdminPage() {
     id: string;
     name: string;
   } | null>(null);
-  const [newInstitution, setNewInstitution] = useState("");
+
+  const [newInstitutionName, setNewInstitutionName] = useState("");
+  const [newInstitutionCode, setNewInstitutionCode] = useState("");
+  const [newInstitutionCountry, setNewInstitutionCountry] = useState("");
+  const [newInstitutionCity, setNewInstitutionCity] = useState("");
+  const [newInstitutionAddress, setNewInstitutionAddress] = useState("");
+  const [newInstitutionEmail, setNewInstitutionEmail] = useState("");
+  const [newInstitutionPhone, setNewInstitutionPhone] = useState("");
+  const [newInstitutionWebSite, setNewInstitutionWebSite] = useState("");
+
   const [selectedAdminUserId, setSelectedAdminUserId] = useState("");
   const [adminSearchEmail, setAdminSearchEmail] = useState("");
   const [adminEmailValidation, setAdminEmailValidation] = useState<{
@@ -367,9 +384,16 @@ export function AdminPage() {
     const fetchInstitutions = async () => {
       try {
         setIsLoadingInstitutions(true);
-        const res = await fetch(`${API_URL}/institutions?limit=7&offset=0`, {
+
+        // Si el usuario es un `institutionAdmin`, trae solo su institución
+        const endpoint = isInstitutionAdmin
+            ? `${API_URL}/institutions/${user.institutionId}` // Llamada para obtener solo su institución
+            : `${API_URL}/institutions?limit=7&offset=0`; // Llamada para obtener todas las instituciones
+
+        const res = await fetch(endpoint, {
           headers: {
             "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
           },
         });
 
@@ -377,14 +401,14 @@ export function AdminPage() {
           throw new Error(`Error ${res.status}`);
         }
 
-        const data = (await res.json()) as Institution[];
+        const data = await res.json();
 
-        // 👇 normalizamos un poco para que el frontend no se rompa
-        const normalized = data.map((inst) => ({
+        // Si es `institutionAdmin`, solo muestra su institución
+        const filteredData = isInstitutionAdmin ? [data] : data;
+
+        const normalized = filteredData.map((inst) => ({
           ...inst,
-          // nombre amigable
           name: inst.institutionName ?? "(sin nombre)",
-          // por ahora no viene usersCount en tu endpoint → dejamos 0 o lo que ya tuviera
           usersCount: inst.usersCount ?? 0,
         }));
 
@@ -398,7 +422,7 @@ export function AdminPage() {
     };
 
     fetchInstitutions();
-  }, [token]);
+  }, [token, isInstitutionAdmin, user.institutionId]);
 
   useEffect(() => {
     if (!token) return;
@@ -566,34 +590,65 @@ export function AdminPage() {
   };
 
 
-  // ⚠️ este crear institución ahora solo la crea en el frontend
-  // porque no me diste el POST. Si quieres hago el POST también.
-  const handleCreateInstitution = (e: React.FormEvent) => {
+  const handleCreateInstitution = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newInstitution.trim()) {
+
+    // Validación del nombre de la institución
+    if (!newInstitutionName.trim()) {
       toast.error("Por favor ingresa un nombre válido");
       return;
     }
+
+    // Crear el objeto institución con los valores del formulario
     const institution: Institution = {
-      id: Date.now(),
-      institutionID: "",
-      institutionCode: "",
-      institutionName: newInstitution,
-      name: newInstitution,
-      country: "",
-      city: "",
-      address: "",
-      email: "",
-      phone: "",
-      webSite: "",
-      usersCount: 0,
+      institutionID: generateUUID(),  // Genera el UUID
+      institutionCode: newInstitutionCode,
+      institutionName: newInstitutionName,
+      country: newInstitutionCountry,
+      city: newInstitutionCity,
+      address: newInstitutionAddress,
+      email: newInstitutionEmail,
+      phone: newInstitutionPhone,
+      webSite: newInstitutionWebSite,
     };
-    setInstitutions((prev) => [...prev, institution]);
-    setNewInstitution("");
-    setShowInstitutionDialog(false);
-    toast.success(
-        "Institución creada en la vista. (Para guardarla en el backend hay que hacer POST)",
-    );
+
+    try {
+      const res = await fetch(`${API_URL}/institutions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(institution),
+      });
+
+      if (!res.ok) {
+        const txt = await res.text();
+        console.error("Error al crear institución:", txt);
+        toast.error("No se pudo crear la institución");
+        return;
+      }
+
+      const newInstitution = await res.json();
+      setInstitutions((prev) => [...prev, newInstitution]);
+
+      setNewInstitutionName("");
+      setNewInstitutionCode("");
+      setNewInstitutionCountry("");
+      setNewInstitutionCity("");
+      setNewInstitutionAddress("");
+      setNewInstitutionEmail("");
+      setNewInstitutionPhone("");
+      setNewInstitutionWebSite("");
+
+      setShowInstitutionDialog(false);
+
+      toast.success("Institución creada correctamente");
+
+    } catch (err) {
+      console.error(err);
+      toast.error("Hubo un error al crear la institución");
+    }
   };
 
   const handleDeleteInstitutionClick = (institution: Institution) => {
@@ -688,7 +743,7 @@ export function AdminPage() {
     }
   };
 
-  const validateAdminEmail = (email: string) => {
+  const validateAdminEmail = async (email: string) => {
     if (!email.trim()) {
       setAdminEmailValidation({
         isValid: true,
@@ -697,42 +752,57 @@ export function AdminPage() {
       return;
     }
 
-    const foundUser = allUsers.find(
-        (u) => u.email.toLowerCase() === email.toLowerCase(),
-    );
+    try {
+      console.log("email", email);
+      console.log("api", API_URL);
+      console.log("tok", token);
+      const emailTrimmed = email.trim();
 
-    if (!foundUser) {
+      const response = await fetch(`${API_URL}/users/by-email?email=${emailTrimmed}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error("Usuario no encontrado o error en la solicitud");
+      }
+
+      const foundUser = await response.json();
+
+      if (!foundUser) {
+        setAdminEmailValidation({
+          isValid: false,
+          message: "Usuario no encontrado",
+        });
+        return;
+      }
+
+      if (foundUser.is_institution_admin) {
+        setAdminEmailValidation({
+          isValid: false,
+          message: 'Este usuario ya es administrador',
+        });
+        return;
+
+      }
+
+      setAdminEmailValidation({
+        isValid: true,
+        message: `Usuario válido: ${foundUser.username}`,
+      });
+    } catch (error) {
+      console.error(error);
       setAdminEmailValidation({
         isValid: false,
-        message: "Usuario no encontrado",
+        message: "Error al validar el correo",
       });
-      return;
     }
-
-    // si ya es admin de otra institución (de las que tenemos en memoria)
-    const adminInstitution = institutions.find(
-        (inst) => inst.institution_admin_user_id === Number(foundUser.id),
-    );
-
-    if (
-        adminInstitution &&
-        editInstitution &&
-        adminInstitution.id !== editInstitution.id
-    ) {
-      setAdminEmailValidation({
-        isValid: false,
-        message: `Este usuario ya es administrador de ${adminInstitution.name}`,
-      });
-      return;
-    }
-
-    setAdminEmailValidation({
-      isValid: true,
-      message: `Usuario válido: ${foundUser.name}`,
-    });
   };
 
-  const handleSaveInstitution = (e: React.FormEvent) => {
+  const handleSaveInstitution = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!editInstitution) return;
@@ -742,68 +812,100 @@ export function AdminPage() {
       return;
     }
 
-    let newAdminUserId = editInstitution.institution_admin_user_id;
-    let newAdminUser: AdminUserOut | null | undefined =
-        editInstitution.admin_user;
+    let newAdminUserId;
 
     if (editForm.adminEmail) {
-      const foundUser = allUsers.find(
-          (u) => u.email.toLowerCase() === editForm.adminEmail.toLowerCase(),
-      );
-      if (foundUser) {
-        const adminInstitution = institutions.find(
-            (inst) =>
-                inst.institution_admin_user_id === Number(foundUser.id) &&
-                inst.id !== editInstitution.id,
-        );
-        if (adminInstitution) {
-          toast.error(
-              `Este usuario ya es administrador de ${adminInstitution.name}`,
-          );
+      try {
+        console.log(token);
+        const response = await fetch(`${API_URL}/users/by-email?email=${editForm.adminEmail}`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!response.ok) {
+          toast.error("Usuario no encontrado o correo no válido");
           return;
         }
-        newAdminUserId = Number(foundUser.id);
-        newAdminUser = {
-          id: Number(foundUser.id),
-          email: foundUser.email,
-          full_name: foundUser.name,
-        };
-      } else {
-        toast.error("Usuario no encontrado");
+
+        const user = await response.json();
+
+        if (user) {
+          const adminInstitution = institutions.find(
+              (inst) =>
+                  inst.institution_admin_user_id === user.id &&
+                  inst.id !== editInstitution.id
+          );
+          if (adminInstitution) {
+            toast.error(`Este usuario ya es administrador de ${adminInstitution.name}`);
+            return;
+          }
+
+          newAdminUserId = user.id;
+        } else {
+          toast.error("Usuario no encontrado");
+          return;
+        }
+      } catch (error) {
+        console.error("Error al verificar el correo:", error);
+        toast.error("Hubo un error al verificar el correo");
         return;
       }
     } else {
       newAdminUserId = undefined;
-      newAdminUser = undefined;
     }
 
-    setInstitutions((institutions) =>
-        institutions.map((inst) =>
-            inst.id === editInstitution.id
-                ? {
-                  ...inst,
-                  institutionID: editForm.institutionID,
-                  institutionCode: editForm.institutionCode,
-                  institutionName: editForm.institutionName,
-                  name: editForm.institutionName,
-                  country: editForm.country,
-                  city: editForm.city,
-                  address: editForm.address,
-                  email: editForm.email,
-                  phone: editForm.phone,
-                  webSite: editForm.webSite,
-                  institution_admin_user_id: newAdminUserId,
-                  admin_user: newAdminUser,
-                }
-                : inst,
-        ),
-    );
+    // Actualización de la institución (PATCH)
+    try {
+      const res = await fetch(`${API_URL}/institutions/${editInstitution.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: JSON.stringify({
+          institutionID: editForm.institutionID,
+          institutionCode: editForm.institutionCode,
+          institutionName: editForm.institutionName,
+          country: editForm.country,
+          city: editForm.city,
+          address: editForm.address,
+          email: editForm.email,
+          phone: editForm.phone,
+          webSite: editForm.webSite,
+          institution_admin_user_id: newAdminUserId,
+        }),
+      });
 
-    toast.success(
-        `Institución ${editForm.institutionName} actualizada correctamente`,
-    );
-    setEditInstitution(null);
-    setAdminEmailValidation({ isValid: null, message: "" });
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error("Error al actualizar la institución:", errorText);
+        toast.error("Error al actualizar la institución");
+        return;
+      }
+
+      const updatedInstitution = await res.json();
+
+      setInstitutions((institutions) =>
+          institutions.map((inst) =>
+              inst.id === updatedInstitution.id
+                  ? {
+                    ...inst,
+                    ...updatedInstitution,
+                  }
+                  : inst
+          )
+      );
+
+      toast.success(`Institución ${editForm.institutionName} actualizada correctamente`);
+      setEditInstitution(null);
+      setAdminEmailValidation({ isValid: null, message: "" });
+    } catch (error) {
+      console.error("Error al actualizar la institución:", error);
+      toast.error("Error al actualizar la institución");
+    }
   };
 
   const toggleUserExpansion = (userId: string) => {
@@ -1376,310 +1478,372 @@ export function AdminPage() {
         {/* Grid principal: Instituciones (izquierda) | Solicitudes Pendientes (derecha) */}
         <div className="grid lg:grid-cols-2 gap-6">
           {/* Lista de Instituciones - Columna Izquierda */}
-          {isSystemAdmin && (
-              <Card>
-                <CardHeader>
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <CardTitle>Instituciones</CardTitle>
-                      <CardDescription>
-                        Gestiona las instituciones disponibles para registro
-                      </CardDescription>
-                    </div>
-                    <Dialog
-                        open={showInstitutionDialog}
-                        onOpenChange={setShowInstitutionDialog}
-                    >
-                      <DialogTrigger asChild>
-                        <Button size="sm">
-                          <Plus className="h-4 w-4 mr-2" />
-                          Nueva
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Crear Nueva Institución</DialogTitle>
-                          <DialogDescription>
-                            Agrega una nueva institución al sistema
-                          </DialogDescription>
-                        </DialogHeader>
-                        <form onSubmit={handleCreateInstitution} className="space-y-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="institutionName">
-                              Nombre de la Institución
-                            </Label>
-                            <Input
-                                id="institutionName"
-                                value={newInstitution}
-                                onChange={(e) => setNewInstitution(e.target.value)}
-                                placeholder="Ej: Universidad de Ciencias Botánicas"
-                                required
-                            />
-                          </div>
-                          <Button type="submit" className="w-full">
-                            <Building2 className="h-4 w-4 mr-2" />
-                            Crear Institución
-                          </Button>
-                        </form>
-                      </DialogContent>
-                    </Dialog>
+          {
+            <Card>
+              <CardHeader>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <CardTitle>Instituciones</CardTitle>
+                    <CardDescription>
+                      Gestiona las instituciones disponibles para registro
+                    </CardDescription>
                   </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="mb-4">
-                    {/* 🔧 Input de búsqueda con ícono a la derecha */}
-                    <div className="relative w-full">
-                      <Input
-                          placeholder="Buscar institución por nombre..."
-                          value={institutionFilter}
-                          onChange={(e) => {
-                            setInstitutionFilter(e.target.value);
-                            setInstitutionsPage(1);
-                          }}
-                          className="w-full pr-10"
-                      />
-
-                      <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center">
-                    <Search className="h-4 w-4 text-muted-foreground" />
-                  </span>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    {isLoadingInstitutions ? (
-                        <p className="text-sm text-muted-foreground py-4 text-center">
-                          Cargando instituciones...
-                        </p>
-                    ) : visibleInstitutions.length === 0 ? (
-                        <p className="text-sm text-muted-foreground text-center py-4">
-                          No se encontraron instituciones
-                        </p>
-                    ) : (
-                        visibleInstitutions.map((institution) => (
-                            <div
-                                key={institution.id}
-                                className="flex items-center gap-3 p-3 border rounded-lg"
-                            >
-                              <Building2 className="h-5 w-5 text-primary flex-shrink-0" />
-                              <div className="flex-1 min-w-0">
-                                <p className="truncate">
-                                  {institution.name || institution.institutionName}
-                                </p>
-                                <div className="flex items-center gap-2 mt-1">
-                                  <p className="text-sm text-muted-foreground">
-                                    {/* si tu backend luego manda el número real, lo muestras */}
-                                    {institution.usersCount ?? 0} usuarios
-                                  </p>
-                                  {institution.admin_user && (
-                                      <Badge variant="secondary" className="text-xs">
-                                        Admin:{" "}
-                                        {institution.admin_user.full_name ||
-                                            institution.admin_user.username ||
-                                            institution.admin_user.email}
-                                      </Badge>
-                                  )}
+                    {/* Botón para crear nueva institución */}
+                    <Dialog open={showInstitutionDialog} onOpenChange={setShowInstitutionDialog}>
+                        <DialogTrigger asChild>
+                            <Button size="sm">
+                                <Plus className="h-4 w-4 mr-2" />
+                                Nueva Institución
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>Crear Nueva Institución</DialogTitle>
+                                <DialogDescription>Agrega una nueva institución al sistema</DialogDescription>
+                            </DialogHeader>
+                            <form onSubmit={handleCreateInstitution} className="space-y-4">
+                                {/* Campos del formulario de creación */}
+                                <div className="space-y-2">
+                                    <Label htmlFor="newInstitutionName">Nombre de la Institución</Label>
+                                    <Input
+                                        id="newInstitutionName"
+                                        value={newInstitutionName}
+                                        onChange={(e) => setNewInstitutionName(e.target.value)}
+                                        placeholder="Ej: Universidad de Ciencias Botánicas"
+                                        required
+                                    />
                                 </div>
-                              </div>
-                              <div className="flex items-center gap-2 flex-shrink-0">
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => setViewInstitutionDetails(institution)}
-                                    title="Ver detalles"
-                                    className="h-9 w-9 p-0"
-                                >
-                                  <Eye className="h-4 w-4" />
+                                <div className="space-y-2">
+                                    <Label htmlFor="newInstitutionCode">Código de la Institución</Label>
+                                    <Input
+                                        id="newInstitutionCode"
+                                        value={newInstitutionCode}
+                                        onChange={(e) => setNewInstitutionCode(e.target.value)}
+                                        placeholder="Ej: UNCB"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="newInstitutionCountry">País</Label>
+                                    <Input
+                                        id="newInstitutionCountry"
+                                        value={newInstitutionCountry}
+                                        onChange={(e) => setNewInstitutionCountry(e.target.value)}
+                                        placeholder="Ej: Perú"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="newInstitutionCity">Ciudad</Label>
+                                    <Input
+                                        id="newInstitutionCity"
+                                        value={newInstitutionCity}
+                                        onChange={(e) => setNewInstitutionCity(e.target.value)}
+                                        placeholder="Ej: Lima"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="newInstitutionAddress">Dirección</Label>
+                                    <Input
+                                        id="newInstitutionAddress"
+                                        value={newInstitutionAddress}
+                                        onChange={(e) => setNewInstitutionAddress(e.target.value)}
+                                        placeholder="Ej: Av. Universidad 123"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="newInstitutionEmail">Correo Electrónico</Label>
+                                    <Input
+                                        id="newInstitutionEmail"
+                                        value={newInstitutionEmail}
+                                        onChange={(e) => setNewInstitutionEmail(e.target.value)}
+                                        type="email"
+                                        placeholder="contacto@institucion.edu"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="newInstitutionPhone">Teléfono</Label>
+                                    <Input
+                                        id="newInstitutionPhone"
+                                        value={newInstitutionPhone}
+                                        onChange={(e) => setNewInstitutionPhone(e.target.value)}
+                                        placeholder="Ej: +51 123 456 789"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="newInstitutionWebSite">Sitio Web</Label>
+                                    <Input
+                                        id="newInstitutionWebSite"
+                                        value={newInstitutionWebSite}
+                                        onChange={(e) => setNewInstitutionWebSite(e.target.value)}
+                                        placeholder="https://www.institucion.edu"
+                                    />
+                                </div>
+
+                                <Button type="submit" className="w-full">
+                                    <Building2 className="h-4 w-4 mr-2" />
+                                    Crear Institución
                                 </Button>
-                                {isSystemAdmin && (
-                                    <>
-                                      <Button
-                                          variant="outline"
-                                          size="sm"
-                                          onClick={() => handleEditInstitution(institution)}
-                                          title="Editar institución"
-                                          className="h-9 w-9 p-0"
-                                      >
-                                        <Edit className="h-4 w-4" />
-                                      </Button>
-                                      <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={() =>
-                                              handleDeleteInstitutionClick(institution)
-                                          }
-                                          title="Eliminar institución"
-                                          className="h-9 w-9 p-0"
-                                      >
-                                        <Trash2 className="h-4 w-4 text-red-600" />
-                                      </Button>
-                                    </>
+                            </form>
+                        </DialogContent>
+                    </Dialog>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="mb-4">
+                  {/* Input de búsqueda con ícono a la derecha */}
+                  <div className="relative w-full">
+                    <Input
+                        placeholder="Buscar institución por nombre..."
+                        value={institutionFilter}
+                        onChange={(e) => {
+                          setInstitutionFilter(e.target.value);
+                          setInstitutionsPage(1);
+                        }}
+                        className="w-full pr-10"
+                    />
+                    <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center">
+              <Search className="h-4 w-4 text-muted-foreground" />
+                </span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  {isLoadingInstitutions ? (
+                      <p className="text-sm text-muted-foreground py-4 text-center">
+                        Cargando instituciones...
+                      </p>
+                  ) : visibleInstitutions.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">
+                        No se encontraron instituciones
+                      </p>
+                  ) : (
+                      visibleInstitutions.map((institution) => (
+                          <div
+                              key={institution.id}
+                              className="flex items-center gap-3 p-3 border rounded-lg"
+                          >
+                            <Building2 className="h-5 w-5 text-primary flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="truncate">
+                                {institution.name || institution.institutionName}
+                              </p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <p className="text-sm text-muted-foreground">
+                                  {institution.usersCount ?? 0} usuarios
+                                </p>
+                                {institution.admin_user && (
+                                    <Badge variant="secondary" className="text-xs">
+                                      Admin:{" "}
+                                      {institution.admin_user.full_name ||
+                                          institution.admin_user.username ||
+                                          institution.admin_user.email}
+                                    </Badge>
                                 )}
                               </div>
                             </div>
-                        ))
-                    )}
-                  </div>
-                  {filteredInstitutions.length > 0 && (
-                      <div className="flex items-center justify-between mt-4 pt-4 border-t">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                                setInstitutionsPage(Math.max(1, institutionsPage - 1))
-                            }
-                            disabled={institutionsPage === 1}
-                        >
-                          <ChevronLeft className="h-4 w-4 mr-1" />
-                          Anterior
-                        </Button>
-                        <span className="text-sm text-muted-foreground">
-                    Página {institutionsPage} de {totalInstitutionsPages}
-                  </span>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                                setInstitutionsPage(
-                                    Math.min(totalInstitutionsPages, institutionsPage + 1),
-                                )
-                            }
-                            disabled={institutionsPage === totalInstitutionsPages}
-                        >
-                          Siguiente
-                          <ChevronRight className="h-4 w-4 ml-1" />
-                        </Button>
-                      </div>
-                  )}
-                </CardContent>
-              </Card>
-          )}
-
-          {/* Solicitudes Pendientes - Columna Derecha */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Solicitudes de Registro Pendientes</CardTitle>
-              <CardDescription>
-                Revisa y aprueba las solicitudes de nuevos usuarios
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="mb-4 space-y-2">
-                {/* 🔧 Buscador de solicitudes por nombre con ícono a la derecha */}
-                <div className="relative w-full">
-                  <Input
-                      placeholder="Buscar solicitud por nombre..."
-                      value={requestNameFilter}
-                      onChange={(e) => {
-                        setRequestNameFilter(e.target.value);
-                        setRequestsPage(1);
-                      }}
-                      className="pr-10"
-                  />
-
-                  <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center">
-                  <Search className="h-4 w-4 text-muted-foreground" />
-                </span>
-                </div>
-
-                {/* Filtro por institución */}
-                <Select
-                    value={requestInstitutionFilter}
-                    onValueChange={(value) => {
-                      // value viene como string
-                      setRequestInstitutionFilter(value);  // puede ser "all" o "3"
-                      setRequestsPage(1);
-                    }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Filtrar por institución" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas las instituciones</SelectItem>
-                    {institutionOptions.map((inst) => (
-                        <SelectItem key={inst.id} value={String(inst.id)}>
-                          {inst.name}
-                        </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                {registrationRequests.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-4">
-                      No se encontraron solicitudes pendientes
-                    </p>
-                ) : (
-                    registrationRequests.map((request) => (
-                        <div
-                            key={request.id}
-                            className="flex items-center gap-3 p-3 border rounded-lg"
-                        >
-                          <Users className="h-5 w-5 text-primary flex-shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm truncate">{request.full_name}</p>
-                            <p className="text-xs text-muted-foreground truncate">
-                              {request.email}
-                            </p>
-                            <div className="flex items-center gap-2 mt-1">
-                              <p className="text-xs text-muted-foreground truncate">
-                                {request.institution}
-                              </p>
-                              <span className="text-xs text-muted-foreground">•</span>
-                              <p className="text-xs text-muted-foreground">
-                                {new Date(request.created_at).toLocaleDateString("es-ES")}
-                              </p>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setViewInstitutionDetails(institution)}
+                                  title="Ver detalles"
+                                  className="h-9 w-9 p-0"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                              {(isSystemAdmin || isInstitutionAdmin) && (
+                                  <>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => handleEditInstitution(institution)}
+                                        title="Editar institución"
+                                        className="h-9 w-9 p-0"
+                                    >
+                                      <Edit className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleDeleteInstitutionClick(institution)}
+                                        title="Eliminar institución"
+                                        className="h-9 w-9 p-0"
+                                        disabled={isInstitutionAdmin}
+                                    >
+                                      <Trash2 className="h-4 w-4 text-red-600" />
+                                    </Button>
+                                  </>
+                              )}
                             </div>
                           </div>
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            <Button
-                                size="sm"
-                                onClick={() => handleApproveRequest(request.id)}
-                                title="Aprobar solicitud"
-                                className="h-9 w-9 p-0"
-                            >
-                              <CheckCircle className="h-4 w-4" />
-                            </Button>
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleRejectRequest(request.id)}
-                                title="Rechazar solicitud"
-                                className="h-9 w-9 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                            >
-                              <XCircle className="h-4 w-4" />
-                            </Button>
+                      ))
+                  )}
+                </div>
+                {filteredInstitutions.length > 0 && (
+                    <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                      <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                              setInstitutionsPage(Math.max(1, institutionsPage - 1))
+                          }
+                          disabled={institutionsPage === 1}
+                      >
+                        <ChevronLeft className="h-4 w-4 mr-1" />
+                        Anterior
+                      </Button>
+                      <span className="text-sm text-muted-foreground">
+              Página {institutionsPage} de {totalInstitutionsPages}
+            </span>
+                      <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                              setInstitutionsPage(
+                                  Math.min(totalInstitutionsPages, institutionsPage + 1)
+                              )
+                          }
+                          disabled={institutionsPage === totalInstitutionsPages}
+                      >
+                        Siguiente
+                        <ChevronRight className="h-4 w-4 ml-1" />
+                      </Button>
+                    </div>
+                )}
+              </CardContent>
+            </Card>
+          }
+
+        {/* Solicitudes Pendientes - Columna Derecha */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Solicitudes de Registro Pendientes</CardTitle>
+            <CardDescription>
+              Revisa y aprueba las solicitudes de nuevos usuarios
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent>
+            <div className="mb-4 space-y-2">
+              {/* 🔧 Buscador de solicitudes por nombre con ícono a la derecha */}
+              <div className="relative w-full">
+                <Input
+                    placeholder="Buscar solicitud por nombre..."
+                    value={requestNameFilter}
+                    onChange={(e) => {
+                      setRequestNameFilter(e.target.value);
+                      setRequestsPage(1);
+                    }}
+                    className="pr-10"
+                />
+                <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center">
+          <Search className="h-4 w-4 text-muted-foreground" />
+        </span>
+              </div>
+
+              {/* Filtro por institución */}
+              <Select
+                  value={requestInstitutionFilter}
+                  onValueChange={(value) => {
+                    // value viene como string
+                    setRequestInstitutionFilter(value); // puede ser "all" o "3"
+                    setRequestsPage(1);
+                  }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Filtrar por institución" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas las instituciones</SelectItem>
+                  {institutionOptions.map((inst) => (
+                      <SelectItem key={inst.id} value={String(inst.id)}>
+                        {inst.name}
+                      </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              {registrationRequests.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No se encontraron solicitudes pendientes
+                  </p>
+              ) : (
+                  registrationRequests.map((request) => (
+                      <div
+                          key={request.id}
+                          className="flex items-center gap-3 p-3 border rounded-lg"
+                      >
+                        <Users className="h-5 w-5 text-primary flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm truncate">{request.full_name}</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {request.email}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <p className="text-xs text-muted-foreground truncate">
+                              {request.institution}
+                            </p>
+                            <span className="text-xs text-muted-foreground">•</span>
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(request.created_at).toLocaleDateString("es-ES")}
+                            </p>
                           </div>
                         </div>
-                    ))
-                )}
-              </div>
-              {registrationRequests.length > 0 && (
-                  <div className="flex items-center justify-between mt-4 pt-4 border-t">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={goToPreviousPage} // Llama a la función para la página anterior
-                        disabled={requestsPage === 1} // Deshabilitar si ya está en la primera página
-                    >
-                      <ChevronLeft className="h-4 w-4 mr-1" />
-                      Anterior
-                    </Button>
-                    <span className="text-sm text-muted-foreground">
-                      Página {requestsPage} de {totalPages}
-                    </span>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={goToNextPage} // Llama a la función para la página siguiente
-                        disabled={requestsPage === totalPages} // Deshabilitar si ya está en la última página
-                    >
-                      Siguiente
-                      <ChevronRight className="h-4 w-4 ml-1" />
-                    </Button>
-                  </div>
-              )}
 
-            </CardContent>
-          </Card>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <Button
+                              size="sm"
+                              onClick={() => handleApproveRequest(request.id)}
+                              title="Aprobar solicitud"
+                              className="h-9 w-9 p-0"
+                          >
+                            <CheckCircle className="h-4 w-4" />
+                          </Button>
+
+                          <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleRejectRequest(request.id)}
+                              title="Rechazar solicitud"
+                              className="h-9 w-9 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <XCircle className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                  ))
+              )}
+            </div>
+
+            {registrationRequests.length > 0 && (
+                <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                  <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={goToPreviousPage} // Llama a la función para la página anterior
+                      disabled={requestsPage === 1} // Deshabilitar si ya está en la primera página
+                  >
+                    <ChevronLeft className="h-4 w-4 mr-1" />
+                    Anterior
+                  </Button>
+
+                  <span className="text-sm text-muted-foreground">
+          Página {requestsPage} de {totalPages}
+        </span>
+
+                  <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={goToNextPage} // Llama a la función para la página siguiente
+                      disabled={requestsPage === totalPages} // Deshabilitar si ya está en la última página
+                  >
+                    Siguiente
+                    <ChevronRight className="h-4 w-4 ml-1" />
+                  </Button>
+                </div>
+            )}
+          </CardContent>
+        </Card>
         </div>
 
         {/* Dialog para ver detalles de institución */}
@@ -1850,209 +2014,190 @@ export function AdminPage() {
           </DialogContent>
         </Dialog>
 
-        {/* Dialog para editar institución */}
-        <Dialog
-            open={!!editInstitution}
-            onOpenChange={() => setEditInstitution(null)}
-        >
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Editar Institución</DialogTitle>
-              <DialogDescription>
-                Actualiza la información de la institución
-              </DialogDescription>
-            </DialogHeader>
-            {editInstitution && (
-                <form onSubmit={handleSaveInstitution} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-institutionID">
-                        ID de Institución
-                      </Label>
-                      <Input
-                          id="edit-institutionID"
-                          value={editForm.institutionID}
-                          onChange={(e) =>
-                              setEditForm({
-                                ...editForm,
-                                institutionID: e.target.value,
-                              })
-                          }
-                          placeholder="Ej: UNB-001"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-institutionCode">Código</Label>
-                      <Input
-                          id="edit-institutionCode"
-                          value={editForm.institutionCode}
-                          onChange={(e) =>
-                              setEditForm({
-                                ...editForm,
-                                institutionCode: e.target.value,
-                              })
-                          }
-                          placeholder="Ej: UNB"
-                      />
-                    </div>
-                  </div>
+          <Dialog
+              open={!!editInstitution}
+              onOpenChange={() => setEditInstitution(null)}
+          >
+              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                      <DialogTitle>Editar Institución</DialogTitle>
+                      <DialogDescription>
+                          Actualiza la información de la institución
+                      </DialogDescription>
+                  </DialogHeader>
+                  {editInstitution && (
+                      <form onSubmit={handleSaveInstitution} className="space-y-4">
+                          <div className="grid grid-cols-2 gap-4">
+                              {/* ID de Institución */}
+                              <div className="space-y-2">
+                                  <Label htmlFor="edit-institutionID">ID de Institución</Label>
+                                  <Input
+                                      id="edit-institutionID"
+                                      value={editForm.institutionID}
+                                      onChange={(e) =>
+                                          setEditForm({
+                                              ...editForm,
+                                              institutionID: e.target.value,
+                                          })
+                                      }
+                                      placeholder="Ej: UNB-001"
+                                      disabled={isInstitutionAdmin}  // Bloqueado si es InstitutionAdmin
+                                  />
+                              </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-institutionName">
-                      Nombre de la Institución
-                    </Label>
-                    <Input
-                        id="edit-institutionName"
-                        value={editForm.institutionName}
-                        onChange={(e) =>
-                            setEditForm({
-                              ...editForm,
-                              institutionName: e.target.value,
-                            })
-                        }
-                        placeholder="Ej: Universidad Nacional de Botánica"
-                        required
-                    />
-                  </div>
+                              {/* Código de la Institución */}
+                              <div className="space-y-2">
+                                  <Label htmlFor="edit-institutionCode">Código</Label>
+                                  <Input
+                                      id="edit-institutionCode"
+                                      value={editForm.institutionCode}
+                                      onChange={(e) =>
+                                          setEditForm({
+                                              ...editForm,
+                                              institutionCode: e.target.value,
+                                          })
+                                      }
+                                      placeholder="Ej: UNB"
+                                  />
+                              </div>
+                          </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-country">País</Label>
-                      <Input
-                          id="edit-country"
-                          value={editForm.country}
-                          onChange={(e) =>
-                              setEditForm({ ...editForm, country: e.target.value })
-                          }
-                          placeholder="Ej: Ecuador"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-city">Ciudad</Label>
-                      <Input
-                          id="edit-city"
-                          value={editForm.city}
-                          onChange={(e) =>
-                              setEditForm({ ...editForm, city: e.target.value })
-                          }
-                          placeholder="Ej: Quito"
-                      />
-                    </div>
-                  </div>
+                          {/* Nombre de la Institución */}
+                          <div className="space-y-2">
+                              <Label htmlFor="edit-institutionName">Nombre de la Institución</Label>
+                              <Input
+                                  id="edit-institutionName"
+                                  value={editForm.institutionName}
+                                  onChange={(e) =>
+                                      setEditForm({
+                                          ...editForm,
+                                          institutionName: e.target.value,
+                                      })
+                                  }
+                                  placeholder="Ej: Universidad Nacional de Botánica"
+                                  required
+                              />
+                          </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-address">Dirección</Label>
-                    <Input
-                        id="edit-address"
-                        value={editForm.address}
-                        onChange={(e) =>
-                            setEditForm({ ...editForm, address: e.target.value })
-                        }
-                        placeholder="Ej: Av. Universidad 123"
-                    />
-                  </div>
+                          {/* País */}
+                          <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-2">
+                                  <Label htmlFor="edit-country">País</Label>
+                                  <Input
+                                      id="edit-country"
+                                      value={editForm.country}
+                                      onChange={(e) =>
+                                          setEditForm({ ...editForm, country: e.target.value })
+                                      }
+                                      placeholder="Ej: Ecuador"
+                                  />
+                              </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-email">Email</Label>
-                      <Input
-                          id="edit-email"
-                          type="email"
-                          value={editForm.email}
-                          onChange={(e) =>
-                              setEditForm({ ...editForm, email: e.target.value })
-                          }
-                          placeholder="contacto@institucion.edu"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-phone">Teléfono</Label>
-                      <Input
-                          id="edit-phone"
-                          value={editForm.phone}
-                          onChange={(e) =>
-                              setEditForm({ ...editForm, phone: e.target.value })
-                          }
-                          placeholder="+593-2-1234567"
-                      />
-                    </div>
-                  </div>
+                              {/* Ciudad */}
+                              <div className="space-y-2">
+                                  <Label htmlFor="edit-city">Ciudad</Label>
+                                  <Input
+                                      id="edit-city"
+                                      value={editForm.city}
+                                      onChange={(e) =>
+                                          setEditForm({ ...editForm, city: e.target.value })
+                                      }
+                                      placeholder="Ej: Quito"
+                                  />
+                              </div>
+                          </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-webSite">Sitio Web</Label>
-                    <Input
-                        id="edit-webSite"
-                        value={editForm.webSite}
-                        onChange={(e) =>
-                            setEditForm({ ...editForm, webSite: e.target.value })
-                        }
-                        placeholder="https://www.institucion.edu"
-                    />
-                  </div>
+                          {/* Dirección */}
+                          <div className="space-y-2">
+                              <Label htmlFor="edit-address">Dirección</Label>
+                              <Input
+                                  id="edit-address"
+                                  value={editForm.address}
+                                  onChange={(e) =>
+                                      setEditForm({ ...editForm, address: e.target.value })
+                                  }
+                                  placeholder="Ej: Av. Universidad 123"
+                              />
+                          </div>
 
-                  <div className="space-y-2 pt-4 border-t">
-                    <Label htmlFor="edit-adminEmail">Administrador (email)</Label>
-                    <Input
-                        id="edit-adminEmail"
-                        type="email"
-                        value={editForm.adminEmail}
-                        onChange={(e) => {
-                          setEditForm({ ...editForm, adminEmail: e.target.value });
-                          setAdminEmailValidation({ isValid: null, message: "" });
-                        }}
-                        onBlur={(e) => {
-                          validateAdminEmail(e.target.value);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            validateAdminEmail(editForm.adminEmail);
-                          }
-                        }}
-                        placeholder="admin@email.com"
-                        className={
-                          adminEmailValidation.isValid === false
-                              ? "border-red-500"
-                              : adminEmailValidation.isValid === true
-                                  ? "border-green-500"
-                                  : ""
-                        }
-                    />
-                    {adminEmailValidation.message && (
-                        <div
-                            className={`flex items-center gap-2 text-sm mt-1 ${
-                                adminEmailValidation.isValid
-                                    ? "text-green-600"
-                                    : "text-red-600"
-                            }`}
-                        >
-                          {adminEmailValidation.isValid ? (
-                              <CheckCircle className="h-4 w-4" />
-                          ) : (
-                              <XCircle className="h-4 w-4" />
-                          )}
-                          <span>{adminEmailValidation.message}</span>
-                        </div>
-                    )}
-                  </div>
+                          {/* Email */}
+                          <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-2">
+                                  <Label htmlFor="edit-email">Email</Label>
+                                  <Input
+                                      id="edit-email"
+                                      type="email"
+                                      value={editForm.email}
+                                      onChange={(e) =>
+                                          setEditForm({ ...editForm, email: e.target.value })
+                                      }
+                                      placeholder="contacto@institucion.edu"
+                                  />
+                              </div>
 
-                  <div className="flex gap-2 pt-4">
-                    <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => setEditInstitution(null)}
-                        className="flex-1"
-                    >
-                      Cancelar
-                    </Button>
-                    <Button type="submit" className="flex-1">
-                      Guardar Cambios
-                    </Button>
-                  </div>
-                </form>
-            )}
-          </DialogContent>
-        </Dialog>
+                              {/* Teléfono */}
+                              <div className="space-y-2">
+                                  <Label htmlFor="edit-phone">Teléfono</Label>
+                                  <Input
+                                      id="edit-phone"
+                                      value={editForm.phone}
+                                      onChange={(e) =>
+                                          setEditForm({ ...editForm, phone: e.target.value })
+                                      }
+                                      placeholder="+593-2-1234567"
+                                  />
+                              </div>
+                          </div>
+
+                          {/* Sitio Web */}
+                          <div className="space-y-2">
+                              <Label htmlFor="edit-webSite">Sitio Web</Label>
+                              <Input
+                                  id="edit-webSite"
+                                  value={editForm.webSite}
+                                  onChange={(e) =>
+                                      setEditForm({ ...editForm, webSite: e.target.value })
+                                  }
+                                  placeholder="https://www.institucion.edu"
+                              />
+                          </div>
+
+                          {/* Administrador */}
+                              <div className="space-y-2">
+                                  <Label htmlFor="edit-adminEmail">Administrador (email)</Label>
+                                  <Input
+                                      id="edit-adminEmail"
+                                      type="email"
+                                      value={editForm.adminEmail}
+                                      onChange={(e) => {
+                                          setEditForm({ ...editForm, adminEmail: e.target.value });
+                                          setAdminEmailValidation({ isValid: null, message: "" });
+                                      }}
+                                      onBlur={(e) => {
+                                          validateAdminEmail(e.target.value);
+                                      }}
+                                      placeholder="admin@email.com"
+                                      disabled={isInstitutionAdmin || (isSystemAdmin &&  user.email === editForm.adminEmail)}
+                                  />
+                              </div>
+
+                          <div className="flex gap-2 pt-4">
+                              <Button
+                                  type="button"
+                                  variant="outline"
+                                  onClick={() => setEditInstitution(null)}
+                                  className="flex-1"
+                              >
+                                  Cancelar
+                              </Button>
+                              <Button type="submit" className="flex-1">
+                                  Guardar Cambios
+                              </Button>
+                          </div>
+                      </form>
+                  )}
+              </DialogContent>
+          </Dialog>
 
         {/* Dialog para asignar admin */}
         <Dialog open={showAssignAdminDialog} onOpenChange={setShowAssignAdminDialog}>
