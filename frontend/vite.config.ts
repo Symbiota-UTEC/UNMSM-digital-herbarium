@@ -47,6 +47,10 @@
         '@radix-ui/react-alert-dialog@1.1.6': '@radix-ui/react-alert-dialog',
         '@radix-ui/react-accordion@1.2.3': '@radix-ui/react-accordion',
         '@': path.resolve(__dirname, './src'),
+        "@constants": path.resolve(__dirname, "src/constants"),
+        "@config": path.resolve(__dirname, "src/config"),
+        "@interfaces": path.resolve(__dirname, "src/interfaces"),
+        "@contexts": path.resolve(__dirname, "src/contexts"),
       },
     },
     build: {

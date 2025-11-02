@@ -169,6 +169,7 @@ def upsert_admin(db: Session, institution: Institution, agent: Agent) -> User:
 
     if institution.institution_admin_user_id != user.id:
         institution.institution_admin_user_id = user.id
+        institution.usersCount += 1
         db.add(institution)
         db.commit()
         db.refresh(institution)

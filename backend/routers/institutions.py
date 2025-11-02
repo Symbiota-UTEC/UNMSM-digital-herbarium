@@ -33,6 +33,7 @@ class InstitutionOut(BaseModel):
     phone: Optional[str]
     webSite: Optional[str]
     institution_admin_user_id: Optional[int] = None  # Mantener como None hasta asignarlo manualmente
+    usersCount: Optional[int] = 0
     admin_user: Optional[
         AdminUserOut] = None  # Esto puede ser útil para mostrar más detalles del admin cuando se asigna
 

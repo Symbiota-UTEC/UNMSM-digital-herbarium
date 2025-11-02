@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui
 import { Separator } from "../ui/separator";
 import { Leaf, Loader2, User, UserCircle } from "lucide-react";
 import { toast } from "sonner@2.0.3";
+import { API } from "@constants/api";
 
 interface RegisterPageProps {
   onNavigate: (page: string) => void;
@@ -15,7 +16,6 @@ interface RegisterPageProps {
 
 type InstitutionItem = { id: number; institutionName: string | null };
 
-const API_BASE = import.meta.env.VITE_API_URL;
 
 export function RegisterPage({ onNavigate }: RegisterPageProps) {
   // === Estado instituciones (desde backend) ===
@@ -50,8 +50,7 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
       setLoadingInstitutions(true);
       setFetchError(null);
       try {
-        // Si usas proxy en el frontend, /api apunta al backend. Si tienes VITE_API_URL, puedes usar `/institutions?...`
-        const res = await fetch(`http://0.0.0.0:8000/api/institutions?limit=10&offset=0`);
+        const res = await fetch(`${API.BASE_URL}${API.PATHS.INSTITUTIONS}?limit=10&offset=0`);
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}`);
         }
@@ -106,10 +105,7 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
     };
 
     try {
-      console.log(body);
-
-      console.log(API_BASE);
-      const res = await fetch(`${API_BASE}/auth/registration-request`, {
+      const res = await fetch(`${API.BASE_URL}${API.PATHS.REG_REQUEST}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),

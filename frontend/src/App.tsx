@@ -28,17 +28,21 @@ function AppContent() {
   const [navParams, setNavParams] = useState<NavigationParams>({});
   const { isAuthenticated } = useAuth();
 
+  // Si está autenticado, va a "collections"
   useEffect(() => {
-    if (isAuthenticated) {
-      setCurrentPage('collections');
-    }
+    if (isAuthenticated) setCurrentPage('collections');
   }, [isAuthenticated]);
+
+  // Si se cierra la sesion, va a "login"
+  useEffect(() => {
+    const toLogin = () => setCurrentPage('login');
+    window.addEventListener('auth:logged-out', toLogin);
+    return () => window.removeEventListener('auth:logged-out', toLogin);
+  }, []);
 
   const handleNavigation = (page: string, params?: NavigationParams) => {
     setCurrentPage(page);
-    if (params) {
-      setNavParams(params);
-    }
+    if (params) setNavParams(params);
   };
 
   const renderPage = () => {
@@ -51,14 +55,14 @@ function AppContent() {
         return <RegisterPage onNavigate={handleNavigation} />;
       case 'collections':
         return <CollectionsPage onNavigate={handleNavigation} />;
-      case 'collection-detail':
+      case 'collection.ts-detail':
         return (
-          <CollectionDetailPage 
-            collectionId={navParams.collectionId || ''}
-            collectionName={navParams.collectionName || ''}
-            isOwner={navParams.isOwner || false}
-            onNavigate={handleNavigation}
-          />
+            <CollectionDetailPage
+                collectionId={navParams.collectionId || ''}
+                collectionName={navParams.collectionName || ''}
+                isOwner={navParams.isOwner || false}
+                onNavigate={handleNavigation}
+            />
         );
       case 'occurrences':
         return <OccurrencesPage onNavigate={handleNavigation} />;
@@ -66,33 +70,33 @@ function AppContent() {
         return <NewOccurrencePage onNavigate={handleNavigation} mode="create" />;
       case 'edit-occurrence':
         return (
-          <NewOccurrencePage 
-            onNavigate={handleNavigation} 
-            mode="edit"
-            occurrenceId={navParams.occurrenceId}
-            returnTo="collection"
-            collectionId={navParams.collectionId}
-            collectionName={navParams.collectionName}
-            isOwner={navParams.isOwner}
-          />
+            <NewOccurrencePage
+                onNavigate={handleNavigation}
+                mode="edit"
+                occurrenceId={navParams.occurrenceId}
+                returnTo="collection"
+                collectionId={navParams.collectionId}
+                collectionName={navParams.collectionName}
+                isOwner={navParams.isOwner}
+            />
         );
       case 'occurrence-detail':
         return (
-          <OccurrenceDetailPage
-            occurrenceId={navParams.occurrenceId || ''}
-            onNavigate={handleNavigation}
-            returnTo={navParams.collectionId ? 'collection' : 'occurrences'}
-            collectionId={navParams.collectionId}
-            collectionName={navParams.collectionName}
-            isOwner={navParams.isOwner}
-          />
+            <OccurrenceDetailPage
+                occurrenceId={navParams.occurrenceId || ''}
+                onNavigate={handleNavigation}
+                returnTo={navParams.collectionId ? 'collection' : 'occurrences'}
+                collectionId={navParams.collectionId}
+                collectionName={navParams.collectionName}
+                isOwner={navParams.isOwner}
+            />
         );
       case 'taxon':
         return <TaxonPage />;
       case 'profile':
         return <ProfilePage />;
       case 'admin':
-        return <AdminPage />;
+        return <AdminPage onNavigate={handleNavigation} />;
       case 'map':
         return <MapPage />;
       default:
@@ -101,22 +105,22 @@ function AppContent() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {isAuthenticated ? (
-        <PrivateNavbar onNavigate={handleNavigation} currentPage={currentPage} />
-      ) : (
-        <PublicNavbar onNavigate={handleNavigation} />
-      )}
-      {renderPage()}
-      <Toaster />
-    </div>
+      <div className="min-h-screen bg-gray-50">
+        {isAuthenticated ? (
+            <PrivateNavbar onNavigate={handleNavigation} currentPage={currentPage} />
+        ) : (
+            <PublicNavbar onNavigate={handleNavigation} />
+        )}
+        {renderPage()}
+        <Toaster />
+      </div>
   );
 }
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
   );
 }

@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
+
 import {
   Card,
   CardContent,
@@ -65,33 +66,11 @@ import {
   Edit,
 } from "lucide-react";
 import { toast } from "sonner@2.0.3";
-import { useAuth, Role } from "../../contexts/AuthContext";
-
-// 👇 esto es lo que devuelve tu backend
-interface AdminUserOut {
-  id: number;
-  username?: string;
-  email?: string;
-  full_name?: string;
-}
-
-interface Institution {
-  id?: number;
-  institutionID?: string | null;
-  institutionCode?: string | null;
-  institutionName?: string | null;
-  country?: string | null;
-  city?: string | null;
-  address?: string | null;
-  email?: string | null;
-  phone?: string | null;
-  webSite?: string | null;
-  institution_admin_user_id?: number | null;
-  admin_user?: AdminUserOut | null;
-  // 👇 props de frontend para no romper nada
-  name?: string;
-  usersCount?: number; // TODO: count
-}
+import { Role } from "@constants/roles";
+import { useAuth } from "../../contexts/AuthContext";
+import { API } from "@constants/api";
+import { Institution } from "@interfaces/institution";
+import { ScopedTotals, AdminMetrics } from "@interfaces/admin";
 
 interface UserDetail {
   id: string;
@@ -139,15 +118,23 @@ interface RegistrationRequestPage {
   remaining_pages: number;
 }
 
-const API_URL = import.meta.env.VITE_API_URL;
+type OnNavigate = (page: string, params?: any) => void;
 
-export function AdminPage() {
-  const { user, token } = useAuth() as any;
+
+export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
+  const { user, token, apiFetch } = useAuth() as any;
   const isSystemAdmin = user?.role === Role.Admin;
   const isInstitutionAdmin = user?.role === Role.InstitutionAdmin;
 
+  const [metrics, setMetrics] = useState<AdminMetrics | null>(null);
+  const [isLoadingMetrics, setIsLoadingMetrics] = useState(false);
+
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [isLoadingInstitutions, setIsLoadingInstitutions] = useState(false);
+
+  const totalUsersFromAPI = useMemo(() => {
+    return institutions.reduce((acc, inst) => acc + (inst.usersCount ?? 0), 0);
+  }, [institutions]);
 
   const generateUUID = () => {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -382,16 +369,53 @@ export function AdminPage() {
   >({});
 
   useEffect(() => {
+    if (!token) return;
+
+    const fetchMetrics = async () => {
+      try {
+        setIsLoadingMetrics(true);
+        const res = await apiFetch(`${API.BASE_URL}${API.PATHS.ADMIN_METRICS}`, {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!res.ok) {
+          const txt = await res.text();
+          console.error("Error /admin/metrics:", txt);
+          toast.error("No se pudieron cargar las métricas");
+          return;
+        }
+
+        const raw = await res.json();
+        const parsed: AdminMetrics = {
+          institutionId: raw.institution_id,
+          metrics: raw.metrics,
+        };
+        setMetrics(parsed);
+      } catch (e) {
+        console.error(e);
+        toast.error("Error al cargar métricas");
+      } finally {
+        setIsLoadingMetrics(false);
+      }
+    };
+
+    fetchMetrics();
+  }, [token]);
+
+  useEffect(() => {
     const fetchInstitutions = async () => {
       try {
         setIsLoadingInstitutions(true);
 
         // Si el usuario es un `institutionAdmin`, trae solo su institución
         const endpoint = isInstitutionAdmin
-            ? `${API_URL}/institutions/${user.institutionId}` // Llamada para obtener solo su institución
-            : `${API_URL}/institutions?limit=7&offset=0`; // Llamada para obtener todas las instituciones
+            ? `${API.BASE_URL}${API.PATHS.INSTITUTIONS}/${user.institutionId}` // Llamada para obtener solo su institución
+            : `${API.BASE_URL}${API.PATHS.INSTITUTIONS}?limit=7&offset=0`; // Llamada para obtener todas las instituciones
 
-        const res = await fetch(endpoint, {
+        const res = await apiFetch(endpoint, {
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
@@ -402,18 +426,12 @@ export function AdminPage() {
           throw new Error(`Error ${res.status}`);
         }
 
-        const data = await res.json();
+        const raw = await res.json() as Institution[] | Institution;
 
-        // Si es `institutionAdmin`, solo muestra su institución
-        const filteredData = isInstitutionAdmin ? [data] : data;
+        const institutions: Institution[] = Array.isArray(raw) ? raw : [raw];
 
-        const normalized = filteredData.map((inst) => ({
-          ...inst,
-          name: inst.institutionName ?? "(sin nombre)",
-          usersCount: inst.usersCount ?? 0,
-        }));
-
-        setInstitutions(normalized);
+        console.log(institutions);
+        setInstitutions(institutions);
       } catch (err) {
         console.error(err);
         toast.error("No se pudieron cargar las instituciones");
@@ -448,8 +466,8 @@ export function AdminPage() {
           }
         }
 
-        const res = await fetch(
-            `${API_URL}/auth/registration-requests?${params.toString()}`,
+        const res = await apiFetch(
+            `${API.BASE_URL}${API.PATHS.REG_REQUESTS}?${params.toString()}`,
             {
               headers: {
                 "Content-Type": "application/json",
@@ -482,37 +500,6 @@ export function AdminPage() {
     fetchRequests();
   }, [token, user, requestsPage, currentPage, requestInstitutionFilter]);
 
-  const stats = [
-    {
-      label: "Usuarios Totales",
-      value: allUsers.length.toString(),
-      icon: Users,
-      color: "text-blue-600",
-      clickable: true,
-    },
-    {
-      label: "Colecciones",
-      value: "15",
-      icon: Database,
-      color: "text-primary",
-      clickable: false,
-    },
-    {
-      label: "Ocurrencias",
-      value: "342",
-      icon: Activity,
-      color: "text-purple-600",
-      clickable: false,
-    },
-    {
-      label: "Solicitudes Pendientes",
-      value: "5",
-      icon: Shield,
-      color: "text-orange-600",
-      clickable: false,
-    },
-  ];
-
   const [registrationRequests, setRegistrationRequests] = useState<RegistrationRequestItem[]>([]);
   const [isLoadingRequests, setIsLoadingRequests] = useState(false);
   const [requestsTotal, setRequestsTotal] = useState(0);
@@ -522,7 +509,7 @@ export function AdminPage() {
     try {
       console.log("voy a aprobar id =>", requestId);
 
-      const res = await fetch(`${API_URL}/auth/registration-request`, {
+      const res = await apiFetch(`${API.BASE_URL}${API.PATHS.REG_REQUEST}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -559,7 +546,7 @@ export function AdminPage() {
     try {
       console.log("voy a aprobar id =>", requestId);
 
-      const res = await fetch(`${API_URL}/auth/registration-request`, {
+      const res = await apiFetch(`${API.BASE_URL}${API.PATHS.REG_REQUEST}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -614,7 +601,7 @@ export function AdminPage() {
     };
 
     try {
-      const res = await fetch(`${API_URL}/institutions`, {
+      const res = await apiFetch(`${API.BASE_URL}${API.PATHS.INSTITUTIONS}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -663,7 +650,7 @@ export function AdminPage() {
           institutions.filter((inst) => inst.id !== selectedInstitution.id),
       );
       toast.success(
-          `Institución "${selectedInstitution.name}" eliminada en la vista.`,
+          `Institución "${selectedInstitution.institutionName}" eliminada en la vista.`,
       );
       setShowDeleteInstitutionDialog(false);
       setSelectedInstitution(null);
@@ -702,7 +689,7 @@ export function AdminPage() {
     );
 
     toast.success(
-        `${selectedUser.name} asignado como administrador de ${selectedInstitution.name}`,
+        `${selectedUser.name} asignado como administrador de ${selectedInstitution.institutionName}`,
     );
     setShowAssignAdminDialog(false);
     setSelectedInstitution(null);
@@ -754,12 +741,9 @@ export function AdminPage() {
     }
 
     try {
-      console.log("email", email);
-      console.log("api", API_URL);
-      console.log("tok", token);
       const emailTrimmed = email.trim();
 
-      const response = await fetch(`${API_URL}/users/by-email?email=${emailTrimmed}`, {
+      const response = await apiFetch(`${API.BASE_URL}${API.PATHS.USER_BY_EMAIL}?email=${emailTrimmed}`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -818,7 +802,7 @@ export function AdminPage() {
     if (editForm.adminEmail) {
       try {
         console.log(token);
-        const response = await fetch(`${API_URL}/users/by-email?email=${editForm.adminEmail}`, {
+        const response = await apiFetch(`${API.BASE_URL}${API.PATHS.USER_BY_EMAIL}?email=${editForm.adminEmail}`, {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
@@ -855,7 +839,7 @@ export function AdminPage() {
     // Actualización de la institución (PATCH)
     try {
         console.log("email", newAdminUserId);
-      const res = await fetch(`${API_URL}/institutions/${editInstitution.id}`, {
+      const res = await apiFetch(`${API.BASE_URL}${API.PATHS.INSTITUTIONS}/${editInstitution.id}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -1002,7 +986,7 @@ export function AdminPage() {
           ? institutions.filter((inst) => String(inst.id) === String(user?.institutionId))
           : institutions
   ).filter((inst) =>
-      (inst.name || inst.institutionName || "")
+      (inst.institutionName || "")
           .toLowerCase()
           .includes(institutionFilter.toLowerCase()),
   );
@@ -1020,8 +1004,31 @@ export function AdminPage() {
 
   const institutionOptions = institutions.map((inst) => ({
     id: inst.id,                                   // para el backend
-    name: inst.name || inst.institutionName || ""  // para mostrar
+    name: inst.institutionName || ""  // para mostrar
   }));
+
+  const renderTotals = (totals?: ScopedTotals) => {
+    if (isLoadingMetrics) return "…";
+    if (!totals) return "0";
+
+    if (isSystemAdmin && typeof totals.app === "number") {
+      return (
+          <div className="space-y-0.5">
+            <div className="text-3xl">{totals.app}</div>
+            <p className="text-xs text-muted-foreground">
+              Tu institución: {totals.institution ?? 0}
+            </p>
+          </div>
+      );
+    }
+
+    return (
+        <div className="space-y-0.5">
+          <div className="text-3xl">{totals.institution ?? 0}</div>
+          <p className="text-xs text-muted-foreground">Tu institución</p>
+        </div>
+    );
+  };
 
   const getUsersForInstitution = (institutionId: number | string) => {
     // seguimos usando el mock de usuarios
@@ -1407,6 +1414,8 @@ export function AdminPage() {
     );
   }
 
+
+
   return (
       <div className="container mx-auto px-4 py-8">
         <div className="mb-6">
@@ -1430,10 +1439,7 @@ export function AdminPage() {
               <Users className="h-5 w-5 text-blue-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl">{allUsers.length}</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Click para ver detalles
-              </p>
+              {renderTotals(metrics?.metrics.users)}
             </CardContent>
           </Card>
 
@@ -1444,29 +1450,41 @@ export function AdminPage() {
               <Shield className="h-5 w-5 text-orange-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl">{requestsTotal}</div>
+              {renderTotals(metrics?.metrics.requestsPending)}
             </CardContent>
           </Card>
 
           {/* Card Colecciones */}
-          <Card>
+          <Card
+              role="button"
+              tabIndex={0}
+              className="cursor-pointer hover:border-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50"
+              onClick={() => onNavigate('collections')}
+              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onNavigate('collections')}
+          >
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm">Colecciones</CardTitle>
               <Database className="h-5 w-5 text-primary" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl">15</div>
+              {renderTotals(metrics?.metrics.collections)}
             </CardContent>
           </Card>
 
           {/* Card Ocurrencias */}
-          <Card>
+          <Card
+              role="button"
+              tabIndex={0}
+              className="cursor-pointer hover:border-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50"
+              onClick={() => onNavigate('occurrences')}
+              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onNavigate('occurrences')}
+          >
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm">Ocurrencias</CardTitle>
               <Activity className="h-5 w-5 text-purple-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl">342</div>
+              {renderTotals(metrics?.metrics.occurrences)}
             </CardContent>
           </Card>
         </div>
@@ -1619,7 +1637,7 @@ export function AdminPage() {
                             <Building2 className="h-5 w-5 text-primary flex-shrink-0" />
                             <div className="flex-1 min-w-0">
                               <p className="truncate">
-                                {institution.name || institution.institutionName}
+                                { institution.institutionName}
                               </p>
                               <div className="flex items-center gap-2 mt-1">
                                 <p className="text-sm text-muted-foreground">
@@ -2201,7 +2219,7 @@ export function AdminPage() {
             <DialogHeader>
               <DialogTitle>Asignar Administrador de Institución</DialogTitle>
               <DialogDescription>
-                Selecciona un usuario de {selectedInstitution?.name} para asignarlo
+                Selecciona un usuario de {selectedInstitution?.institutionName} para asignarlo
                 como administrador
               </DialogDescription>
             </DialogHeader>
@@ -2322,7 +2340,7 @@ export function AdminPage() {
               <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
               <AlertDialogDescription>
                 Esta acción no se puede deshacer. Al eliminar la institución "
-                {selectedInstitution?.name}", se{" "}
+                {selectedInstitution?.institutionName}", se{" "}
                 <span className="text-red-600">
                 deshabilitarán todos los {selectedInstitution?.usersCount ?? 0}{" "}
                   usuarios

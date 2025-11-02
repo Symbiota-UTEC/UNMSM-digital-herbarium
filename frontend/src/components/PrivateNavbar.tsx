@@ -3,7 +3,8 @@ import {Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger} from ".
 import {Separator} from "./ui/separator";
 import {Avatar, AvatarFallback} from "./ui/avatar";
 import {Folder, Home, Leaf, LogOut, Map, MapPin, Menu, Shield, User} from "lucide-react";
-import {Role, useAuth} from "../contexts/AuthContext";
+import {useAuth} from "@contexts/AuthContext";
+import {Role} from "@constants/roles";
 
 interface PrivateNavbarProps {
   onNavigate: (page: string) => void;
@@ -49,11 +50,11 @@ export function PrivateNavbar({ onNavigate, currentPage }: PrivateNavbarProps) {
                 <div className="flex items-center gap-3 mb-6">
                   <Avatar>
                     <AvatarFallback className="bg-primary text-white">
-                      {user?.name.substring(0, 2).toUpperCase()}
+                      {user?.username.substring(0, 2).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex flex-col">
-                    <span>{user?.name}</span>
+                    <span>{user?.username}</span>
                     <span className="text-sm text-muted-foreground">{user?.email}</span>
                   </div>
                 </div>
@@ -136,7 +137,7 @@ export function PrivateNavbar({ onNavigate, currentPage }: PrivateNavbarProps) {
         <div className="flex items-center gap-3">
           <Avatar>
             <AvatarFallback className="bg-primary text-white">
-              {user?.name.substring(0, 2).toUpperCase()}
+              {user?.username.substring(0, 2).toUpperCase()}
             </AvatarFallback>
           </Avatar>
         </div>

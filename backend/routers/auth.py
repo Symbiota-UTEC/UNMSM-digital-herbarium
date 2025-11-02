@@ -258,20 +258,19 @@ def update_registration_request_status(
 ):
     # 1) Cargar solicitud
     registration_request = db.execute(
-        select(RegistrationRequest).where(RegistrationRequest.id == payload.registration_request_id)
+        select(RegistrationRequest).where(
+            RegistrationRequest.id == payload.registration_request_id
+        )
     ).scalar_one_or_none()
 
     if not registration_request:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Solicitud de registro no encontrada"
-        )
+        raise HTTPException(status_code=404, detail="Solicitud de registro no encontrada")
 
-    # 2) Solo se permiten transiciones desde 'pending'
+    # 2) Solo desde 'pending'
     if registration_request.status != "pending":
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="La solicitud no está en estado 'pending'; no se puede actualizar"
+            status_code=400,
+            detail="La solicitud no está en estado 'pending'; no se puede actualizar",
         )
 
     # 3) Permisos
@@ -280,17 +279,13 @@ def update_registration_request_status(
         current_user.is_superuser
         or (current_user.is_institution_admin and current_user.institution_id == institution.id)
     ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos para actualizar esta solicitud"
-        )
+        raise HTTPException(status_code=403, detail="No tienes permisos para actualizar esta solicitud")
 
-    # 4) Rechazo: actualizar y salir
+    # 4) Rechazo
     if payload.new_status == "rejected":
         registration_request.status = "rejected"
         registration_request.reviewed_by_user_id = current_user.id
         registration_request.reviewed_at = datetime.utcnow()
-
         db.add(registration_request)
         db.commit()
         db.refresh(registration_request)
@@ -309,18 +304,20 @@ def update_registration_request_status(
             },
         }
 
-    # 5) Aprobación: validar colisiones (por si se creó un usuario entre la solicitud y la aprobación)
-    #    Evitamos duplicados de username/email en tabla User.
+    # 5) Aprobación
+    # Validar colisiones
     existing_user = db.execute(
         select(User).where(
-            or_(User.username == registration_request.username,
-                User.email == registration_request.email)
+            or_(
+                User.username == registration_request.username,
+                User.email == registration_request.email,
+            )
         )
     ).scalar_one_or_none()
     if existing_user:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Ya existe un usuario con este username o email. No se puede aprobar."
+            status_code=400,
+            detail="Ya existe un usuario con este username o email. No se puede aprobar.",
         )
 
     agent = Agent(
@@ -348,6 +345,15 @@ def update_registration_request_status(
     db.add(user)
     db.commit()
     db.refresh(user)
+
+    inst = db.execute(
+        select(Institution).where(Institution.id == registration_request.institution_id)
+    ).scalar_one_or_none()
+    if inst is not None:
+        inst.usersCount = (inst.usersCount or 0) + 1
+        db.add(inst)
+        db.commit()
+        db.refresh(inst)
 
     registration_request.status = "approved"
     registration_request.reviewed_by_user_id = current_user.id
@@ -404,6 +410,9 @@ def login_user(
     institution = None
     if user.institution_id:
         institution = db.execute(select(Institution).where(Institution.id == user.institution_id)).scalar_one_or_none()
+
+    if not user.is_active:
+        raise HTTPException(status_code=401, detail="Inactive user")
 
     print("[auth] Institutiuon:", institution.institutionName if institution else "None")
 

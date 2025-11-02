@@ -5,44 +5,74 @@ import React, {
   useEffect,
 } from "react";
 
-export enum Role {
-  Admin = "admin",
-  InstitutionAdmin = "institution_admin",
-  User = "user",
-}
 
-interface User {
-  id: string;
-  name: string;
-  username: string;
-  email: string;
-  role: Role;
-  institutionId?: string | null;
-  institution?: string | null;
-}
+import { User, AuthContextType } from "@interfaces/auth";
+import { Role } from "@constants/roles";
+import { API } from "@constants/api"
+import { STORAGE_KEYS } from "@constants/storageKeys"
 
-interface AuthContextType {
-  user: User | null;
-  token: string | null;               // 👈 solo esto
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
-  isAuthenticated: boolean;
-}
-
-const API_BASE = import.meta.env.VITE_API_URL;
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+// --- helpers: decodificar JWT sin libs ---
+function decodeJwtPayload(token: string): any | null {
+  try {
+    const base64 = token.split(".")[1];
+    if (!base64) return null;
+    const json = atob(base64.replace(/-/g, "+").replace(/_/g, "/"));
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
+
+  // limpiar cualquier timer de auto-logout
+  const [logoutTimer, setLogoutTimer] = useState<number | null>(null);
+
+  const clearLogoutTimer = () => {
+    if (logoutTimer) {
+      window.clearTimeout(logoutTimer);
+      setLogoutTimer(null);
+    }
+  };
+
+  const scheduleAutoLogout = (jwt: string) => {
+    clearLogoutTimer();
+    const payload = decodeJwtPayload(jwt);
+    if (!payload?.exp) return;
+
+    const msUntilExp = payload.exp * 1000 - Date.now();
+    if (msUntilExp <= 0) {
+      // ya expirado
+      logout();
+      return;
+    }
+    // pequeño margen de 1s
+    const id = window.setTimeout(() => {
+      logout();
+    }, msUntilExp + 1000);
+    setLogoutTimer(id);
+  };
 
   // recuperar sesión
   useEffect(() => {
     const savedToken = localStorage.getItem("token");
     const savedUser = localStorage.getItem("user");
 
-    if (savedToken) setToken(savedToken);
+    if (savedToken) {
+      setToken(savedToken);
+      // si el token está expirado, salir al toque
+      const payload = decodeJwtPayload(savedToken);
+      if (payload?.exp && payload.exp * 1000 <= Date.now()) {
+        logout();
+      } else {
+        scheduleAutoLogout(savedToken);
+      }
+    }
     if (savedUser) {
       try {
         setUser(JSON.parse(savedUser));
@@ -50,10 +80,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.error("No se pudo parsear el user del storage", e);
       }
     }
+    return () => clearLogoutTimer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const login = async (email: string, password: string) => {
-    const response = await fetch(`${API_BASE}/auth/login`, {
+    const response = await fetch(`${API.BASE_URL}${API.PATHS.LOGIN}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
@@ -71,34 +103,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw new Error("Respuesta del servidor inválida");
     }
 
-    // guardar token
-    localStorage.setItem("token", data.access_token);
+    localStorage.setItem(STORAGE_KEYS.TOKEN, data.access_token);
     setToken(data.access_token);
+    scheduleAutoLogout(data.access_token);
 
     const u = data.user;
     const mappedUser: User = {
       id: u.id,
-      name: u.name ?? u.username ?? u.email ?? "Usuario",
       username: u.username,
       email: u.email,
-      role: u.is_admin
-          ? Role.Admin
-          : u.is_institution_admin
-              ? Role.InstitutionAdmin
-              : Role.User,
+      role: u.is_admin? Role.Admin : u.is_institution_admin ? Role.InstitutionAdmin  : Role.User,
       institution: u.institution ?? null,
       institutionId: u.institution_id ?? null,
     };
 
+
     setUser(mappedUser);
     localStorage.setItem("user", JSON.stringify(mappedUser));
+
+    window.dispatchEvent(new CustomEvent("auth:logged-in"));
   };
 
   const logout = () => {
+    clearLogoutTimer();
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     setToken(null);
     setUser(null);
+
+    window.dispatchEvent(new CustomEvent("auth:logged-out"));
+  };
+
+  const apiFetch: AuthContextType["apiFetch"] = async (input, init = {}) => {
+    const headers = new Headers(init.headers || {});
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    headers.set("Content-Type", headers.get("Content-Type") || "application/json");
+
+    const res = await fetch(input, { ...init, headers });
+
+    if (res.status === 401 || res.status === 403) {
+      logout();
+      throw new Error("No autorizado");
+    }
+    return res;
   };
 
   return (
@@ -109,6 +156,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             login,
             logout,
             isAuthenticated: !!user,
+            apiFetch,
           }}
       >
         {children}

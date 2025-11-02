@@ -30,7 +30,7 @@ export function OccurrenceDetailPage({
     occurrenceID: 'urn:uuid:a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d',
     recordNumber: 'JP-2024-045',
     preparations: 'Herbarium sheet',
-    disposition: 'In collection',
+    disposition: 'In collection.ts',
     
     // Evento
     eventDate: '2024-03-15',
@@ -128,7 +128,7 @@ export function OccurrenceDetailPage({
 
   const handleBack = () => {
     if (returnTo === 'collection' && collectionId) {
-      onNavigate('collection-detail', { 
+      onNavigate('collection.ts-detail', {
         collectionId, 
         collectionName: collectionName || '',
         isOwner: isOwner || false

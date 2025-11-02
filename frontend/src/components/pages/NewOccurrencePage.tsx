@@ -230,7 +230,7 @@ export function NewOccurrencePage({
     
     // Navegar de vuelta
     if (returnTo === 'collection' && collectionId) {
-      onNavigate('collection-detail', { 
+      onNavigate('collection.ts-detail', {
         collectionId, 
         collectionName: collectionNameProp || '',
         isOwner: isOwner ?? false
@@ -242,7 +242,7 @@ export function NewOccurrencePage({
 
   const handleCancel = () => {
     if (returnTo === 'collection' && collectionId) {
-      onNavigate('collection-detail', { 
+      onNavigate('collection.ts-detail', {
         collectionId, 
         collectionName: collectionNameProp || '',
         isOwner: isOwner ?? false

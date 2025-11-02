@@ -9,18 +9,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Plus, Folder, Calendar, MapPin, Upload, FileSpreadsheet, Users } from "lucide-react";
 import { toast } from "sonner@2.0.3";
-import { useAuth } from "../../contexts/AuthContext";
-
-interface Collection {
-  id: string;
-  name: string;
-  description: string;
-  location: string;
-  date: string;
-  occurrencesCount: number;
-  institution: string;
-  ownerId: string;
-}
+import { useAuth } from "@contexts/AuthContext";
+import { Collection } from "@interfaces/collection";
 
 interface CollectionsPageProps {
   onNavigate: (page: string, params?: { collectionId?: string; collectionName?: string; isOwner?: boolean }) => void;
@@ -137,7 +127,7 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
   };
 
   const handleCollectionClick = (collection: Collection) => {
-    onNavigate('collection-detail', {
+    onNavigate('collection.ts-detail', {
       collectionId: collection.id,
       collectionName: collection.name,
       isOwner: collection.ownerId === currentUserId

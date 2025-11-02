@@ -60,6 +60,7 @@ class Institution(Base):
         lazy="joined",
     )
 
+    usersCount: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     users: Mapped[List["User"]] = relationship(
         "User",
         back_populates="institution",
