@@ -831,7 +831,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           {/* Card Usuarios Totales */}
           <Card
-              className="cursor-pointer hover:border-primary transition-colors"
+              // className="cursor-pointer hover:border-primary transition-colors"
           >
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm">Usuarios Totales</CardTitle>
