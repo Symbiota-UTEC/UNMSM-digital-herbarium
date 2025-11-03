@@ -67,9 +67,10 @@ import {
 } from "lucide-react";
 import { toast } from "sonner@2.0.3";
 import { Role } from "@constants/roles";
-import { useAuth } from "../../contexts/AuthContext";
+import { useAuth } from "@contexts/AuthContext";
 import { API } from "@constants/api";
 import { Institution } from "@interfaces/institution";
+import { User, ApiUserOut, mapApiUserToUser } from "@interfaces/auth";
 import { ScopedTotals, AdminMetrics } from "@interfaces/admin";
 
 interface UserDetail {
@@ -249,7 +250,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
         // Si el usuario es un `institutionAdmin`, trae solo su institución
         const endpoint = isInstitutionAdmin
             ? `${API.BASE_URL}${API.PATHS.INSTITUTIONS}/${user.institutionId}` // Llamada para obtener solo su institución
-            : `${API.BASE_URL}${API.PATHS.INSTITUTIONS}?limit=7&offset=0`; // Llamada para obtener todas las instituciones
+            : `${API.BASE_URL}${API.PATHS.INSTITUTIONS}?limit=2&offset=0`; // Llamada para obtener todas las instituciones
 
         const res = await apiFetch(endpoint, {
           headers: {
@@ -349,7 +350,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       bump(next.metrics.requestsPending, "app", deltaPending);
       bump(next.metrics.users, "app", deltaUsers);
 
-      if (institutionId === user.institution_id) {
+      if (institutionId === user.institutionId) {
         bump(next.metrics.requestsPending, "institution", deltaPending);
         bump(next.metrics.users, "institution", deltaUsers);
 
@@ -574,61 +575,88 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     setAdminEmailValidation({ isValid: null, message: "" });
   };
 
-  const validateAdminEmail = async (email: string) => {
+  const validateAdminEmail = async (
+      email: string,
+      institutionId?: number
+  ): Promise<User | null> => {
     if (!email.trim()) {
       setAdminEmailValidation({
         isValid: true,
         message: "Sin administrador asignado",
       });
-      return;
+      return null;
     }
 
     try {
       const emailTrimmed = email.trim();
 
-      const response = await apiFetch(`${API.BASE_URL}${API.PATHS.USER_BY_EMAIL}?email=${emailTrimmed}`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error("Usuario no encontrado o error en la solicitud");
+      const params = new URLSearchParams({ email: emailTrimmed });
+      if (typeof institutionId === "number") {
+        params.set("institution_id", String(institutionId));
       }
 
-      const foundUser = await response.json();
+      const response = await apiFetch(
+          `${API.BASE_URL}${API.PATHS.USER_BY_EMAIL}?${params.toString()}`,
+          {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+          }
+      );
+
+      if (!response.ok) {
+        const txt = await response.text();
+        console.error("validateAdminEmail error:", txt);
+        setAdminEmailValidation({
+          isValid: false,
+          message:
+              response.status === 403
+                  ? "No tienes permisos para ver este usuario"
+                  : "Usuario no encontrado",
+        });
+        return null;
+      }
+
+      const foundUser: ApiUserOut = await response.json();
 
       if (!foundUser) {
         setAdminEmailValidation({
           isValid: false,
           message: "Usuario no encontrado",
         });
-        return;
+        return null;
       }
 
       if (foundUser.is_institution_admin) {
         setAdminEmailValidation({
           isValid: false,
-          message: 'Este usuario ya es administrador',
+          message: "Este usuario ya es administrador",
         });
-        return;
-
+        return null;
       }
+
+      const user = mapApiUserToUser(foundUser);
 
       setAdminEmailValidation({
         isValid: true,
-        message: `Usuario válido: ${foundUser.username}`,
+        message: `Usuario válido: ${user.username || user.email}`,
       });
+
+      return user;
     } catch (error) {
       console.error(error);
       setAdminEmailValidation({
         isValid: false,
         message: "Error al validar el correo",
       });
+      return null;
     }
   };
+
+// asumiendo que ya tienes esta helper del mensaje anterior
+// const validateAdminEmail = async (email: string, institutionId?: number): Promise<User | null> => { ... }
 
   const handleSaveInstitution = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -640,67 +668,56 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       return;
     }
 
-    let newAdminUserId;
+    let newAdminUserId: number | null = null;
 
-    if (editForm.adminEmail) {
-      try {
-        console.log(token);
-        const response = await apiFetch(`${API.BASE_URL}${API.PATHS.USER_BY_EMAIL}?email=${editForm.adminEmail}`, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-        });
+    if (editForm.adminEmail?.trim()) {
+      const user = await validateAdminEmail(
+          editForm.adminEmail,
+          editInstitution.id
+      );
 
-        if (!response.ok) {
-          toast.error("Usuario no encontrado o correo no válido");
-          return;
-        }
-
-        const user = await response.json();
-
-        if (!user) {
-            toast.error("Usuario no encontrado");
-            return;
-        }
-
-        if (user.is_institution_admin && user.institution_id !== editInstitution.id) {
-            toast.error(`Este usuario ya es administrador de una institución`);
-        } else {
-            newAdminUserId = user.id;
-        }
-      } catch (error) {
-        console.error("Error al verificar el correo:", error);
-        toast.error("Hubo un error al verificar el correo");
+      if (!user) {
         return;
       }
+
+      if (
+          user.role === Role.InstitutionAdmin &&
+          String(user.institutionId) !== String(editInstitution.id)
+      ) {
+        toast.error("Este usuario ya es administrador de otra institución");
+        return;
+      }
+
+      newAdminUserId = user.id;
     } else {
       newAdminUserId = null;
     }
 
-    // Actualización de la institución (PATCH)
+    const payload = {
+      institutionID: editForm.institutionID,
+      institutionCode: editForm.institutionCode,
+      institutionName: editForm.institutionName,
+      country: editForm.country,
+      city: editForm.city,
+      address: editForm.address,
+      email: editForm.email,
+      phone: editForm.phone,
+      webSite: editForm.webSite,
+      institution_admin_user_id: newAdminUserId,
+    };
+
     try {
-        console.log("email", newAdminUserId);
-      const res = await apiFetch(`${API.BASE_URL}${API.PATHS.INSTITUTIONS}/${editInstitution.id}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-        body: JSON.stringify({
-          institutionID: editForm.institutionID,
-          institutionCode: editForm.institutionCode,
-          institutionName: editForm.institutionName,
-          country: editForm.country,
-          city: editForm.city,
-          address: editForm.address,
-          email: editForm.email,
-          phone: editForm.phone,
-          webSite: editForm.webSite,
-          institution_admin_user_id: newAdminUserId,
-        }),
-      });
+      const res = await apiFetch(
+          `${API.BASE_URL}${API.PATHS.INSTITUTIONS}/${editInstitution.id}`,
+          {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify(payload),
+          }
+      );
 
       if (!res.ok) {
         const errorText = await res.text();
@@ -714,53 +731,19 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       setInstitutions((institutions) =>
           institutions.map((inst) =>
               inst.id === updatedInstitution.id
-                  ? {
-                    ...inst,
-                    ...updatedInstitution,
-                  }
+                  ? { ...inst, ...updatedInstitution }
                   : inst
           )
       );
 
-      toast.success(`Institución ${editForm.institutionName} actualizada correctamente`);
+      toast.success(
+          `Institución ${editForm.institutionName} actualizada correctamente`
+      );
       setEditInstitution(null);
       setAdminEmailValidation({ isValid: null, message: "" });
     } catch (error) {
       console.error("Error al actualizar la institución:", error);
       toast.error("Error al actualizar la institución");
-    }
-  };
-
-  const toggleUserExpansion = (userId: string) => {
-    const newExpanded = new Set(expandedUsers);
-    if (newExpanded.has(userId)) {
-      newExpanded.delete(userId);
-    } else {
-      newExpanded.add(userId);
-      if (!historyPages[userId]) {
-        setHistoryPages((prev) => ({ ...prev, [userId]: 1 }));
-      }
-    }
-    setExpandedUsers(newExpanded);
-  };
-
-  const navigateHistoryPage = (userId: string, direction: "prev" | "next") => {
-    setHistoryPages((prev) => {
-      const currentPage = prev[userId] || 1;
-      if (direction === "next") {
-        return { ...prev, [userId]: currentPage + 1 };
-      } else {
-        return { ...prev, [userId]: Math.max(1, currentPage - 1) };
-      }
-    });
-  };
-
-  const handleDisableUserConfirm = () => {
-    if (userToDisable) {
-      const action = userToDisable.isActive ? "deshabilitado" : "habilitado";
-      toast.success(`Usuario ${userToDisable.name} ${action}`);
-      setShowDisableUserDialog(false);
-      setUserToDisable(null);
     }
   };
 
@@ -1576,23 +1559,38 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
                           </div>
 
                           {/* Administrador */}
-                              <div className="space-y-2">
-                                  <Label htmlFor="edit-adminEmail">Administrador (email)</Label>
-                                  <Input
-                                      id="edit-adminEmail"
-                                      type="email"
-                                      value={editForm.adminEmail}
-                                      onChange={(e) => {
-                                          setEditForm({ ...editForm, adminEmail: e.target.value });
-                                          setAdminEmailValidation({ isValid: null, message: "" });
-                                      }}
-                                      onBlur={(e) => {
-                                          validateAdminEmail(e.target.value);
-                                      }}
-                                      placeholder="admin@email.com"
-                                      disabled={isInstitutionAdmin || (isSystemAdmin && user.email === editInstitution.adminEmail)}
-                                  />
-                              </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="edit-adminEmail">Administrador (email)</Label>
+                          <Input
+                              id="edit-adminEmail"
+                              type="email"
+                              value={editForm.adminEmail}
+                              onChange={(e) => {
+                                setEditForm({ ...editForm, adminEmail: e.target.value });
+                                // limpiar estado al escribir
+                                setAdminEmailValidation({ isValid: null, message: "" });
+                              }}
+                              onBlur={(e) => {
+                                validateAdminEmail(e.target.value, editInstitution?.id);
+                              }}
+                              placeholder="admin@email.com"
+                              disabled={
+                                  isInstitutionAdmin ||
+                                  (isSystemAdmin &&
+                                      user.email === editInstitution?.admin_user?.email)
+                              }
+                          />
+                          {adminEmailValidation.message && (
+                              <p
+                                  className={`text-xs mt-1 ${
+                                      adminEmailValidation.isValid ? "text-green-600" : "text-red-600"
+                                  }`}
+                              >
+                                {adminEmailValidation.message}
+                              </p>
+                          )}
+                        </div>
+
 
                           <div className="flex gap-2 pt-4">
                               <Button
