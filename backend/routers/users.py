@@ -118,6 +118,7 @@ def get_user_by_id(
     )
 
 
+# TODO: rename users=[...] to items
 @router.get("/", response_model=UserPaginationResponse, summary="Get users with optional institution filter and pagination")
 def get_users(
     institution_id: int = Query(None, ge=1),

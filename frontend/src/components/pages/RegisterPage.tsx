@@ -3,36 +3,28 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Separator } from "../ui/separator";
 import { Leaf, Loader2, User, UserCircle } from "lucide-react";
 import { toast } from "sonner@2.0.3";
 import { API } from "@constants/api";
+import { AutocompleteInstitution } from "../AutocompleteInstitution";
 
 interface RegisterPageProps {
   onNavigate: (page: string) => void;
 }
 
-type InstitutionItem = { id: number; institutionName: string | null };
-
-
 export function RegisterPage({ onNavigate }: RegisterPageProps) {
-  // === Estado instituciones (desde backend) ===
-  const [institutions, setInstitutions] = useState<InstitutionItem[]>([]);
-  const [loadingInstitutions, setLoadingInstitutions] = useState(true);
-  const [fetchError, setFetchError] = useState<string | null>(null);
-
-  // Información de Usuario
+  // Texto visible y selección del Autocomplete
+  const [instText, setInstText] = useState("");
   const [userData, setUserData] = useState({
     username: "",
     email: "",
     password: "",
     confirmPassword: "",
-    institution_id: "", // guardamos como string para el Select
+    institution_id: "", // se llena al seleccionar del autocomplete
   });
 
-  // Información de Curador/Agente
   const [agentData, setAgentData] = useState({
     givenName: "",
     familyName: "",
@@ -42,43 +34,19 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
   });
 
   const [loading, setLoading] = useState(false);
-  // === Cargar instituciones del backend al montar ===
-  useEffect(() => {
-    let cancelled = false;
 
-    async function loadInstitutions() {
-      setLoadingInstitutions(true);
-      setFetchError(null);
-      try {
-        const res = await fetch(`${API.BASE_URL}${API.PATHS.INSTITUTIONS}?limit=10&offset=0`);
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
-        const data: InstitutionItem[] = await res.json();
-        if (!cancelled) {
-          setInstitutions(data);
-        }
-      } catch (err: any) {
-        if (!cancelled) {
-          setFetchError(err?.message ?? "Error al cargar instituciones");
-          toast.error("No se pudieron cargar las instituciones. Intenta de nuevo.");
-        }
-      } finally {
-        if (!cancelled) setLoadingInstitutions(false);
-      }
-    }
-
-    loadInstitutions();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // fetch sin auth (borra cualquier Authorization que añada el Autocomplete)
+  const unAuthFetch = async (input: RequestInfo, init?: RequestInit) => {
+    const headersObj: Record<string, string> = { ...(init?.headers as Record<string, string>) };
+    if (headersObj && "Authorization" in headersObj) delete headersObj.Authorization;
+    return fetch(input, { ...init, headers: headersObj });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!userData.institution_id) {
-      toast.error("Por favor selecciona una institución");
+      toast.error("Por favor selecciona una institución de la lista");
       return;
     }
     if (userData.password !== userData.confirmPassword) {
@@ -112,7 +80,6 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
       });
 
       if (!res.ok) {
-        // intentamos leer mensaje del backend
         let errorText = `HTTP ${res.status}`;
         try {
           const errJson = await res.json();
@@ -124,6 +91,7 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
       toast.success("Solicitud de registro enviada correctamente. Te contactaremos pronto.");
       setUserData({ username: "", email: "", password: "", confirmPassword: "", institution_id: "" });
       setAgentData({ givenName: "", familyName: "", orcid: "", phone: "", address: "" });
+      setInstText("");
     } catch (err: any) {
       toast.error(err?.message ?? "Error al enviar la solicitud");
     } finally {
@@ -212,35 +180,28 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
                     </div>
                   </div>
 
+                  {/* Autocomplete de Institución */}
                   <div className="space-y-2">
-                    <Label htmlFor="institution_id">Institución / Universidad *</Label>
-                    <Select
-                        value={userData.institution_id}
-                        onValueChange={(value) => setUserData((prev) => ({ ...prev, institution_id: value }))}
-                        disabled={loadingInstitutions || !!fetchError}
-                    >
-                      <SelectTrigger id="institution_id">
-                        <SelectValue
-                            placeholder={
-                              loadingInstitutions
-                                  ? "Cargando instituciones..."
-                                  : fetchError
-                                      ? "Error al cargar instituciones"
-                                      : "Selecciona tu institución"
-                            }
-                        />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {institutions.map((inst) => (
-                            <SelectItem key={inst.id} value={String(inst.id)}>
-                              {inst.institutionName || `Institución #${inst.id}`}
-                            </SelectItem>
-                        ))}
-                        {!loadingInstitutions && institutions.length === 0 && !fetchError && (
-                            <div className="px-2 py-1 text-sm text-muted-foreground">No hay instituciones disponibles</div>
-                        )}
-                      </SelectContent>
-                    </Select>
+                    <Label>Institución / Universidad *</Label>
+                    <AutocompleteInstitution
+                        token=""
+                        apiFetch={unAuthFetch}
+                        placeholder="Escribe y selecciona tu institución…"
+                        value={instText}
+                        onChange={(t) => {
+                          setInstText(t);
+                          setUserData((prev) => ({ ...prev, institution_id: "" }));
+                        }}
+                        onSelect={(item) => {
+                          setInstText(item.institutionName);
+                          setUserData((prev) => ({ ...prev, institution_id: String(item.id) }));
+                        }}
+                        minChars={1}
+                    />
+                    {!userData.institution_id && instText.length > 0 && (
+                        <p className="text-xs text-red-600">Selecciona una opción de la lista.</p>
+                    )}
+                    <p className="text-xs text-muted-foreground">Empieza a escribir para ver sugerencias.</p>
                   </div>
                 </div>
               </div>

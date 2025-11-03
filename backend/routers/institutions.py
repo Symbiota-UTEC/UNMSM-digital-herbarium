@@ -2,7 +2,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import select, func, and_
 
 from backend.config.database import get_db
 from backend.models.models import Institution, User
@@ -41,6 +41,15 @@ class InstitutionOut(BaseModel):
         orm_mode = True
 
 
+class InstitutionPageOut(BaseModel):
+    items: List[InstitutionOut]
+    total: int
+    limit: int
+    offset: int
+    current_page: int
+    total_pages: int
+    remaining_pages: int
+
 class InstitutionCreate(BaseModel):
     institutionID: Optional[str]
     institutionCode: Optional[str]
@@ -57,20 +66,62 @@ class InstitutionCreate(BaseModel):
         orm_mode = True
 
 
-@router.get("", response_model=List[InstitutionOut], summary="List all institutions")
+from sqlalchemy import select, func, and_
+
+@router.get(
+    "",
+    response_model=InstitutionPageOut,
+    summary="List all institutions with pagination",
+)
 def list_institutions(
-        db: Session = Depends(get_db),
-        limit: int = Query(100, ge=1, le=500),
-        offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+
+    name_prefix: Optional[str] = Query(
+        None,
+        description="Prefijo de búsqueda por nombre de institución (case/accent-insensitive)"
+    ),
 ):
+    where_clauses = []
+
+    if name_prefix:
+        pattern = f"{name_prefix}%"
+        where_clauses.append(
+            func.unaccent(func.coalesce(Institution.institutionName, "")).ilike(
+                func.unaccent(pattern)
+            )
+        )
+
+    count_stmt = select(func.count()).select_from(Institution)
+    if where_clauses:
+        count_stmt = count_stmt.where(and_(*where_clauses))
+    total = db.scalar(count_stmt) or 0
+
     stmt = (
         select(Institution)
         .order_by(Institution.institutionName.nulls_last())
         .limit(limit)
         .offset(offset)
     )
+    if where_clauses:
+        stmt = stmt.where(and_(*where_clauses))
+
     institutions = db.scalars(stmt).all()
-    return institutions
+
+    current_page = (offset // limit) + 1 if limit else 1
+    total_pages = (total + limit - 1) // limit if limit else 1
+    remaining_pages = max(0, total_pages - current_page)
+
+    return {
+        "items": institutions,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "current_page": current_page,
+        "total_pages": total_pages,
+        "remaining_pages": remaining_pages,
+    }
 
 
 @router.get("/{institution_id}", response_model=InstitutionOut, summary="Get institution by id")

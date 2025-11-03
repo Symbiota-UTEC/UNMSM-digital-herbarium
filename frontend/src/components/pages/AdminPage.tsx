@@ -1,3 +1,6 @@
+// ========================
+// Imports
+// ========================
 import { useEffect, useState, useMemo, useCallback } from "react";
 
 import {
@@ -69,89 +72,55 @@ import { toast } from "sonner@2.0.3";
 import { Role } from "@constants/roles";
 import { useAuth } from "@contexts/AuthContext";
 import { API } from "@constants/api";
-import { Institution } from "@interfaces/institution";
 import { User, ApiUserOut, mapApiUserToUser } from "@interfaces/auth";
 import { ScopedTotals, AdminMetrics } from "@interfaces/admin";
+import {
+  BasicInstitutionInfo,
+  Institution,
+  InstitutionPage,
+} from "@interfaces/institution";
+import {
+  RegistrationRequestPage,
+  RegistrationRequest,
+} from "@interfaces/registrationRequest";
+import { useDebounce } from "@utils/useDebounce";
+import { AutocompleteInstitution } from "../AutocompleteInstitution";
 
-interface UserDetail {
-  id: string;
-  name: string;
-  email: string;
-  institution: string;
-  institutionId: string;
-  lastConnection: string;
-  isActive: boolean;
-  isInstitutionAdmin: boolean;
-  occurrenceHistory: Array<{
-    id: string;
-    action: "created" | "updated" | "deleted";
-    scientificName: string;
-    datetime: string;
-  }>;
-}
-
-interface RegistrationRequestItem {
-  id: number;
-  username: string;
-  email: string;
-  institution_id: number;
-  institution_name: string;
-  full_name?: string | null;
-  given_name?: string | null;
-  family_name?: string | null;
-  orcid?: string | null;
-  phone?: string | null;
-  address?: string | null;
-  status: "pending" | "approved" | "rejected";
-  created_at: string;
-  reviewed_at?: string | null;
-  reviewed_by_user_id?: number | null;
-  resulting_user_id?: number | null;
-}
-
-interface RegistrationRequestPage {
-  requests: RegistrationRequestItem[];
-  total: number;
-  total_pages: number;
-  limit: number;
-  offset: number;
-  current_page: number;
-  remaining_pages: number;
-}
-
+// ========================
+// Types
+// ========================
 type OnNavigate = (page: string, params?: any) => void;
 
-
+// ========================
+// Component
+// ========================
 export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
+  // -------- Auth / roles --------
   const { user, token, apiFetch } = useAuth() as any;
   const isSystemAdmin = user?.role === Role.Admin;
   const isInstitutionAdmin = user?.role === Role.InstitutionAdmin;
 
+  // -------- Dashboard metrics --------
   const [metrics, setMetrics] = useState<AdminMetrics | null>(null);
   const [isLoadingMetrics, setIsLoadingMetrics] = useState(false);
 
+  // -------- Institutions list (left column) --------
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [isLoadingInstitutions, setIsLoadingInstitutions] = useState(false);
 
-  const generateUUID = () => {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
-  };
-
+  // UI dialogs / selections
   const [showInstitutionDialog, setShowInstitutionDialog] = useState(false);
-  const [showDeleteInstitutionDialog, setShowDeleteInstitutionDialog] = useState(false);
-  const [selectedInstitution, setSelectedInstitution] = useState<Institution | null>(null);
-  const [viewInstitutionDetails, setViewInstitutionDetails] = useState<Institution | null>(null);
-  const [editInstitution, setEditInstitution] = useState<Institution | null>(null);
-  const [userToDisable, setUserToDisable] = useState<{
-    id: string;
-    name: string;
-    isActive: boolean;
-  } | null>(null);
+  const [showDeleteInstitutionDialog, setShowDeleteInstitutionDialog] =
+      useState(false);
+  const [selectedInstitution, setSelectedInstitution] =
+      useState<Institution | null>(null);
+  const [viewInstitutionDetails, setViewInstitutionDetails] =
+      useState<Institution | null>(null);
+  const [editInstitution, setEditInstitution] = useState<Institution | null>(
+      null
+  );
 
+  // New institution form
   const [newInstitutionName, setNewInstitutionName] = useState("");
   const [newInstitutionCode, setNewInstitutionCode] = useState("");
   const [newInstitutionCountry, setNewInstitutionCountry] = useState("");
@@ -161,13 +130,11 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
   const [newInstitutionPhone, setNewInstitutionPhone] = useState("");
   const [newInstitutionWebSite, setNewInstitutionWebSite] = useState("");
 
-  const [selectedAdminUserId, setSelectedAdminUserId] = useState("");
-  const [adminSearchEmail, setAdminSearchEmail] = useState("");
+  // Edit institution form
   const [adminEmailValidation, setAdminEmailValidation] = useState<{
     isValid: boolean | null;
     message: string;
   }>({ isValid: null, message: "" });
-
 
   const [editForm, setEditForm] = useState({
     institutionID: "",
@@ -182,29 +149,119 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     adminEmail: "",
   });
 
-  // Paginación de usuarios
-  const [currentPage, setCurrentPage] = useState(1);
-  const usersPerPage = 5;
-
-  // Estado de expansión de usuarios
-  const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
-
-  // Paginación de historial de ocurrencias por usuario
-  const [historyPages, setHistoryPages] = useState<Record<string, number>>({});
-  const historyItemsPerPage = 3;
-
-  // Paginación y filtros de instituciones
+  // Pagination / filters - Institutions
+  const institutionsPerPage = 2;
   const [institutionsPage, setInstitutionsPage] = useState(1);
-  const [institutionFilter, setInstitutionFilter] = useState("");
-  const institutionsPerPage = 5;
+  const [institutionsTotal, setInstitutionsTotal] = useState(0);
+  const [institutionsTotalPages, setInstitutionsTotalPages] = useState(1);
 
-  // Paginación y filtros de solicitudes pendientes
+  // Pagination / filters - Requests (right column)
+  const requestsPerPage = 2;
   const [requestsPage, setRequestsPage] = useState(1);
   const [requestNameFilter, setRequestNameFilter] = useState("");
-  const [requestInstitutionFilter, setRequestInstitutionFilter] =
-      useState("all");
-  const requestsPerPage = 2;
 
+  // Autocomplete state - Institutions (left)
+  const [instSearchText, setInstSearchText] = useState("");
+  const [instSelectedId, setInstSelectedId] = useState<
+      string | number | null
+  >(null);
+
+  // Autocomplete state - Requests (right)
+  const [reqInstSearchText, setReqInstSearchText] = useState("");
+  const [reqSelectedInstitutionId, setReqSelectedInstitutionId] = useState<
+      string | number | "all"
+  >("all");
+
+  // Requests data
+  const [registrationRequests, setRegistrationRequests] = useState<
+      RegistrationRequest[]
+  >([]);
+  const [isLoadingRequests, setIsLoadingRequests] = useState(false);
+  const [requestsTotal, setRequestsTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+
+  // Utility: UUID generator (kept as-is)
+  const generateUUID = () => {
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === "x" ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  };
+
+  // ========================
+  // Callbacks / Helpers
+  // ========================
+
+  // Requests fetcher (right column)
+  const fetchRequests = useCallback(
+      async (page: number) => {
+        if (!token) return;
+
+        try {
+          setIsLoadingRequests(true);
+
+          const params = new URLSearchParams();
+          params.set("limit", requestsPerPage.toString());
+          params.set("offset", ((page - 1) * requestsPerPage).toString());
+          params.set("status_filter", "pending");
+
+          if (user?.role === Role.InstitutionAdmin && user?.institutionId) {
+            params.set("institution_id", String(user.institutionId));
+          } else {
+            if (reqSelectedInstitutionId && reqSelectedInstitutionId !== "all") {
+              params.set("institution_id", String(reqSelectedInstitutionId));
+            }
+          }
+
+          if (requestNameFilter.trim()) {
+            params.set("full_name_prefix", requestNameFilter.trim());
+          }
+
+          const res = await apiFetch(
+              `${API.BASE_URL}${API.PATHS.REG_REQUESTS}?${params.toString()}`,
+              {
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+                },
+              }
+          );
+
+          if (!res.ok) {
+            const txt = await res.text();
+            console.error("Error al cargar solicitudes:", txt);
+            throw new Error("No se pudieron cargar las solicitudes");
+          }
+
+          const data = (await res.json()) as RegistrationRequestPage;
+          setRegistrationRequests(data.items);
+          setRequestsTotal(data.total);
+          setTotalPages(data.total_pages);
+        } catch (err) {
+          console.error(err);
+          toast.error("No se pudieron cargar las solicitudes de registro");
+        } finally {
+          setIsLoadingRequests(false);
+        }
+      },
+      [
+        token,
+        apiFetch,
+        reqSelectedInstitutionId,
+        requestsPerPage,
+        user?.role,
+        user?.institutionId,
+        requestNameFilter,
+      ]
+  );
+
+
+  // ========================
+  // Effects
+  // ========================
+
+  // Load dashboard metrics
   useEffect(() => {
     if (!token) return;
 
@@ -242,103 +299,134 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     fetchMetrics();
   }, [token]);
 
+  // Load institutions (left column) with filters/pagination
   useEffect(() => {
     const fetchInstitutions = async () => {
       try {
         setIsLoadingInstitutions(true);
 
-        // Si el usuario es un `institutionAdmin`, trae solo su institución
-        const endpoint = isInstitutionAdmin
-            ? `${API.BASE_URL}${API.PATHS.INSTITUTIONS}/${user.institutionId}` // Llamada para obtener solo su institución
-            : `${API.BASE_URL}${API.PATHS.INSTITUTIONS}?limit=2&offset=0`; // Llamada para obtener todas las instituciones
+        // Institution Admin: fetch its single institution
+        if (isInstitutionAdmin && user?.institutionId) {
+          const endpoint = `${API.BASE_URL}${API.PATHS.INSTITUTIONS}/${user.institutionId}`;
+          const res = await apiFetch(endpoint, {
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+          });
+          if (!res.ok) throw new Error(`Error ${res.status}`);
 
+          const one = (await res.json()) as Institution | null;
+          setInstitutions(one ? [one] : []);
+          setInstitutionsTotal(one ? 1 : 0);
+          setInstitutionsTotalPages(1);
+          setInstitutionsPage(1);
+          return;
+        }
+
+        // Exact selection from autocomplete
+        if (instSelectedId != null) {
+          const res = await apiFetch(
+              `${API.BASE_URL}${API.PATHS.INSTITUTIONS}/${instSelectedId}`,
+              {
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+                },
+              }
+          );
+          if (!res.ok) throw new Error(`Error ${res.status}`);
+          const one = await res.json();
+          setInstitutions(one ? [one] : []);
+          setInstitutionsTotal(one ? 1 : 0);
+          setInstitutionsTotalPages(1);
+          setInstitutionsPage(1);
+          return;
+        }
+
+        // System Admin: paginated list (optionally filtered by name_prefix)
+        const offset = (institutionsPage - 1) * institutionsPerPage;
+        const params = new URLSearchParams({
+          limit: String(institutionsPerPage),
+          offset: String(offset),
+        });
+        if (instSearchText.trim())
+          params.set("name_prefix", instSearchText.trim());
+
+        const endpoint = `${API.BASE_URL}${
+            API.PATHS.INSTITUTIONS
+        }?${params.toString()}`;
         const res = await apiFetch(endpoint, {
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
         });
+        if (!res.ok) throw new Error(`Error ${res.status}`);
 
-        if (!res.ok) {
-          throw new Error(`Error ${res.status}`);
-        }
-
-        const raw = await res.json() as Institution[] | Institution;
-
-        const institutions: Institution[] = Array.isArray(raw) ? raw : [raw];
-
-        console.log(institutions);
-        setInstitutions(institutions);
+        const data = (await res.json()) as InstitutionPage;
+        setInstitutions(data.items ?? []);
+        setInstitutionsTotal(data.total ?? 0);
+        setInstitutionsTotalPages(data.total_pages ?? 1);
       } catch (err) {
         console.error(err);
         toast.error("No se pudieron cargar las instituciones");
+        setInstitutions([]);
+        setInstitutionsTotal(0);
+        setInstitutionsTotalPages(1);
       } finally {
         setIsLoadingInstitutions(false);
       }
     };
 
-    fetchInstitutions();
-  }, [token, isInstitutionAdmin, user.institutionId]);
+    if (token) fetchInstitutions();
+  }, [
+    token,
+    apiFetch,
+    isInstitutionAdmin,
+    user?.institutionId,
+    institutionsPage,
+    institutionsPerPage,
+    instSearchText,
+    instSelectedId,
+  ]);
 
-  const fetchRequests = useCallback(async (page: number) => {
-    if (!token) return;
-
-    try {
-      setIsLoadingRequests(true);
-
-      const params = new URLSearchParams();
-      params.set("limit", requestsPerPage.toString());
-      params.set("offset", ((page - 1) * requestsPerPage).toString());
-      params.set("status_filter", "pending");
-
-      if (user?.role === Role.InstitutionAdmin && user?.institutionId) {
-        params.set("institution_id", String(user.institutionId));
-      } else {
-        if (requestInstitutionFilter && requestInstitutionFilter !== "all") {
-          params.set("institution_id", requestInstitutionFilter);
-        }
-      }
-
-      const res = await apiFetch(`${API.BASE_URL}${API.PATHS.REG_REQUESTS}?${params.toString()}`, {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!res.ok) {
-        const txt = await res.text();
-        console.error("Error al cargar solicitudes:", txt);
-        throw new Error("No se pudieron cargar las solicitudes");
-      }
-
-      const data = (await res.json()) as RegistrationRequestPage;
-      setRegistrationRequests(data.requests);
-      setRequestsTotal(data.total);
-      setTotalPages(data.total_pages);
-    } catch (err) {
-      console.error(err);
-      toast.error("No se pudieron cargar las solicitudes de registro");
-    } finally {
-      setIsLoadingRequests(false);
+  // Reset right-column institution filter when text is cleared
+  useEffect(() => {
+    if (!reqInstSearchText.trim()) {
+      setReqSelectedInstitutionId("all");
+      setRequestsPage(1);
     }
-  }, [token, apiFetch, requestInstitutionFilter, requestsPerPage, user?.role, user?.institutionId]);
+  }, [reqInstSearchText]);
 
+  // When name filter or institution changes, go to page 1
+  const debouncedFullName = useDebounce(requestNameFilter, 250);
+  useEffect(() => {
+    setRequestsPage(1);
+  }, [debouncedFullName, reqSelectedInstitutionId]);
+
+  // Fetch registration requests on page/filter changes
   useEffect(() => {
     fetchRequests(requestsPage);
-  }, [fetchRequests, requestsPage]);
+  }, [fetchRequests, requestsPage, debouncedFullName]);
 
-  const goToNextPage = () => setRequestsPage(p => Math.min(p + 1, totalPages));
-  const goToPreviousPage = () => setRequestsPage(p => Math.max(1, p - 1));
+  // (Preservado aunque no se use en el JSX actual)
+  function onSelectRequestInstitution(item: { id: string | number; name: string }) {
+    setReqInstSearchText(item.name);
+    setReqSelectedInstitutionId(item.id);
+    setRequestsPage(1);
+  }
 
-  const [registrationRequests, setRegistrationRequests] = useState<RegistrationRequestItem[]>([]);
-  const [isLoadingRequests, setIsLoadingRequests] = useState(false);
-  const [requestsTotal, setRequestsTotal] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
+  const goToNextPage = () => setRequestsPage((p) => Math.min(p + 1, totalPages));
+  const goToPreviousPage = () => setRequestsPage((p) => Math.max(1, p - 1));
 
-  const patchMetrics = (opts: { institutionId: number; deltaUsers?: number; deltaPending?: number }) => {
+  const patchMetrics = (opts: {
+    institutionId: number;
+    deltaUsers?: number;
+    deltaPending?: number;
+  }) => {
     const { institutionId, deltaUsers = 0, deltaPending = 0 } = opts;
-    setMetrics(prev => {
+    setMetrics((prev) => {
       if (!prev) return prev;
       const next = structuredClone(prev);
 
@@ -353,15 +441,17 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       if (institutionId === user.institutionId) {
         bump(next.metrics.requestsPending, "institution", deltaPending);
         bump(next.metrics.users, "institution", deltaUsers);
-
       }
       return next;
     });
   };
 
-  const bumpInstitutionUsers = (institutionId: number | string, delta: number) => {
-    setInstitutions(prev =>
-        prev.map(inst =>
+  const bumpInstitutionUsers = (
+      institutionId: number | string,
+      delta: number
+  ) => {
+    setInstitutions((prev) =>
+        prev.map((inst) =>
             String(inst.id) === String(institutionId)
                 ? { ...inst, usersCount: Math.max(0, (inst.usersCount ?? 0) + delta) }
                 : inst
@@ -372,11 +462,11 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
   const handleApproveRequest = async (requestId: number, institutionId) => {
     const prevMetrics = metrics;
     const prevRequests = registrationRequests;
-    const request = registrationRequests.find(r => r.id === requestId);
+    const request = registrationRequests.find((r) => r.id === requestId);
 
     patchMetrics({ institutionId, deltaUsers: 1, deltaPending: -1 });
     if (request) bumpInstitutionUsers(request.institution_id, +1);
-    setRegistrationRequests(prev => prev.filter(r => r.id !== requestId));
+    setRegistrationRequests((prev) => prev.filter((r) => r.id !== requestId));
 
     const totalAfter = Math.max(0, requestsTotal - 1);
     const pagesAfter = Math.max(1, Math.ceil(totalAfter / requestsPerPage));
@@ -388,8 +478,14 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     try {
       const res = await apiFetch(`${API.BASE_URL}${API.PATHS.REG_REQUEST}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ registration_request_id: requestId, new_status: "approved" }),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          registration_request_id: requestId,
+          new_status: "approved",
+        }),
       });
 
       if (!res.ok) {
@@ -398,7 +494,10 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
         if (request) bumpInstitutionUsers(request.institution_id, -1);
 
         const totalRollback = requestsTotal;
-        const pagesRollback = Math.max(1, Math.ceil(totalRollback / requestsPerPage));
+        const pagesRollback = Math.max(
+            1,
+            Math.ceil(totalRollback / requestsPerPage)
+        );
         setRequestsTotal(totalRollback);
         setTotalPages(pagesRollback);
         setRequestsPage(Math.min(requestsPage, pagesRollback));
@@ -415,7 +514,10 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       if (request) bumpInstitutionUsers(request.institution_id, -1);
 
       const totalRollback = requestsTotal;
-      const pagesRollback = Math.max(1, Math.ceil(totalRollback / requestsPerPage));
+      const pagesRollback = Math.max(
+          1,
+          Math.ceil(totalRollback / requestsPerPage)
+      );
       setRequestsTotal(totalRollback);
       setTotalPages(pagesRollback);
       setRequestsPage(Math.min(requestsPage, pagesRollback));
@@ -430,7 +532,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     const prevRequests = registrationRequests;
 
     patchMetrics({ institutionId, deltaPending: -1 });
-    setRegistrationRequests(prev => prev.filter(r => r.id !== requestId));
+    setRegistrationRequests((prev) => prev.filter((r) => r.id !== requestId));
 
     const totalAfter = Math.max(0, requestsTotal - 1);
     const pagesAfter = Math.max(1, Math.ceil(totalAfter / requestsPerPage));
@@ -442,8 +544,14 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     try {
       const res = await apiFetch(`${API.BASE_URL}${API.PATHS.REG_REQUEST}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ registration_request_id: requestId, new_status: "rejected" }),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          registration_request_id: requestId,
+          new_status: "rejected",
+        }),
       });
 
       if (!res.ok) {
@@ -451,7 +559,10 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
         setRegistrationRequests(prevRequests);
 
         const totalRollback = requestsTotal;
-        const pagesRollback = Math.max(1, Math.ceil(totalRollback / requestsPerPage));
+        const pagesRollback = Math.max(
+            1,
+            Math.ceil(totalRollback / requestsPerPage)
+        );
         setRequestsTotal(totalRollback);
         setTotalPages(pagesRollback);
         setRequestsPage(Math.min(requestsPage, pagesRollback));
@@ -467,7 +578,10 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       setRegistrationRequests(prevRequests);
 
       const totalRollback = requestsTotal;
-      const pagesRollback = Math.max(1, Math.ceil(totalRollback / requestsPerPage));
+      const pagesRollback = Math.max(
+          1,
+          Math.ceil(totalRollback / requestsPerPage)
+      );
       setRequestsTotal(totalRollback);
       setTotalPages(pagesRollback);
       setRequestsPage(Math.min(requestsPage, pagesRollback));
@@ -477,19 +591,16 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     }
   };
 
-
   const handleCreateInstitution = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validación del nombre de la institución
     if (!newInstitutionName.trim()) {
       toast.error("Por favor ingresa un nombre válido");
       return;
     }
 
-    // Crear el objeto institución con los valores del formulario
     const institution: Institution = {
-      institutionID: generateUUID(),  // Genera el UUID
+      institutionID: generateUUID(),
       institutionCode: newInstitutionCode,
       institutionName: newInstitutionName,
       country: newInstitutionCountry,
@@ -517,9 +628,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
         return;
       }
 
-      const newInstitution = await res.json();
-      setInstitutions((prev) => [...prev, newInstitution]);
-
+      setInstSearchText("");
       setNewInstitutionName("");
       setNewInstitutionCode("");
       setNewInstitutionCountry("");
@@ -529,10 +638,10 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       setNewInstitutionPhone("");
       setNewInstitutionWebSite("");
 
+      setInstitutionsPage(1);
       setShowInstitutionDialog(false);
 
       toast.success("Institución creada correctamente");
-
     } catch (err) {
       console.error(err);
       toast.error("Hubo un error al crear la institución");
@@ -547,10 +656,10 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
   const handleDeleteInstitution = () => {
     if (selectedInstitution) {
       setInstitutions((institutions) =>
-          institutions.filter((inst) => inst.id !== selectedInstitution.id),
+          institutions.filter((inst) => inst.id !== selectedInstitution.id)
       );
       toast.success(
-          `Institución "${selectedInstitution.institutionName}" eliminada en la vista.`,
+          `Institución "${selectedInstitution.institutionName}" eliminada en la vista.`
       );
       setShowDeleteInstitutionDialog(false);
       setSelectedInstitution(null);
@@ -571,7 +680,6 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       webSite: institution.webSite || "",
       adminEmail: institution.admin_user?.email || "",
     });
-    setAdminSearchEmail(institution.admin_user?.email || "");
     setAdminEmailValidation({ isValid: null, message: "" });
   };
 
@@ -654,9 +762,6 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       return null;
     }
   };
-
-// asumiendo que ya tienes esta helper del mensaje anterior
-// const validateAdminEmail = async (email: string, institutionId?: number): Promise<User | null> => { ... }
 
   const handleSaveInstitution = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -747,36 +852,9 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     }
   };
 
-  const startIndex = (currentPage - 1) * usersPerPage;
-  const endIndex = startIndex + usersPerPage;
-
-  // Filtrar instituciones visibles
-  const filteredInstitutions = (
-      isInstitutionAdmin
-          ? institutions.filter((inst) => String(inst.id) === String(user?.institutionId))
-          : institutions
-  ).filter((inst) =>
-      (inst.institutionName || "")
-          .toLowerCase()
-          .includes(institutionFilter.toLowerCase()),
-  );
-
-  // Paginación de instituciones
-  const totalInstitutionsPages = Math.ceil(
-      filteredInstitutions.length / institutionsPerPage,
-  );
-  const startInstitutionsIndex = (institutionsPage - 1) * institutionsPerPage;
-  const endInstitutionsIndex = startInstitutionsIndex + institutionsPerPage;
-  const visibleInstitutions = filteredInstitutions.slice(
-      startInstitutionsIndex,
-      endInstitutionsIndex,
-  );
-
-  const institutionOptions = institutions.map((inst) => ({
-    id: inst.id,                                   // para el backend
-    name: inst.institutionName || ""  // para mostrar
-  }));
-
+  // ========================
+  // Render helpers
+  // ========================
   const renderTotals = (totals?: ScopedTotals) => {
     if (isLoadingMetrics) return "…";
     if (!totals) return "0";
@@ -799,8 +877,12 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     );
   };
 
+  // ========================
+  // JSX
+  // ========================
   return (
       <div className="container mx-auto px-4 py-8">
+        {/* Header */}
         <div className="mb-6">
           <h1 className="text-3xl mb-2">Panel de Administración</h1>
           <p className="text-muted-foreground">
@@ -810,70 +892,60 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
           </p>
         </div>
 
-        {/* 4 Cards principales */}
+        {/* Top cards */}
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          {/* Card Usuarios Totales */}
-          <Card
-              // className="cursor-pointer hover:border-primary transition-colors"
-          >
+          <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm">Usuarios Totales</CardTitle>
               <Users className="h-5 w-5 text-blue-600" />
             </CardHeader>
-            <CardContent>
-              {renderTotals(metrics?.metrics.users)}
-            </CardContent>
+            <CardContent>{renderTotals(metrics?.metrics.users)}</CardContent>
           </Card>
 
-          {/* Card Solicitudes Pendientes */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm">Solicitudes Pendientes</CardTitle>
               <Shield className="h-5 w-5 text-orange-600" />
             </CardHeader>
-            <CardContent>
-              {renderTotals(metrics?.metrics.requestsPending)}
-            </CardContent>
+            <CardContent>{renderTotals(metrics?.metrics.requestsPending)}</CardContent>
           </Card>
 
-          {/* Card Colecciones */}
           <Card
               role="button"
               tabIndex={0}
               className="cursor-pointer hover:border-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50"
-              onClick={() => onNavigate('collections')}
-              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onNavigate('collections')}
+              onClick={() => onNavigate("collections")}
+              onKeyDown={(e) =>
+                  (e.key === "Enter" || e.key === " ") && onNavigate("collections")
+              }
           >
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm">Colecciones</CardTitle>
               <Database className="h-5 w-5 text-primary" />
             </CardHeader>
-            <CardContent>
-              {renderTotals(metrics?.metrics.collections)}
-            </CardContent>
+            <CardContent>{renderTotals(metrics?.metrics.collections)}</CardContent>
           </Card>
 
-          {/* Card Ocurrencias */}
           <Card
               role="button"
               tabIndex={0}
               className="cursor-pointer hover:border-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50"
-              onClick={() => onNavigate('occurrences')}
-              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onNavigate('occurrences')}
+              onClick={() => onNavigate("occurrences")}
+              onKeyDown={(e) =>
+                  (e.key === "Enter" || e.key === " ") && onNavigate("occurrences")
+              }
           >
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm">Ocurrencias</CardTitle>
               <Activity className="h-5 w-5 text-purple-600" />
             </CardHeader>
-            <CardContent>
-              {renderTotals(metrics?.metrics.occurrences)}
-            </CardContent>
+            <CardContent>{renderTotals(metrics?.metrics.occurrences)}</CardContent>
           </Card>
         </div>
 
-        {/* Grid principal: Instituciones (izquierda) | Solicitudes Pendientes (derecha) */}
+        {/* Two-column grid */}
         <div className="grid lg:grid-cols-2 gap-6">
-          {/* Lista de Instituciones - Columna Izquierda */}
+          {/* Institutions - left */}
           {
             <Card>
               <CardHeader>
@@ -884,143 +956,187 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
                       Gestiona las instituciones disponibles para registro
                     </CardDescription>
                   </div>
-                    {/* Botón para crear nueva institución */}
-                    <Dialog open={showInstitutionDialog} onOpenChange={setShowInstitutionDialog}>
-                        <DialogTrigger asChild>
-                            <Button size="sm" disabled={isInstitutionAdmin}>
-                                <Plus className="h-4 w-4 mr-2" />
-                                Nueva Institución
-                            </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                            <DialogHeader>
-                                <DialogTitle>Crear Nueva Institución</DialogTitle>
-                                <DialogDescription>Agrega una nueva institución al sistema</DialogDescription>
-                            </DialogHeader>
-                            <form onSubmit={handleCreateInstitution} className="space-y-4">
-                                {/* Campos del formulario de creación */}
-                                <div className="space-y-2">
-                                    <Label htmlFor="newInstitutionName">Nombre de la Institución</Label>
-                                    <Input
-                                        id="newInstitutionName"
-                                        value={newInstitutionName}
-                                        onChange={(e) => setNewInstitutionName(e.target.value)}
-                                        placeholder="Ej: Universidad de Ciencias Botánicas"
-                                        required
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="newInstitutionCode">Código de la Institución</Label>
-                                    <Input
-                                        id="newInstitutionCode"
-                                        value={newInstitutionCode}
-                                        onChange={(e) => setNewInstitutionCode(e.target.value)}
-                                        placeholder="Ej: UNCB"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="newInstitutionCountry">País</Label>
-                                    <Input
-                                        id="newInstitutionCountry"
-                                        value={newInstitutionCountry}
-                                        onChange={(e) => setNewInstitutionCountry(e.target.value)}
-                                        placeholder="Ej: Perú"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="newInstitutionCity">Ciudad</Label>
-                                    <Input
-                                        id="newInstitutionCity"
-                                        value={newInstitutionCity}
-                                        onChange={(e) => setNewInstitutionCity(e.target.value)}
-                                        placeholder="Ej: Lima"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="newInstitutionAddress">Dirección</Label>
-                                    <Input
-                                        id="newInstitutionAddress"
-                                        value={newInstitutionAddress}
-                                        onChange={(e) => setNewInstitutionAddress(e.target.value)}
-                                        placeholder="Ej: Av. Universidad 123"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="newInstitutionEmail">Correo Electrónico</Label>
-                                    <Input
-                                        id="newInstitutionEmail"
-                                        value={newInstitutionEmail}
-                                        onChange={(e) => setNewInstitutionEmail(e.target.value)}
-                                        type="email"
-                                        placeholder="contacto@institucion.edu"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="newInstitutionPhone">Teléfono</Label>
-                                    <Input
-                                        id="newInstitutionPhone"
-                                        value={newInstitutionPhone}
-                                        onChange={(e) => setNewInstitutionPhone(e.target.value)}
-                                        placeholder="Ej: +51 123 456 789"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="newInstitutionWebSite">Sitio Web</Label>
-                                    <Input
-                                        id="newInstitutionWebSite"
-                                        value={newInstitutionWebSite}
-                                        onChange={(e) => setNewInstitutionWebSite(e.target.value)}
-                                        placeholder="https://www.institucion.edu"
-                                    />
-                                </div>
 
-                                <Button type="submit" className="w-full">
-                                    <Building2 className="h-4 w-4 mr-2" />
-                                    Crear Institución
-                                </Button>
-                            </form>
-                        </DialogContent>
-                    </Dialog>
+                  {/* Create Institution */}
+                  <Dialog
+                      open={showInstitutionDialog}
+                      onOpenChange={setShowInstitutionDialog}
+                  >
+                    <DialogTrigger asChild>
+                      <Button size="sm" disabled={isInstitutionAdmin}>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Nueva Institución
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Crear Nueva Institución</DialogTitle>
+                        <DialogDescription>
+                          Agrega una nueva institución al sistema
+                        </DialogDescription>
+                      </DialogHeader>
+
+                      <form onSubmit={handleCreateInstitution} className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="newInstitutionName">
+                            Nombre de la Institución
+                          </Label>
+                          <Input
+                              id="newInstitutionName"
+                              value={newInstitutionName}
+                              onChange={(e) => setNewInstitutionName(e.target.value)}
+                              placeholder="Ej: Universidad de Ciencias Botánicas"
+                              required
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="newInstitutionCode">
+                            Código de la Institución
+                          </Label>
+                          <Input
+                              id="newInstitutionCode"
+                              value={newInstitutionCode}
+                              onChange={(e) => setNewInstitutionCode(e.target.value)}
+                              placeholder="Ej: UNCB"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="newInstitutionCountry">País</Label>
+                          <Input
+                              id="newInstitutionCountry"
+                              value={newInstitutionCountry}
+                              onChange={(e) => setNewInstitutionCountry(e.target.value)}
+                              placeholder="Ej: Perú"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="newInstitutionCity">Ciudad</Label>
+                          <Input
+                              id="newInstitutionCity"
+                              value={newInstitutionCity}
+                              onChange={(e) => setNewInstitutionCity(e.target.value)}
+                              placeholder="Ej: Lima"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="newInstitutionAddress">Dirección</Label>
+                          <Input
+                              id="newInstitutionAddress"
+                              value={newInstitutionAddress}
+                              onChange={(e) =>
+                                  setNewInstitutionAddress(e.target.value)
+                              }
+                              placeholder="Ej: Av. Universidad 123"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="newInstitutionEmail">
+                            Correo Electrónico
+                          </Label>
+                          <Input
+                              id="newInstitutionEmail"
+                              value={newInstitutionEmail}
+                              onChange={(e) => setNewInstitutionEmail(e.target.value)}
+                              type="email"
+                              placeholder="contacto@institucion.edu"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="newInstitutionPhone">Teléfono</Label>
+                          <Input
+                              id="newInstitutionPhone"
+                              value={newInstitutionPhone}
+                              onChange={(e) => setNewInstitutionPhone(e.target.value)}
+                              placeholder="Ej: +51 123 456 789"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="newInstitutionWebSite">Sitio Web</Label>
+                          <Input
+                              id="newInstitutionWebSite"
+                              value={newInstitutionWebSite}
+                              onChange={(e) => setNewInstitutionWebSite(e.target.value)}
+                              placeholder="https://www.institucion.edu"
+                          />
+                        </div>
+
+                        <Button type="submit" className="w-full">
+                          <Building2 className="h-4 w-4 mr-2" />
+                          Crear Institución
+                        </Button>
+                      </form>
+                    </DialogContent>
+                  </Dialog>
                 </div>
               </CardHeader>
+
               <CardContent>
+                {/* Autocomplete / filter */}
                 <div className="mb-4">
-                  {/* Input de búsqueda con ícono a la derecha */}
-                  <div className="relative w-full">
-                    <Input
-                        placeholder="Buscar institución por nombre..."
-                        value={institutionFilter}
-                        onChange={(e) => {
-                          setInstitutionFilter(e.target.value);
-                          setInstitutionsPage(1);
-                        }}
-                        className="w-full pr-10"
-                    />
-                    <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center">
-              <Search className="h-4 w-4 text-muted-foreground" />
-                </span>
-                  </div>
+                  <AutocompleteInstitution
+                      token={token}
+                      apiFetch={apiFetch}
+                      placeholder="Buscar institución..."
+                      disabled={isInstitutionAdmin}
+                      value={instSearchText}
+                      onChange={(t) => {
+                        setInstSearchText(t);
+                        setInstSelectedId(null);
+                        setInstitutionsPage(1);
+                      }}
+                      onSelect={(item) => {
+                        setInstSearchText(item.institutionName);
+                        setInstSelectedId(item.id);
+                        setInstitutionsPage(1);
+                      }}
+                  />
+
+                  {instSelectedId != null && (
+                      <div className="flex items-center gap-2 mt-2">
+                    <span className="text-xs text-muted-foreground">
+                      Filtrado por institución seleccionada
+                    </span>
+                        <button
+                            className="text-xs underline"
+                            type="button"
+                            onClick={() => {
+                              setInstSelectedId(null);
+                              setInstSearchText("");
+                              setInstitutionsPage(1);
+                            }}
+                        >
+                          Limpiar selección
+                        </button>
+                      </div>
+                  )}
                 </div>
+
+                {/* Institutions list */}
                 <div className="space-y-2">
                   {isLoadingInstitutions ? (
                       <p className="text-sm text-muted-foreground py-4 text-center">
                         Cargando instituciones...
                       </p>
-                  ) : visibleInstitutions.length === 0 ? (
+                  ) : institutions.length === 0 ? (
                       <p className="text-sm text-muted-foreground text-center py-4">
                         No se encontraron instituciones
                       </p>
                   ) : (
-                      visibleInstitutions.map((institution) => (
+                      institutions.map((institution) => (
                           <div
                               key={institution.id}
                               className="flex items-center gap-3 p-3 border rounded-lg"
                           >
                             <Building2 className="h-5 w-5 text-primary flex-shrink-0" />
                             <div className="flex-1 min-w-0">
-                              <p className="truncate">
-                                { institution.institutionName}
-                              </p>
+                              <p className="truncate">{institution.institutionName}</p>
                               <div className="flex items-center gap-2 mt-1">
                                 <p className="text-sm text-muted-foreground">
                                   {institution.usersCount ?? 0} usuarios
@@ -1035,6 +1151,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
                                 )}
                               </div>
                             </div>
+
                             <div className="flex items-center gap-2 flex-shrink-0">
                               <Button
                                   variant="outline"
@@ -1045,6 +1162,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
                               >
                                 <Eye className="h-4 w-4" />
                               </Button>
+
                               {(isSystemAdmin || isInstitutionAdmin) && (
                                   <>
                                     <Button
@@ -1056,13 +1174,16 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
                                     >
                                       <Edit className="h-4 w-4" />
                                     </Button>
+
                                     <Button
                                         variant="ghost"
                                         size="sm"
-                                        onClick={() => handleDeleteInstitutionClick(institution)}
+                                        onClick={() =>
+                                            handleDeleteInstitutionClick(institution)
+                                        }
                                         title="Eliminar institución"
                                         className="h-9 w-9 p-0"
-                                        disabled={isInstitutionAdmin}
+                                        disabled={true} // TODO: Eliminar correctamente
                                     >
                                       <Trash2 className="h-4 w-4 text-red-600" />
                                     </Button>
@@ -1073,31 +1194,35 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
                       ))
                   )}
                 </div>
-                {filteredInstitutions.length > 0 && (
+
+                {/* Pagination */}
+                {institutionsTotal > 0 && (
                     <div className="flex items-center justify-between mt-4 pt-4 border-t">
                       <Button
                           variant="outline"
                           size="sm"
                           onClick={() =>
-                              setInstitutionsPage(Math.max(1, institutionsPage - 1))
+                              setInstitutionsPage((p) => Math.max(1, p - 1))
                           }
                           disabled={institutionsPage === 1}
                       >
                         <ChevronLeft className="h-4 w-4 mr-1" />
                         Anterior
                       </Button>
+
                       <span className="text-sm text-muted-foreground">
-              Página {institutionsPage} de {totalInstitutionsPages}
-            </span>
+                    Página {institutionsPage} de {institutionsTotalPages}
+                  </span>
+
                       <Button
                           variant="outline"
                           size="sm"
                           onClick={() =>
-                              setInstitutionsPage(
-                                  Math.min(totalInstitutionsPages, institutionsPage + 1)
+                              setInstitutionsPage((p) =>
+                                  Math.min(institutionsTotalPages, p + 1)
                               )
                           }
-                          disabled={institutionsPage === totalInstitutionsPages}
+                          disabled={institutionsPage >= institutionsTotalPages}
                       >
                         Siguiente
                         <ChevronRight className="h-4 w-4 ml-1" />
@@ -1108,141 +1233,146 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
             </Card>
           }
 
-        {/* Solicitudes Pendientes - Columna Derecha */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Solicitudes de Registro Pendientes</CardTitle>
-            <CardDescription>
-              Revisa y aprueba las solicitudes de nuevos usuarios
-            </CardDescription>
-          </CardHeader>
+          {/* Requests - right */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Solicitudes de Registro Pendientes</CardTitle>
+              <CardDescription>
+                Revisa y aprueba las solicitudes de nuevos usuarios
+              </CardDescription>
+            </CardHeader>
 
-          <CardContent>
-            <div className="mb-4 space-y-2">
-              {/* 🔧 Buscador de solicitudes por nombre con ícono a la derecha */}
-              <div className="relative w-full">
-                <Input
-                    placeholder="Buscar solicitud por nombre..."
-                    value={requestNameFilter}
-                    onChange={(e) => {
-                      setRequestNameFilter(e.target.value);
+            <CardContent>
+              {/* Filter by institution (autocomplete) */}
+              <div className="mb-4">
+                <AutocompleteInstitution
+                    token={token}
+                    apiFetch={apiFetch}
+                    placeholder="Buscar solicitud por institución..."
+                    disabled={!isSystemAdmin}
+                    value={reqInstSearchText}
+                    onChange={(t) => {
+                      setReqInstSearchText(t);
                       setRequestsPage(1);
                     }}
-                    className="pr-10"
+                    onSelect={(item) => {
+                      setReqInstSearchText(item.institutionName);
+                      setReqSelectedInstitutionId(item.id);
+                      setRequestsPage(1);
+                    }}
                 />
-                <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center">
-          <Search className="h-4 w-4 text-muted-foreground" />
-        </span>
+
+                {reqSelectedInstitutionId !== "all" && (
+                    <div className="flex items-center gap-2 mt-2">
+                  <span className="text-xs text-muted-foreground">
+                    Filtrando por institución seleccionada
+                  </span>
+                      <button
+                          className="text-xs underline"
+                          type="button"
+                          onClick={() => {
+                            setReqSelectedInstitutionId("all");
+                            setReqInstSearchText("");
+                            setRequestsPage(1);
+                          }}
+                      >
+                        Limpiar selección
+                      </button>
+                    </div>
+                )}
               </div>
 
-              {/* Filtro por institución */}
-              <Select
-                  value={requestInstitutionFilter}
-                  onValueChange={(value) => {
-                    // value viene como string
-                    setRequestInstitutionFilter(value); // puede ser "all" o "3"
-                    setRequestsPage(1);
-                  }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Filtrar por institución" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas las instituciones</SelectItem>
-                  {institutionOptions.map((inst) => (
-                      <SelectItem key={inst.id} value={String(inst.id)}>
-                        {inst.name}
-                      </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              {registrationRequests.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    No se encontraron solicitudes pendientes
-                  </p>
-              ) : (
-                  registrationRequests.map((request) => (
-                      <div
-                          key={request.id}
-                          className="flex items-center gap-3 p-3 border rounded-lg"
-                      >
-                        <Users className="h-5 w-5 text-primary flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm truncate">{request.full_name}</p>
-                          <p className="text-xs text-muted-foreground truncate">
-                            {request.email}
-                          </p>
-                          <div className="flex items-center gap-2 mt-1">
+              {/* Requests list */}
+              <div className="space-y-2">
+                {registrationRequests.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      No se encontraron solicitudes pendientes
+                    </p>
+                ) : (
+                    registrationRequests.map((request) => (
+                        <div
+                            key={request.id}
+                            className="flex items-center gap-3 p-3 border rounded-lg"
+                        >
+                          <Users className="h-5 w-5 text-primary flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm truncate">{request.full_name}</p>
                             <p className="text-xs text-muted-foreground truncate">
-                              {request.institution_name}
+                              {request.email}
                             </p>
-                            <span className="text-xs text-muted-foreground">•</span>
-                            <p className="text-xs text-muted-foreground">
-                              {new Date(request.created_at).toLocaleDateString("es-ES")}
-                            </p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <p className="text-xs text-muted-foreground truncate">
+                                {request.institution_name}
+                              </p>
+                              <span className="text-xs text-muted-foreground">•</span>
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(request.created_at).toLocaleDateString("es-ES")}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <Button
+                                size="sm"
+                                onClick={() =>
+                                    handleApproveRequest(request.id, request.institution_id)
+                                }
+                                title="Aprobar solicitud"
+                                className="h-9 w-9 p-0"
+                            >
+                              <CheckCircle className="h-4 w-4" />
+                            </Button>
+
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                    handleRejectRequest(request.id, request.institution_id)
+                                }
+                                title="Rechazar solicitud"
+                                className="h-9 w-9 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <XCircle className="h-4 w-4" />
+                            </Button>
                           </div>
                         </div>
+                    ))
+                )}
+              </div>
 
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <Button
-                              size="sm"
-                              onClick={() => handleApproveRequest(request.id, request.institution_id)}
-                              title="Aprobar solicitud"
-                              className="h-9 w-9 p-0"
-                          >
-                            <CheckCircle className="h-4 w-4" />
-                          </Button>
+              {/* Pagination */}
+              {registrationRequests.length > 0 && (
+                  <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={goToPreviousPage}
+                        disabled={requestsPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4 mr-1" />
+                      Anterior
+                    </Button>
 
-                          <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleRejectRequest(request.id, request.institution_id)}
-                              title="Rechazar solicitud"
-                              className="h-9 w-9 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                          >
-                            <XCircle className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                  ))
+                    <span className="text-sm text-muted-foreground">
+                  Página {requestsPage} de {totalPages}
+                </span>
+
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={goToNextPage}
+                        disabled={requestsPage === totalPages}
+                    >
+                      Siguiente
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </div>
               )}
-            </div>
-
-            {registrationRequests.length > 0 && (
-                <div className="flex items-center justify-between mt-4 pt-4 border-t">
-                  <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={goToPreviousPage} // Llama a la función para la página anterior
-                      disabled={requestsPage === 1} // Deshabilitar si ya está en la primera página
-                  >
-                    <ChevronLeft className="h-4 w-4 mr-1" />
-                    Anterior
-                  </Button>
-
-                  <span className="text-sm text-muted-foreground">
-          Página {requestsPage} de {totalPages}
-        </span>
-
-                  <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={goToNextPage} // Llama a la función para la página siguiente
-                      disabled={requestsPage === totalPages} // Deshabilitar si ya está en la última página
-                  >
-                    Siguiente
-                    <ChevronRight className="h-4 w-4 ml-1" />
-                  </Button>
-                </div>
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
         </div>
 
-        {/* Dialog para ver detalles de institución */}
+        {/* Institution details dialog */}
         <Dialog
             open={!!viewInstitutionDetails}
             onOpenChange={() => setViewInstitutionDetails(null)}
@@ -1254,6 +1384,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
                 Información completa de la institución
               </DialogDescription>
             </DialogHeader>
+
             {viewInstitutionDetails && (
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
@@ -1270,9 +1401,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
                       </p>
                     </div>
                     <div>
-                      <Label className="text-sm text-muted-foreground">
-                        Código
-                      </Label>
+                      <Label className="text-sm text-muted-foreground">Código</Label>
                       <p className="text-sm">
                         {viewInstitutionDetails.institutionCode || (
                             <span className="text-muted-foreground italic">
@@ -1305,9 +1434,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
                       </p>
                     </div>
                     <div>
-                      <Label className="text-sm text-muted-foreground">
-                        Ciudad
-                      </Label>
+                      <Label className="text-sm text-muted-foreground">Ciudad</Label>
                       <p className="text-sm">
                         {viewInstitutionDetails.city || (
                             <span className="text-muted-foreground italic">
@@ -1319,9 +1446,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
                   </div>
 
                   <div>
-                    <Label className="text-sm text-muted-foreground">
-                      Dirección
-                    </Label>
+                    <Label className="text-sm text-muted-foreground">Dirección</Label>
                     <p className="text-sm">
                       {viewInstitutionDetails.address || (
                           <span className="text-muted-foreground italic">
@@ -1333,9 +1458,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label className="text-sm text-muted-foreground">
-                        Email
-                      </Label>
+                      <Label className="text-sm text-muted-foreground">Email</Label>
                       <p className="text-sm">
                         {viewInstitutionDetails.email || (
                             <span className="text-muted-foreground italic">
@@ -1345,9 +1468,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
                       </p>
                     </div>
                     <div>
-                      <Label className="text-sm text-muted-foreground">
-                        Teléfono
-                      </Label>
+                      <Label className="text-sm text-muted-foreground">Teléfono</Label>
                       <p className="text-sm">
                         {viewInstitutionDetails.phone || (
                             <span className="text-muted-foreground italic">
@@ -1359,9 +1480,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
                   </div>
 
                   <div>
-                    <Label className="text-sm text-muted-foreground">
-                      Sitio Web
-                    </Label>
+                    <Label className="text-sm text-muted-foreground">Sitio Web</Label>
                     <p className="text-sm">
                       {viewInstitutionDetails.webSite || (
                           <span className="text-muted-foreground italic">
@@ -1410,207 +1529,197 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
           </DialogContent>
         </Dialog>
 
-          <Dialog
-              open={!!editInstitution}
-              onOpenChange={() => setEditInstitution(null)}
-          >
-              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                  <DialogHeader>
-                      <DialogTitle>Editar Institución</DialogTitle>
-                      <DialogDescription>
-                          Actualiza la información de la institución
-                      </DialogDescription>
-                  </DialogHeader>
-                  {editInstitution && (
-                      <form onSubmit={handleSaveInstitution} className="space-y-4">
-                          <div className="grid grid-cols-2 gap-4">
-                              {/* ID de Institución */}
-                              <div className="space-y-2">
-                                  <Label htmlFor="edit-institutionID">ID de Institución</Label>
-                                  <Input
-                                      id="edit-institutionID"
-                                      value={editForm.institutionID}
-                                      onChange={(e) =>
-                                          setEditForm({
-                                              ...editForm,
-                                              institutionID: e.target.value,
-                                          })
-                                      }
-                                      placeholder="Ej: UNB-001"
-                                      disabled={isInstitutionAdmin}  // Bloqueado si es InstitutionAdmin
-                                  />
-                              </div>
+        {/* Edit institution dialog */}
+        <Dialog open={!!editInstitution} onOpenChange={() => setEditInstitution(null)}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Editar Institución</DialogTitle>
+              <DialogDescription>
+                Actualiza la información de la institución
+              </DialogDescription>
+            </DialogHeader>
 
-                              {/* Código de la Institución */}
-                              <div className="space-y-2">
-                                  <Label htmlFor="edit-institutionCode">Código</Label>
-                                  <Input
-                                      id="edit-institutionCode"
-                                      value={editForm.institutionCode}
-                                      onChange={(e) =>
-                                          setEditForm({
-                                              ...editForm,
-                                              institutionCode: e.target.value,
-                                          })
-                                      }
-                                      placeholder="Ej: UNB"
-                                  />
-                              </div>
-                          </div>
+            {editInstitution && (
+                <form onSubmit={handleSaveInstitution} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-institutionID">ID de Institución</Label>
+                      <Input
+                          id="edit-institutionID"
+                          value={editForm.institutionID}
+                          onChange={(e) =>
+                              setEditForm({
+                                ...editForm,
+                                institutionID: e.target.value,
+                              })
+                          }
+                          placeholder="Ej: UNB-001"
+                          disabled={isInstitutionAdmin}
+                      />
+                    </div>
 
-                          {/* Nombre de la Institución */}
-                          <div className="space-y-2">
-                              <Label htmlFor="edit-institutionName">Nombre de la Institución</Label>
-                              <Input
-                                  id="edit-institutionName"
-                                  value={editForm.institutionName}
-                                  onChange={(e) =>
-                                      setEditForm({
-                                          ...editForm,
-                                          institutionName: e.target.value,
-                                      })
-                                  }
-                                  placeholder="Ej: Universidad Nacional de Botánica"
-                                  required
-                              />
-                          </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-institutionCode">Código</Label>
+                      <Input
+                          id="edit-institutionCode"
+                          value={editForm.institutionCode}
+                          onChange={(e) =>
+                              setEditForm({
+                                ...editForm,
+                                institutionCode: e.target.value,
+                              })
+                          }
+                          placeholder="Ej: UNB"
+                      />
+                    </div>
+                  </div>
 
-                          {/* País */}
-                          <div className="grid grid-cols-2 gap-4">
-                              <div className="space-y-2">
-                                  <Label htmlFor="edit-country">País</Label>
-                                  <Input
-                                      id="edit-country"
-                                      value={editForm.country}
-                                      onChange={(e) =>
-                                          setEditForm({ ...editForm, country: e.target.value })
-                                      }
-                                      placeholder="Ej: Ecuador"
-                                  />
-                              </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-institutionName">
+                      Nombre de la Institución
+                    </Label>
+                    <Input
+                        id="edit-institutionName"
+                        value={editForm.institutionName}
+                        onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              institutionName: e.target.value,
+                            })
+                        }
+                        placeholder="Ej: Universidad Nacional de Botánica"
+                        required
+                    />
+                  </div>
 
-                              {/* Ciudad */}
-                              <div className="space-y-2">
-                                  <Label htmlFor="edit-city">Ciudad</Label>
-                                  <Input
-                                      id="edit-city"
-                                      value={editForm.city}
-                                      onChange={(e) =>
-                                          setEditForm({ ...editForm, city: e.target.value })
-                                      }
-                                      placeholder="Ej: Quito"
-                                  />
-                              </div>
-                          </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-country">País</Label>
+                      <Input
+                          id="edit-country"
+                          value={editForm.country}
+                          onChange={(e) =>
+                              setEditForm({ ...editForm, country: e.target.value })
+                          }
+                          placeholder="Ej: Ecuador"
+                      />
+                    </div>
 
-                          {/* Dirección */}
-                          <div className="space-y-2">
-                              <Label htmlFor="edit-address">Dirección</Label>
-                              <Input
-                                  id="edit-address"
-                                  value={editForm.address}
-                                  onChange={(e) =>
-                                      setEditForm({ ...editForm, address: e.target.value })
-                                  }
-                                  placeholder="Ej: Av. Universidad 123"
-                              />
-                          </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-city">Ciudad</Label>
+                      <Input
+                          id="edit-city"
+                          value={editForm.city}
+                          onChange={(e) =>
+                              setEditForm({ ...editForm, city: e.target.value })
+                          }
+                          placeholder="Ej: Quito"
+                      />
+                    </div>
+                  </div>
 
-                          {/* Email */}
-                          <div className="grid grid-cols-2 gap-4">
-                              <div className="space-y-2">
-                                  <Label htmlFor="edit-email">Email</Label>
-                                  <Input
-                                      id="edit-email"
-                                      type="email"
-                                      value={editForm.email}
-                                      onChange={(e) =>
-                                          setEditForm({ ...editForm, email: e.target.value })
-                                      }
-                                      placeholder="contacto@institucion.edu"
-                                  />
-                              </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-address">Dirección</Label>
+                    <Input
+                        id="edit-address"
+                        value={editForm.address}
+                        onChange={(e) =>
+                            setEditForm({ ...editForm, address: e.target.value })
+                        }
+                        placeholder="Ej: Av. Universidad 123"
+                    />
+                  </div>
 
-                              {/* Teléfono */}
-                              <div className="space-y-2">
-                                  <Label htmlFor="edit-phone">Teléfono</Label>
-                                  <Input
-                                      id="edit-phone"
-                                      value={editForm.phone}
-                                      onChange={(e) =>
-                                          setEditForm({ ...editForm, phone: e.target.value })
-                                      }
-                                      placeholder="+593-2-1234567"
-                                  />
-                              </div>
-                          </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-email">Email</Label>
+                      <Input
+                          id="edit-email"
+                          type="email"
+                          value={editForm.email}
+                          onChange={(e) =>
+                              setEditForm({ ...editForm, email: e.target.value })
+                          }
+                          placeholder="contacto@institucion.edu"
+                      />
+                    </div>
 
-                          {/* Sitio Web */}
-                          <div className="space-y-2">
-                              <Label htmlFor="edit-webSite">Sitio Web</Label>
-                              <Input
-                                  id="edit-webSite"
-                                  value={editForm.webSite}
-                                  onChange={(e) =>
-                                      setEditForm({ ...editForm, webSite: e.target.value })
-                                  }
-                                  placeholder="https://www.institucion.edu"
-                              />
-                          </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-phone">Teléfono</Label>
+                      <Input
+                          id="edit-phone"
+                          value={editForm.phone}
+                          onChange={(e) =>
+                              setEditForm({ ...editForm, phone: e.target.value })
+                          }
+                          placeholder="+593-2-1234567"
+                      />
+                    </div>
+                  </div>
 
-                          {/* Administrador */}
-                        <div className="space-y-2">
-                          <Label htmlFor="edit-adminEmail">Administrador (email)</Label>
-                          <Input
-                              id="edit-adminEmail"
-                              type="email"
-                              value={editForm.adminEmail}
-                              onChange={(e) => {
-                                setEditForm({ ...editForm, adminEmail: e.target.value });
-                                // limpiar estado al escribir
-                                setAdminEmailValidation({ isValid: null, message: "" });
-                              }}
-                              onBlur={(e) => {
-                                validateAdminEmail(e.target.value, editInstitution?.id);
-                              }}
-                              placeholder="admin@email.com"
-                              disabled={
-                                  isInstitutionAdmin ||
-                                  (isSystemAdmin &&
-                                      user.email === editInstitution?.admin_user?.email)
-                              }
-                          />
-                          {adminEmailValidation.message && (
-                              <p
-                                  className={`text-xs mt-1 ${
-                                      adminEmailValidation.isValid ? "text-green-600" : "text-red-600"
-                                  }`}
-                              >
-                                {adminEmailValidation.message}
-                              </p>
-                          )}
-                        </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-webSite">Sitio Web</Label>
+                    <Input
+                        id="edit-webSite"
+                        value={editForm.webSite}
+                        onChange={(e) =>
+                            setEditForm({ ...editForm, webSite: e.target.value })
+                        }
+                        placeholder="https://www.institucion.edu"
+                    />
+                  </div>
 
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-adminEmail">Administrador (email)</Label>
+                    <Input
+                        id="edit-adminEmail"
+                        type="email"
+                        value={editForm.adminEmail}
+                        onChange={(e) => {
+                          setEditForm({ ...editForm, adminEmail: e.target.value });
+                          setAdminEmailValidation({ isValid: null, message: "" });
+                        }}
+                        onBlur={(e) => {
+                          validateAdminEmail(e.target.value, editInstitution?.id);
+                        }}
+                        placeholder="admin@email.com"
+                        disabled={
+                            isInstitutionAdmin ||
+                            (isSystemAdmin && user.email === editInstitution?.admin_user?.email)
+                        }
+                    />
+                    {adminEmailValidation.message && (
+                        <p
+                            className={`text-xs mt-1 ${
+                                adminEmailValidation.isValid
+                                    ? "text-green-600"
+                                    : "text-red-600"
+                            }`}
+                        >
+                          {adminEmailValidation.message}
+                        </p>
+                    )}
+                  </div>
 
-                          <div className="flex gap-2 pt-4">
-                              <Button
-                                  type="button"
-                                  variant="outline"
-                                  onClick={() => setEditInstitution(null)}
-                                  className="flex-1"
-                              >
-                                  Cancelar
-                              </Button>
-                              <Button type="submit" className="flex-1">
-                                  Guardar Cambios
-                              </Button>
-                          </div>
-                      </form>
-                  )}
-              </DialogContent>
-          </Dialog>
+                  <div className="flex gap-2 pt-4">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setEditInstitution(null)}
+                        className="flex-1"
+                    >
+                      Cancelar
+                    </Button>
+                    <Button type="submit" className="flex-1">
+                      Guardar Cambios
+                    </Button>
+                  </div>
+                </form>
+            )}
+          </DialogContent>
+        </Dialog>
 
-        {/* Dialog de confirmación para eliminar institución */}
+        {/* Delete confirmation */}
         <AlertDialog
             open={showDeleteInstitutionDialog}
             onOpenChange={setShowDeleteInstitutionDialog}

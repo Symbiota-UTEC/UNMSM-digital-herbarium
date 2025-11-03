@@ -42,7 +42,7 @@ class RegistrationRequestItem(BaseModel):
 
 
 class RegistrationRequestPage(BaseModel):
-    requests: List[RegistrationRequestItem]
+    items: List[RegistrationRequestItem]
     total: int
     total_pages: int
     limit: int
@@ -64,16 +64,16 @@ def list_registration_requests(
     status_filter: Optional[Literal["pending", "approved", "rejected"]] = Query(None),
     institution_id: Optional[int] = Query(None, ge=1),
 
+    full_name_prefix: Optional[str] = Query(None, description="Prefijo para filtrar por full_name (case/accent-insensitive)"),
+
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     if current_user.is_superuser:
-        # Superuser: puede listar todo; si pasó institution_id, filtramos por él
         where_clauses = []
         if institution_id is not None:
             where_clauses.append(RegistrationRequest.institution_id == institution_id)
     elif current_user.is_institution_admin:
-        # Admin de institución: debe pasar institution_id y debe ser el suyo
         if institution_id is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -86,7 +86,6 @@ def list_registration_requests(
             )
         where_clauses = [RegistrationRequest.institution_id == institution_id]
     else:
-        # Ni superuser ni admin de institución
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tienes permisos para listar solicitudes de registro",
@@ -95,17 +94,32 @@ def list_registration_requests(
     if status_filter is not None:
         where_clauses.append(RegistrationRequest.status == status_filter)
 
-    base_stmt = select(RegistrationRequest).join(Institution, Institution.id == RegistrationRequest.institution_id)
+    # ⬇Acento-insensible + case-insensitive con unaccent + ILIKE (prefijo)
+    if full_name_prefix:
+        pattern = f"{full_name_prefix}%"
+        where_clauses.append(
+            func.unaccent(func.coalesce(RegistrationRequest.full_name, "")).ilike(
+                func.unaccent(pattern)
+            )
+        )
+
+    base_stmt = (
+        select(RegistrationRequest)
+        .join(Institution, Institution.id == RegistrationRequest.institution_id)
+    )
     if where_clauses:
         base_stmt = base_stmt.where(and_(*where_clauses))
 
-    count_stmt = select(func.count()).select_from(RegistrationRequest).join(Institution, Institution.id == RegistrationRequest.institution_id)
+    count_stmt = (
+        select(func.count())
+        .select_from(RegistrationRequest)
+        .join(Institution, Institution.id == RegistrationRequest.institution_id)
+    )
     if where_clauses:
         count_stmt = count_stmt.where(and_(*where_clauses))
 
     total = db.execute(count_stmt).scalar_one()
 
-    # más reciente primero
     stmt = (
         base_stmt
         .order_by(RegistrationRequest.created_at.desc())
@@ -142,7 +156,7 @@ def list_registration_requests(
     remaining_pages = total_pages - current_page
 
     return RegistrationRequestPage(
-        requests=requests_payload,
+        items=requests_payload,
         total=total,
         total_pages=total_pages,
         limit=limit,

@@ -51,6 +51,7 @@
         "@config": path.resolve(__dirname, "src/config"),
         "@interfaces": path.resolve(__dirname, "src/interfaces"),
         "@contexts": path.resolve(__dirname, "src/contexts"),
+        "@utils": path.resolve(__dirname, "src/utils"),
       },
     },
     build: {
