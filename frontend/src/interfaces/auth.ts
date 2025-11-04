@@ -10,6 +10,7 @@ export interface User extends BasicUserInfo {
     role: Role;
     institutionId?: string | null;
     institution?: string | null;
+    agentId?: number | null;
 }
 
 export interface AuthContextType {
@@ -28,6 +29,7 @@ export interface ApiUserOut {
     is_active: boolean;
     is_superuser: boolean;
     is_institution_admin: boolean;
+    agent_id: number;
     institution_id: number | null;
     created_at: string;
 }
@@ -45,6 +47,7 @@ export const mapApiUserToUser = (apiUser: ApiUserOut): User => {
         username: apiUser.username,
         email: apiUser.email,
         role,
+        agentId: apiUser.agent_id,
         institutionId: apiUser.institution_id
             ? String(apiUser.institution_id)
             : null,

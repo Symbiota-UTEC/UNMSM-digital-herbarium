@@ -95,8 +95,21 @@ class Collection(Base):
     institution_id: Mapped[Optional[int]] = mapped_column(ForeignKey("institution.id"))
     institution: Mapped[Optional[Institution]] = relationship("Institution", back_populates="collections")
 
-    occurrences: Mapped[List[Occurrence]] = relationship("Occurrence", back_populates="collection")
+    creator_agent_id: Mapped[int] = mapped_column(
+        ForeignKey("agent.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    creator: Mapped["Agent"] = relationship("Agent", back_populates="collections")
 
+    occurrences: Mapped[List["Occurrence"]] = relationship("Occurrence", back_populates="collection")
+
+    permissions: Mapped[List["CollectionPermission"]] = relationship(
+        "CollectionPermission",
+        back_populates="collection",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 class Agent(Base):
     """Persona u organización involucrada (colector, identificador, curador).
@@ -119,6 +132,13 @@ class Agent(Base):
     # email: Mapped[Optional[String]] = mapped_column(String(255))
     phone: Mapped[Optional[String]] = mapped_column(String(50))
     address: Mapped[Optional[Text]] = mapped_column(Text())
+
+    collections: Mapped[List["Collection"]] = relationship(
+        "Collection",
+        back_populates="creator",
+        cascade="save-update",
+        passive_deletes=True,
+    )
 
 
 class User(Base):
@@ -146,6 +166,42 @@ class User(Base):
         back_populates="users",
         foreign_keys=[institution_id],
         primaryjoin="User.institution_id == Institution.id",
+    )
+
+    collection_permissions: Mapped[List["CollectionPermission"]] = relationship(
+        "CollectionPermission",
+        back_populates="user",
+        foreign_keys=lambda: [CollectionPermission.user_id],
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class CollectionPermission(Base):
+    __tablename__ = "collection_permission"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    collection_id: Mapped[int] = mapped_column(ForeignKey("collection.id", ondelete="CASCADE"), index=True, nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+
+    role: Mapped[str] = mapped_column(
+        Enum("viewer", "editor", "owner", name="collection_permission_enum"),
+        nullable=False,
+        index=True,
+    )
+    granted_by_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    collection: Mapped["Collection"] = relationship("Collection", back_populates="permissions")
+    user: Mapped["User"] = relationship(
+        "User",
+        back_populates="collection_permissions",
+        foreign_keys=[user_id],
+    )
+    granted_by: Mapped[Optional["User"]] = relationship("User", foreign_keys=[granted_by_user_id])
+
+    __table_args__ = (
+        UniqueConstraint("collection_id", "user_id", name="uq_collection_user"),
     )
 
 

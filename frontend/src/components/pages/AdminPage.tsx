@@ -71,7 +71,7 @@ import {
 import { toast } from "sonner@2.0.3";
 import { Role } from "@constants/roles";
 import { useAuth } from "@contexts/AuthContext";
-import { API } from "@constants/api";
+import { API, PAGE_SIZE } from "@constants/api";
 import { User, ApiUserOut, mapApiUserToUser } from "@interfaces/auth";
 import { ScopedTotals, AdminMetrics } from "@interfaces/admin";
 import {
@@ -150,13 +150,13 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
   });
 
   // Pagination / filters - Institutions
-  const institutionsPerPage = 2;
+  const institutionsPerPage = PAGE_SIZE.INSTITUTIONS;
   const [institutionsPage, setInstitutionsPage] = useState(1);
   const [institutionsTotal, setInstitutionsTotal] = useState(0);
   const [institutionsTotalPages, setInstitutionsTotalPages] = useState(1);
 
   // Pagination / filters - Requests (right column)
-  const requestsPerPage = 2;
+  const requestsPerPage = PAGE_SIZE.REGISTRATIONS;
   const [requestsPage, setRequestsPage] = useState(1);
   const [requestNameFilter, setRequestNameFilter] = useState("");
 
@@ -256,7 +256,6 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       ]
   );
 
-
   // ========================
   // Effects
   // ========================
@@ -299,7 +298,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     fetchMetrics();
   }, [token]);
 
-  // Load institutions (left column) with filters/pagination
+  // Load institutions (left column) with selection/pagination
   useEffect(() => {
     const fetchInstitutions = async () => {
       try {
@@ -350,12 +349,8 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
           limit: String(institutionsPerPage),
           offset: String(offset),
         });
-        if (instSearchText.trim())
-          params.set("name_prefix", instSearchText.trim());
 
-        const endpoint = `${API.BASE_URL}${
-            API.PATHS.INSTITUTIONS
-        }?${params.toString()}`;
+        const endpoint = `${API.BASE_URL}${API.PATHS.INSTITUTIONS}?${params.toString()}`;
         const res = await apiFetch(endpoint, {
           headers: {
             "Content-Type": "application/json",
@@ -387,7 +382,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     user?.institutionId,
     institutionsPage,
     institutionsPerPage,
-    instSearchText,
+    // 👇 OJO: ya NO dependemos de instSearchText para evitar requests mientras escribes
     instSelectedId,
   ]);
 

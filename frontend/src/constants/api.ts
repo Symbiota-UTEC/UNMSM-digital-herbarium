@@ -11,3 +11,8 @@ export const API = {
         ADMIN_METRICS: "/admin/metrics"
     },
 };
+
+export const PAGE_SIZE = {
+    INSTITUTIONS: 4,
+    REGISTRATIONS: 6,
+}

@@ -2,7 +2,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, literal
 
 from backend.config.database import get_db
 from backend.models.models import Institution, User
@@ -66,8 +66,6 @@ class InstitutionCreate(BaseModel):
         orm_mode = True
 
 
-from sqlalchemy import select, func, and_
-
 @router.get(
     "",
     response_model=InstitutionPageOut,
@@ -80,17 +78,18 @@ def list_institutions(
 
     name_prefix: Optional[str] = Query(
         None,
-        description="Prefijo de búsqueda por nombre de institución (case/accent-insensitive)"
+        description="Filtro por nombre de institución (contiene, case/accent-insensitive)"
     ),
 ):
     where_clauses = []
 
+    norm_name = func.unaccent(func.lower(func.coalesce(Institution.institutionName, "")))
+
     if name_prefix:
-        pattern = f"{name_prefix}%"
+        q = name_prefix.strip().lower()
+        contains_pattern = f"%{q}%"
         where_clauses.append(
-            func.unaccent(func.coalesce(Institution.institutionName, "")).ilike(
-                func.unaccent(pattern)
-            )
+            norm_name.ilike(func.unaccent(func.lower(literal(contains_pattern))))
         )
 
     count_stmt = select(func.count()).select_from(Institution)
@@ -98,14 +97,31 @@ def list_institutions(
         count_stmt = count_stmt.where(and_(*where_clauses))
     total = db.scalar(count_stmt) or 0
 
-    stmt = (
-        select(Institution)
-        .order_by(Institution.institutionName.nulls_last())
-        .limit(limit)
-        .offset(offset)
-    )
+    stmt = select(Institution)
     if where_clauses:
         stmt = stmt.where(and_(*where_clauses))
+
+    order_by_columns = []
+    if name_prefix:
+        q = name_prefix.strip().lower()
+
+        startswith_pattern = f"{q}%"
+        order_by_columns.append(
+            norm_name.ilike(func.unaccent(literal(startswith_pattern))).desc()
+        )
+
+        pos_expr = func.strpos(norm_name, func.unaccent(literal(q)))
+        order_by_columns.append(pos_expr.asc())
+
+        order_by_columns.append(func.length(norm_name).asc())
+
+    order_by_columns.append(Institution.institutionName.asc().nulls_last())
+
+    stmt = (
+        stmt.order_by(*order_by_columns)
+            .limit(limit)
+            .offset(offset)
+    )
 
     institutions = db.scalars(stmt).all()
 
