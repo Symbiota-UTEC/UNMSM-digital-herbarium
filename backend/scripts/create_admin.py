@@ -4,9 +4,11 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 from uuid import uuid4
+from typing import Optional
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, Mapped
+from sqlalchemy.types import String, Text
 
 from backend.config.database import Base, engine, SessionLocal
 from backend.models.models import User, Institution, Agent
@@ -119,7 +121,10 @@ def upsert_admin(db: Session, institution: Institution, agent: Agent) -> User:
     admin_email = os.getenv("ADMIN_EMAIL", "admin@gmail.com")
     admin_password = os.getenv("ADMIN_PASSWORD", "admin")
 
-    user = db.execute(select(User).where(User.username == admin_username)).scalar_one_or_none()
+    user = db.execute(
+        select(User).where(User.username == admin_username)
+    ).scalar_one_or_none()
+
     if user:
         changed = False
 
@@ -143,38 +148,41 @@ def upsert_admin(db: Session, institution: Institution, agent: Agent) -> User:
             db.commit()
             db.refresh(user)
 
+    else:
+        user = User(
+            username=admin_username,
+            email=admin_email,
+            hashed_password=hash_password(admin_password),
+            is_active=True,
+            is_superuser=True,
+            is_institution_admin=True,
+            institution_id=institution.id,
+            agent_id=agent.id,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
 
-        if institution.institution_admin_user_id != user.id:
-            institution.institution_admin_user_id = user.id
-            db.add(institution)
-            db.commit()
-            db.refresh(institution)
+    prev_inst = db.execute(
+        select(Institution).where(
+            Institution.institution_admin_user_id == user.id,
+            Institution.id != institution.id
+        )
+    ).scalar_one_or_none()
 
-        print(f"[bootstrap] Admin user '{admin_username}' ready (id={user.id}).")
-        return user
-
-    user = User(
-        username=admin_username,
-        email=admin_email,
-        hashed_password=hash_password(admin_password),
-        is_active=True,
-        is_superuser=True,
-        is_institution_admin=True,
-        institution_id=institution.id,
-        agent_id=agent.id,
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
+    if prev_inst:
+        prev_inst.institution_admin_user_id = None
+        db.add(prev_inst)
+        db.commit()
+        db.refresh(prev_inst)
 
     if institution.institution_admin_user_id != user.id:
         institution.institution_admin_user_id = user.id
-        institution.usersCount += 1
         db.add(institution)
         db.commit()
         db.refresh(institution)
 
-    print(f"[bootstrap] Created admin user '{admin_username}' (id={user.id}).")
+    print(f"[bootstrap] Admin user '{admin_username}' ready (id={user.id}).")
     return user
 
 def main():

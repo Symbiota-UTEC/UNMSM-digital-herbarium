@@ -27,7 +27,6 @@ export function PrivateNavbar({ onNavigate, currentPage }: PrivateNavbarProps) {
   ];
 
   const userMenuItems = [
-    { id: 'home', label: 'Home', icon: Home },
     { id: 'profile', label: 'Ver Perfil', icon: User },
   ];
 

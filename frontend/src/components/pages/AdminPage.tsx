@@ -109,11 +109,6 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
   const [isLoadingInstitutions, setIsLoadingInstitutions] = useState(false);
 
   // UI dialogs / selections
-  const [showInstitutionDialog, setShowInstitutionDialog] = useState(false);
-  const [showDeleteInstitutionDialog, setShowDeleteInstitutionDialog] =
-      useState(false);
-  const [selectedInstitution, setSelectedInstitution] =
-      useState<Institution | null>(null);
   const [viewInstitutionDetails, setViewInstitutionDetails] =
       useState<Institution | null>(null);
   const [editInstitution, setEditInstitution] = useState<Institution | null>(
@@ -165,6 +160,14 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
   const [instSelectedId, setInstSelectedId] = useState<
       string | number | null
   >(null);
+
+  // UI dialogs / selections
+  const [showInstitutionDialog, setShowInstitutionDialog] = useState(false);
+  const [showDeleteInstitutionDialog, setShowDeleteInstitutionDialog] = useState(false);
+  const [selectedInstitution, setSelectedInstitution] = useState<Institution | null>(null);
+
+  const [showRejectRequestDialog, setShowRejectRequestDialog] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState<RegistrationRequest | null>(null);
 
   // Autocomplete state - Requests (right)
   const [reqInstSearchText, setReqInstSearchText] = useState("");
@@ -1331,9 +1334,10 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
                             <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() =>
-                                    handleRejectRequest(request.id, request.institution_id)
-                                }
+                                onClick={() => {
+                                  setSelectedRequest(request);
+                                  setShowRejectRequestDialog(true);
+                                }}
                                 title="Rechazar solicitud"
                                 className="h-9 w-9 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
                             >
@@ -1724,7 +1728,44 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
           </DialogContent>
         </Dialog>
 
-        {/* Delete confirmation */}
+        {/* Reject confirmation */}
+        <AlertDialog
+            open={showRejectRequestDialog}
+            onOpenChange={(open) => {
+              setShowRejectRequestDialog(open);
+              if (!open) setSelectedRequest(null);
+            }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Rechazar esta solicitud?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esta acción no se puede deshacer. Se rechazará la solicitud de "
+                {selectedRequest?.full_name || selectedRequest?.email}", para la
+                institución{" "}
+                <span className="font-medium">{selectedRequest?.institution_name}</span>.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                  onClick={() => {
+                    const r = selectedRequest;
+                    if (r) {
+                      handleRejectRequest(r.id, r.institution_id);
+                    }
+                    setShowRejectRequestDialog(false);
+                    setSelectedRequest(null);
+                  }}
+                  className="bg-red-600 hover:bg-red-700"
+              >
+                Rechazar solicitud
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Delete confirmation TODO: hacer que puedea volver a mandar soliciud despues de X cant de tiempo*/}
         <AlertDialog
             open={showDeleteInstitutionDialog}
             onOpenChange={setShowDeleteInstitutionDialog}
