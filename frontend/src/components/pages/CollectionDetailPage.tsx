@@ -9,7 +9,7 @@ import { Label } from "../ui/label";
 import { Badge } from "../ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "../ui/pagination";
-import { ArrowLeft, Plus, UserPlus, Pencil, Trash2, Eye, RefreshCw, ChevronDown, ChevronRight } from "lucide-react";
+import { ArrowLeft, Plus, UserPlus, Pencil, Trash2, Eye, RefreshCw, ChevronDown, ChevronRight, Upload } from "lucide-react";
 import { toast } from "sonner@2.0.3";
 import { useAuth } from "../../contexts/AuthContext";
 
@@ -40,7 +40,7 @@ interface CollectionDetailPageProps {
 
 export function CollectionDetailPage({ collectionId, collectionName, isOwner, onNavigate }: CollectionDetailPageProps) {
   const { user } = useAuth();
-  
+
   const [occurrences, setOccurrences] = useState<Occurrence[]>([
     {
       id: '1',
@@ -147,15 +147,15 @@ export function CollectionDetailPage({ collectionId, collectionName, isOwner, on
     }
 
     const newRole = currentRole === 'viewer' ? 'editor' : 'viewer';
-    setUsers(users.map(u => 
-      u.id === userId ? { ...u, role: newRole } : u
+    setUsers(users.map(u =>
+        u.id === userId ? { ...u, role: newRole } : u
     ));
     toast.success(`Rol actualizado a ${newRole === 'viewer' ? 'visualizador' : 'editor'}`);
   };
 
   const handleEditClick = (occurrence: Occurrence) => {
-    onNavigate('edit-occurrence', { 
-      occurrenceId: occurrence.id, 
+    onNavigate('edit-occurrence', {
+      occurrenceId: occurrence.id,
       collectionId,
       collectionName,
       isOwner
@@ -163,7 +163,7 @@ export function CollectionDetailPage({ collectionId, collectionName, isOwner, on
   };
 
   const handleViewClick = (occurrence: Occurrence) => {
-    onNavigate('occurrence-detail', { 
+    onNavigate('occurrence-detail', {
       occurrenceId: occurrence.id,
       collectionId,
       collectionName,
@@ -198,350 +198,362 @@ export function CollectionDetailPage({ collectionId, collectionName, isOwner, on
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-6">
-        <Button 
-          variant="ghost" 
-          onClick={() => onNavigate('collections')}
-          className="mb-4"
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Volver a Colecciones
-        </Button>
-        
-        <div>
-          <h1 className="text-3xl mb-2">{collectionName}</h1>
-          <p className="text-muted-foreground">
-            {occurrences.length} ocurrencias en esta colección
-          </p>
-        </div>
-      </div>
-
-      {isOwner && users.length > 0 && (
-        <Card className="mb-6">
-          <CardHeader 
-            className="cursor-pointer hover:bg-muted/50 transition-colors"
-            onClick={() => setIsUsersExpanded(!isUsersExpanded)}
+      <div className="container mx-auto px-4 py-8">
+        <div className="mb-6">
+          <Button
+              variant="ghost"
+              onClick={() => onNavigate('collections')}
+              className="mb-4"
           >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3 flex-1">
-                {isUsersExpanded ? (
-                  <ChevronDown className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-                ) : (
-                  <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-                )}
-                <div className="flex-1">
-                  <CardTitle className="mb-1">Usuarios con Acceso</CardTitle>
-                  <CardDescription>
-                    Usuarios que pueden acceder a esta colección ({users.length} total)
-                  </CardDescription>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Volver a Colecciones
+          </Button>
+
+          <div>
+            <h1 className="text-3xl mb-2">{collectionName}</h1>
+            <p className="text-muted-foreground">
+              {occurrences.length} ocurrencias en esta colección
+            </p>
+          </div>
+        </div>
+
+        {isOwner && users.length > 0 && (
+            <Card className="mb-6">
+              <CardHeader
+                  className="cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => setIsUsersExpanded(!isUsersExpanded)}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3 flex-1">
+                    {isUsersExpanded ? (
+                        <ChevronDown className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                    ) : (
+                        <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                    )}
+                    <div className="flex-1">
+                      <CardTitle className="mb-1">Usuarios con Acceso</CardTitle>
+                      <CardDescription>
+                        Usuarios que pueden acceder a esta colección ({users.length} total)
+                      </CardDescription>
+                    </div>
+                  </div>
+                  {isUsersExpanded && (
+                      <Dialog open={showAddUserDialog} onOpenChange={(open) => {
+                        setShowAddUserDialog(open);
+                        if (!open) {
+                          // Resetear el formulario al cerrar
+                          setNewUser({ email: '', role: 'viewer' });
+                        }
+                      }}>
+                        <DialogTrigger asChild>
+                          <Button
+                              onClick={(e) => e.stopPropagation()}
+                              size="sm"
+                              className="flex-shrink-0"
+                          >
+                            <UserPlus className="h-4 w-4 mr-2" />
+                            Agregar Usuario
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent onClick={(e) => e.stopPropagation()}>
+                          <DialogHeader>
+                            <DialogTitle>Agregar Usuario a la Colección</DialogTitle>
+                            <DialogDescription>
+                              Invita a otros usuarios a colaborar en esta colección
+                            </DialogDescription>
+                          </DialogHeader>
+                          <form onSubmit={handleAddUser} className="space-y-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="userEmail">Correo Electrónico</Label>
+                              <Input
+                                  id="userEmail"
+                                  type="email"
+                                  value={newUser.email}
+                                  onChange={(e) => setNewUser({...newUser, email: e.target.value})}
+                                  placeholder="usuario@ejemplo.com"
+                                  required
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="userRole">Rol</Label>
+                              <Select
+                                  value={newUser.role}
+                                  onValueChange={(value: 'viewer' | 'editor') => setNewUser({...newUser, role: value})}
+                              >
+                                <SelectTrigger id="userRole">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="viewer">Visualizador</SelectItem>
+                                  <SelectItem value="editor">Editor</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <p className="text-sm text-muted-foreground">
+                                {newUser.role === 'viewer'
+                                    ? 'Puede ver las ocurrencias pero no editarlas'
+                                    : 'Puede ver, editar y eliminar ocurrencias'}
+                              </p>
+                            </div>
+                            <Button type="submit" className="w-full">Agregar Usuario</Button>
+                          </form>
+                        </DialogContent>
+                      </Dialog>
+                  )}
                 </div>
-              </div>
+              </CardHeader>
               {isUsersExpanded && (
-                <Dialog open={showAddUserDialog} onOpenChange={(open) => {
-                  setShowAddUserDialog(open);
-                  if (!open) {
-                    // Resetear el formulario al cerrar
-                    setNewUser({ email: '', role: 'viewer' });
-                  }
-                }}>
-                  <DialogTrigger asChild>
-                    <Button 
-                      onClick={(e) => e.stopPropagation()}
-                      size="sm"
-                      className="flex-shrink-0"
-                    >
-                      <UserPlus className="h-4 w-4 mr-2" />
-                      Agregar Usuario
+                  <CardContent>
+                    <div className="space-y-2">
+                      {currentUsers.map((collectionUser) => (
+                          <div key={collectionUser.id} className="flex items-center justify-between p-3 border rounded-lg">
+                            <div className="flex items-center gap-3">
+                              <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                                {collectionUser.role === 'viewer' ? (
+                                    <Eye className="h-5 w-5 text-primary" />
+                                ) : (
+                                    <Pencil className="h-5 w-5 text-primary" />
+                                )}
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <p>{collectionUser.name}</p>
+                                  {collectionUser.id === user?.id && (
+                                      <Badge variant="outline" className="text-xs">Tú</Badge>
+                                  )}
+                                </div>
+                                <p className="text-sm text-muted-foreground">{collectionUser.email}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge variant={collectionUser.role === 'editor' ? 'default' : 'secondary'}>
+                                {collectionUser.role === 'viewer' ? 'Visualizador' : 'Editor'}
+                              </Badge>
+                              <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleToggleRole(collectionUser.id, collectionUser.role)}
+                                  disabled={collectionUser.id === user?.id}
+                                  title={collectionUser.id === user?.id ? 'No puedes cambiar tu propio rol' : 'Cambiar rol'}
+                              >
+                                <RefreshCw className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleRemoveUserClick(collectionUser.id, collectionUser.name)}
+                                  disabled={collectionUser.id === user?.id}
+                                  title={collectionUser.id === user?.id ? 'No puedes eliminarte a ti mismo' : 'Eliminar usuario'}
+                              >
+                                <Trash2 className="h-4 w-4 text-red-600" />
+                              </Button>
+                            </div>
+                          </div>
+                      ))}
+                    </div>
+
+                    {totalUserPages > 1 && (
+                        <div className="mt-4">
+                          <Pagination>
+                            <PaginationContent>
+                              <PaginationItem>
+                                <PaginationPrevious
+                                    onClick={() => setCurrentUserPage(Math.max(1, currentUserPage - 1))}
+                                    className={currentUserPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                                />
+                              </PaginationItem>
+                              {Array.from({ length: totalUserPages }, (_, i) => i + 1).map((page) => (
+                                  <PaginationItem key={page}>
+                                    <PaginationLink
+                                        onClick={() => setCurrentUserPage(page)}
+                                        isActive={currentUserPage === page}
+                                        className="cursor-pointer"
+                                    >
+                                      {page}
+                                    </PaginationLink>
+                                  </PaginationItem>
+                              ))}
+                              <PaginationItem>
+                                <PaginationNext
+                                    onClick={() => setCurrentUserPage(Math.min(totalUserPages, currentUserPage + 1))}
+                                    className={currentUserPage === totalUserPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                                />
+                              </PaginationItem>
+                            </PaginationContent>
+                          </Pagination>
+                        </div>
+                    )}
+                  </CardContent>
+              )}
+            </Card>
+        )}
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Ocurrencias</CardTitle>
+                <CardDescription>
+                  Lista de especímenes en esta colección
+                </CardDescription>
+              </div>
+              {isOwner && (
+                  <div className="flex gap-2">
+                    <Button onClick={() => onNavigate('csv-import', { collectionId, collectionName })}>
+                      <Upload className="h-4 w-4 mr-2" />
+                      Importar CSV
                     </Button>
-                  </DialogTrigger>
-                  <DialogContent onClick={(e) => e.stopPropagation()}>
-                    <DialogHeader>
-                      <DialogTitle>Agregar Usuario a la Colección</DialogTitle>
-                      <DialogDescription>
-                        Invita a otros usuarios a colaborar en esta colección
-                      </DialogDescription>
-                    </DialogHeader>
-                    <form onSubmit={handleAddUser} className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="userEmail">Correo Electrónico</Label>
-                        <Input
-                          id="userEmail"
-                          type="email"
-                          value={newUser.email}
-                          onChange={(e) => setNewUser({...newUser, email: e.target.value})}
-                          placeholder="usuario@ejemplo.com"
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="userRole">Rol</Label>
-                        <Select
-                          value={newUser.role}
-                          onValueChange={(value: 'viewer' | 'editor') => setNewUser({...newUser, role: value})}
-                        >
-                          <SelectTrigger id="userRole">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="viewer">Visualizador</SelectItem>
-                            <SelectItem value="editor">Editor</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <p className="text-sm text-muted-foreground">
-                          {newUser.role === 'viewer' 
-                            ? 'Puede ver las ocurrencias pero no editarlas' 
-                            : 'Puede ver, editar y eliminar ocurrencias'}
-                        </p>
-                      </div>
-                      <Button type="submit" className="w-full">Agregar Usuario</Button>
-                    </form>
-                  </DialogContent>
-                </Dialog>
+                  </div>
               )}
             </div>
           </CardHeader>
-          {isUsersExpanded && (
-            <CardContent>
-              <div className="space-y-2">
-                {currentUsers.map((collectionUser) => (
-                  <div key={collectionUser.id} className="flex items-center justify-between p-3 border rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                        {collectionUser.role === 'viewer' ? (
-                          <Eye className="h-5 w-5 text-primary" />
-                        ) : (
-                          <Pencil className="h-5 w-5 text-primary" />
-                        )}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p>{collectionUser.name}</p>
-                          {collectionUser.id === user?.id && (
-                            <Badge variant="outline" className="text-xs">Tú</Badge>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Código</TableHead>
+                  <TableHead>Nombre Científico</TableHead>
+                  <TableHead>Familia</TableHead>
+                  <TableHead>Ubicación</TableHead>
+                  <TableHead>Recolector</TableHead>
+                  <TableHead>Fecha</TableHead>
+                  <TableHead>Acciones</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {occurrences.map((occurrence) => (
+                    <TableRow key={occurrence.id}>
+                      <TableCell>{occurrence.code}</TableCell>
+                      <TableCell className="italic">{occurrence.scientificName}</TableCell>
+                      <TableCell>{occurrence.family}</TableCell>
+                      <TableCell>{occurrence.location}</TableCell>
+                      <TableCell>{occurrence.collector}</TableCell>
+                      <TableCell>
+                        {new Date(occurrence.date).toLocaleDateString('es-ES')}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleViewClick(occurrence)}
+                              title="Ver detalles"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          {isOwner && (
+                              <>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleEditClick(occurrence)}
+                                    title="Editar"
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDeleteClick(occurrence.id)}
+                                    title="Eliminar"
+                                >
+                                  <Trash2 className="h-4 w-4 text-red-600" />
+                                </Button>
+                              </>
                           )}
                         </div>
-                        <p className="text-sm text-muted-foreground">{collectionUser.email}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={collectionUser.role === 'editor' ? 'default' : 'secondary'}>
-                        {collectionUser.role === 'viewer' ? 'Visualizador' : 'Editor'}
-                      </Badge>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleToggleRole(collectionUser.id, collectionUser.role)}
-                        disabled={collectionUser.id === user?.id}
-                        title={collectionUser.id === user?.id ? 'No puedes cambiar tu propio rol' : 'Cambiar rol'}
-                      >
-                        <RefreshCw className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleRemoveUserClick(collectionUser.id, collectionUser.name)}
-                        disabled={collectionUser.id === user?.id}
-                        title={collectionUser.id === user?.id ? 'No puedes eliminarte a ti mismo' : 'Eliminar usuario'}
-                      >
-                        <Trash2 className="h-4 w-4 text-red-600" />
-                      </Button>
-                    </div>
-                  </div>
+                      </TableCell>
+                    </TableRow>
                 ))}
-              </div>
-
-              {totalUserPages > 1 && (
-                <div className="mt-4">
-                  <Pagination>
-                    <PaginationContent>
-                      <PaginationItem>
-                        <PaginationPrevious 
-                          onClick={() => setCurrentUserPage(Math.max(1, currentUserPage - 1))}
-                          className={currentUserPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                        />
-                      </PaginationItem>
-                      {Array.from({ length: totalUserPages }, (_, i) => i + 1).map((page) => (
-                        <PaginationItem key={page}>
-                          <PaginationLink
-                            onClick={() => setCurrentUserPage(page)}
-                            isActive={currentUserPage === page}
-                            className="cursor-pointer"
-                          >
-                            {page}
-                          </PaginationLink>
-                        </PaginationItem>
-                      ))}
-                      <PaginationItem>
-                        <PaginationNext 
-                          onClick={() => setCurrentUserPage(Math.min(totalUserPages, currentUserPage + 1))}
-                          className={currentUserPage === totalUserPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                        />
-                      </PaginationItem>
-                    </PaginationContent>
-                  </Pagination>
-                </div>
-              )}
-            </CardContent>
-          )}
+              </TableBody>
+            </Table>
+          </CardContent>
         </Card>
-      )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Ocurrencias</CardTitle>
-          <CardDescription>
-            Lista de especímenes en esta colección
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Código</TableHead>
-                <TableHead>Nombre Científico</TableHead>
-                <TableHead>Familia</TableHead>
-                <TableHead>Ubicación</TableHead>
-                <TableHead>Recolector</TableHead>
-                <TableHead>Fecha</TableHead>
-                <TableHead>Acciones</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {occurrences.map((occurrence) => (
-                <TableRow key={occurrence.id}>
-                  <TableCell>{occurrence.code}</TableCell>
-                  <TableCell className="italic">{occurrence.scientificName}</TableCell>
-                  <TableCell>{occurrence.family}</TableCell>
-                  <TableCell>{occurrence.location}</TableCell>
-                  <TableCell>{occurrence.collector}</TableCell>
-                  <TableCell>
-                    {new Date(occurrence.date).toLocaleDateString('es-ES')}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleViewClick(occurrence)}
-                        title="Ver detalles"
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      {isOwner && (
-                        <>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleEditClick(occurrence)}
-                            title="Editar"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteClick(occurrence.id)}
-                            title="Eliminar"
-                          >
-                            <Trash2 className="h-4 w-4 text-red-600" />
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+        {/* Sección de eliminar colección */}
+        {isOwner && (
+            <div className="mt-8 flex justify-center">
+              <Button
+                  variant="outline"
+                  onClick={() => setShowDeleteCollectionDialog(true)}
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-300"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Eliminar Colección
+              </Button>
+            </div>
+        )}
 
-      {/* Sección de eliminar colección */}
-      {isOwner && (
-        <div className="mt-8 flex justify-center">
-          <Button
-            variant="outline"
-            onClick={() => setShowDeleteCollectionDialog(true)}
-            className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-300"
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            Eliminar Colección
-          </Button>
-        </div>
-      )}
+        {/* Delete Occurrence Confirmation Dialog */}
+        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esta acción no se puede deshacer. La ocurrencia será eliminada permanentemente de la colección.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDeleteConfirm} className="bg-red-600 hover:bg-red-700">
+                Eliminar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
-      {/* Delete Occurrence Confirmation Dialog */}
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Esta acción no se puede deshacer. La ocurrencia será eliminada permanentemente de la colección.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteConfirm} className="bg-red-600 hover:bg-red-700">
-              Eliminar
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        {/* Delete User Confirmation Dialog */}
+        <AlertDialog open={showDeleteUserDialog} onOpenChange={setShowDeleteUserDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Se eliminará el acceso de <span className="font-semibold">{userToDelete?.name}</span> a esta colección.
+                Esta acción no se puede deshacer.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={handleRemoveUserConfirm} className="bg-red-600 hover:bg-red-700">
+                Eliminar Acceso
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
-      {/* Delete User Confirmation Dialog */}
-      <AlertDialog open={showDeleteUserDialog} onOpenChange={setShowDeleteUserDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Se eliminará el acceso de <span className="font-semibold">{userToDelete?.name}</span> a esta colección. 
-              Esta acción no se puede deshacer.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleRemoveUserConfirm} className="bg-red-600 hover:bg-red-700">
-              Eliminar Acceso
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Delete Collection Confirmation Dialog */}
-      <AlertDialog open={showDeleteCollectionDialog} onOpenChange={setShowDeleteCollectionDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>¿Estás seguro de eliminar esta colección?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Esta acción no se puede deshacer. Se eliminarán permanentemente todas las ocurrencias ({occurrences.length}) 
-              y se removerá el acceso de todos los usuarios ({users.length}).
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="my-4">
-            <Label htmlFor="confirmDelete">
-              Escribe <span className="font-mono bg-muted px-1">CONFIRMAR</span> para proceder
-            </Label>
-            <Input
-              id="confirmDelete"
-              value={confirmText}
-              onChange={(e) => setConfirmText(e.target.value)}
-              placeholder="CONFIRMAR"
-              className="mt-2"
-            />
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setConfirmText('')}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={handleDeleteCollection}
-              className="bg-red-600 hover:bg-red-700"
-              disabled={confirmText !== 'CONFIRMAR'}
-            >
-              Eliminar Colección
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+        {/* Delete Collection Confirmation Dialog */}
+        <AlertDialog open={showDeleteCollectionDialog} onOpenChange={setShowDeleteCollectionDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Estás seguro de eliminar esta colección?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esta acción no se puede deshacer. Se eliminarán permanentemente todas las ocurrencias ({occurrences.length})
+                y se removerá el acceso de todos los usuarios ({users.length}).
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="my-4">
+              <Label htmlFor="confirmDelete">
+                Escribe <span className="font-mono bg-muted px-1">CONFIRMAR</span> para proceder
+              </Label>
+              <Input
+                  id="confirmDelete"
+                  value={confirmText}
+                  onChange={(e) => setConfirmText(e.target.value)}
+                  placeholder="CONFIRMAR"
+                  className="mt-2"
+              />
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setConfirmText('')}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                  onClick={handleDeleteCollection}
+                  className="bg-red-600 hover:bg-red-700"
+                  disabled={confirmText !== 'CONFIRMAR'}
+              >
+                Eliminar Colección
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
   );
 }

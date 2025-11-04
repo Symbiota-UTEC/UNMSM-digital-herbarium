@@ -23,6 +23,7 @@ class UserOut(BaseModel):
     is_active: bool
     is_superuser: bool
     is_institution_admin: bool
+    agent_id: Optional[int] = None
     institution_id: int
     created_at: datetime
 
@@ -30,6 +31,7 @@ class UserOut(BaseModel):
         orm_mode = True
 
 
+# TODO: estandarizar paginacion
 class UserPaginationResponse(BaseModel):
     users: List[UserOut]
     total_users: int
@@ -171,6 +173,7 @@ def get_users(
             is_active=user.is_active,
             is_superuser=user.is_superuser,
             is_institution_admin=user.is_institution_admin,
+            agent_id=user.agent_id,
             institution_id=user.institution_id,
             created_at=user.created_at,
         ) for user in users],

@@ -725,7 +725,9 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
         return null;
       }
 
+      console.log("raw response ", response);
       const foundUser: ApiUserOut = await response.json();
+      console.log("after parsing ", foundUser);
 
       if (!foundUser) {
         setAdminEmailValidation({

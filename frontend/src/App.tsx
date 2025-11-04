@@ -14,6 +14,7 @@ import { TaxonPage } from './components/pages/TaxonPage';
 import { ProfilePage } from './components/pages/ProfilePage';
 import { AdminPage } from './components/pages/AdminPage';
 import { MapPage } from './components/pages/MapPage';
+import { CSVImportPage } from "./components/pages/CSVImportPage";
 import { Toaster } from './components/ui/sonner';
 
 interface NavigationParams {
@@ -99,6 +100,14 @@ function AppContent() {
         return <AdminPage onNavigate={handleNavigation} />;
       case 'map':
         return <MapPage />;
+      case 'csv-import':
+        return (
+            <CSVImportPage
+                collectionId={navParams.collectionId || ''}
+                collectionName={navParams.collectionName || ''}
+                onNavigate={handleNavigation}
+            />
+        );
       default:
         return <HomePage onNavigate={handleNavigation} />;
     }

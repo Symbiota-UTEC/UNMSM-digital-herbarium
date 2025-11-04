@@ -3,7 +3,7 @@
 from datetime import timedelta, datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import select, or_, and_, func
+from sqlalchemy import select, or_, and_, func, update as sa_update
 from typing import Optional, Literal, List
 
 from backend.config.database import get_db
@@ -295,7 +295,7 @@ def update_registration_request_status(
     ):
         raise HTTPException(status_code=403, detail="No tienes permisos para actualizar esta solicitud")
 
-    # 4) Rechazo
+    # 4) Rechazo (sin cambios en usersCount)
     if payload.new_status == "rejected":
         registration_request.status = "rejected"
         registration_request.reviewed_by_user_id = current_user.id
@@ -334,49 +334,58 @@ def update_registration_request_status(
             detail="Ya existe un usuario con este username o email. No se puede aprobar.",
         )
 
-    agent = Agent(
-        givenName=registration_request.given_name,
-        familyName=registration_request.family_name,
-        fullName=registration_request.full_name,
-        orcid=registration_request.orcid,
-        phone=registration_request.phone,
-        address=registration_request.address,
-    )
-    db.add(agent)
-    db.commit()
-    db.refresh(agent)
+    try:
+        # a) Crear Agent
+        agent = Agent(
+            givenName=registration_request.given_name,
+            familyName=registration_request.family_name,
+            fullName=registration_request.full_name,
+            orcid=registration_request.orcid,
+            phone=registration_request.phone,
+            address=registration_request.address,
+        )
+        db.add(agent)
+        db.flush()  # obtener agent.id
 
-    user = User(
-        username=registration_request.username,
-        email=registration_request.email,
-        hashed_password=registration_request.hashed_password,
-        is_active=True,
-        is_superuser=False,
-        is_institution_admin=False,
-        institution_id=registration_request.institution_id,
-        agent_id=agent.id,
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
+        # b) Crear User
+        user = User(
+            username=registration_request.username,
+            email=registration_request.email,
+            hashed_password=registration_request.hashed_password,
+            is_active=True,
+            is_superuser=False,
+            is_institution_admin=False,
+            institution_id=registration_request.institution_id,
+            agent_id=agent.id,
+        )
+        db.add(user)
+        db.flush()  # obtener user.id
 
-    inst = db.execute(
-        select(Institution).where(Institution.id == registration_request.institution_id)
-    ).scalar_one_or_none()
-    if inst is not None:
-        inst.usersCount = (inst.usersCount or 0) + 1
-        db.add(inst)
+        # c) Incremento atómico de usersCount (+1) en Institution
+        db.execute(
+            sa_update(Institution)
+            .where(Institution.id == registration_request.institution_id)
+            .values(usersCount=func.coalesce(Institution.usersCount, 0) + 1)
+        )
+
+        # d) Marcar solicitud como aprobada
+        registration_request.status = "approved"
+        registration_request.reviewed_by_user_id = current_user.id
+        registration_request.reviewed_at = datetime.utcnow()
+        registration_request.resulting_user_id = user.id
+        db.add(registration_request)
+
+        # e) Commit único
         db.commit()
-        db.refresh(inst)
 
-    registration_request.status = "approved"
-    registration_request.reviewed_by_user_id = current_user.id
-    registration_request.reviewed_at = datetime.utcnow()
-    registration_request.resulting_user_id = user.id
+        # Opcional: refrescar para respuesta
+        db.refresh(agent)
+        db.refresh(user)
+        db.refresh(registration_request)
 
-    db.add(registration_request)
-    db.commit()
-    db.refresh(registration_request)
+    except Exception:
+        db.rollback()
+        raise
 
     return {
         "message": "Solicitud de registro actualizada correctamente.",
@@ -447,10 +456,12 @@ def login_user(
             "name": user.agent.fullName if user.agent else None,
             "username": user.username,
             "email": user.email,
-            "is_admin": user.is_superuser,
+            "is_active": user.is_active,
+            "is_superuser": user.is_superuser,
             "is_institution_admin": user.is_institution_admin,
             "institution": institution.institutionName if institution else None,
             "agent_id": user.agent_id,
-            "institution_id": institution.id,
+            "institution_id": user.institution_id,
+            "created_at": user.created_at.isoformat() if user.created_at else None,
         },
     }

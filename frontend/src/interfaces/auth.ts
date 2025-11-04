@@ -29,7 +29,7 @@ export interface ApiUserOut {
     is_active: boolean;
     is_superuser: boolean;
     is_institution_admin: boolean;
-    agent_id: number;
+    agent_id: number | null;
     institution_id: number | null;
     created_at: string;
 }

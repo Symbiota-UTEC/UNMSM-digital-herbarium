@@ -15,4 +15,5 @@ export const API = {
 export const PAGE_SIZE = {
     INSTITUTIONS: 4,
     REGISTRATIONS: 6,
+    COLLECTIONS: 3,
 }

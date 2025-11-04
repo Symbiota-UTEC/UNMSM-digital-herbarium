@@ -6,7 +6,7 @@ import React, {
 } from "react";
 
 
-import { User, AuthContextType } from "@interfaces/auth";
+import { User, AuthContextType, mapApiUserToUser } from "@interfaces/auth";
 import { Role } from "@constants/roles";
 import { API } from "@constants/api"
 import { STORAGE_KEYS } from "@constants/storageKeys"
@@ -108,15 +108,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     scheduleAutoLogout(data.access_token);
 
     const u = data.user;
-    const mappedUser: User = {
-      id: u.id,
-      username: u.username,
-      email: u.email,
-      role: u.is_admin? Role.Admin : u.is_institution_admin ? Role.InstitutionAdmin  : Role.User,
-      institution: u.institution ?? null,
-      institutionId: u.institution_id ?? null,
-    };
-
+    const mappedUser: User = mapApiUserToUser(u);
 
     setUser(mappedUser);
     localStorage.setItem("user", JSON.stringify(mappedUser));
