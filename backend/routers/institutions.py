@@ -202,15 +202,12 @@ def update_institution(
             detail="Institución no encontrada",
         )
 
-    # Superadmin puede modificar cualquier institución, excepto la suya propia
     if current_user.is_superuser:
-        if institution_id == current_user.institution_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="El superadmin no puede modificar su propia institución",
-            )
-    # Admin de institución solo puede modificar su propia institución
+        # Superadmin puede modificar su propia institución,
+        # sin modificar el institution_admin_user_id.
+        pass
     elif current_user.is_institution_admin:
+        # Admin de institución solo puede modificar su propia institución
         if institution_id != current_user.institution_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -222,16 +219,10 @@ def update_institution(
             detail="No tienes permisos para modificar la institución",
         )
 
-    # Evitar que el admin de la institución cambie su propio campo
-    if institution_db.institution_admin_user_id == current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No puedes modificar tu propio campo 'institution_admin_user_id'",
-        )
-
     # para distinguir si institution_admin_user_id fue enviado o no
     update_data = institution.model_dump(exclude_unset=True)
 
+    # ---- Campos simples
     if "institutionID" in update_data:
         institution_db.institutionID = update_data["institutionID"]
     if "institutionCode" in update_data:
@@ -251,36 +242,57 @@ def update_institution(
     if "webSite" in update_data:
         institution_db.webSite = update_data["webSite"]
 
+    # ---- Cambio de administrador (si fue enviado)
     if "institution_admin_user_id" in update_data:
         new_admin_id: Optional[int] = update_data["institution_admin_user_id"]
         old_admin_id: Optional[int] = institution_db.institution_admin_user_id
 
-        # a) Si hay un admin actual y está cambiando o se desasigna, "degradar" al admin anterior
-        if old_admin_id is not None and old_admin_id != new_admin_id:
-            old_admin = db.execute(
-                select(User).where(User.id == old_admin_id)
-            ).scalar_one_or_none()
-            if old_admin:
-                old_admin.is_institution_admin = False
-
-        # b) Si se asigna un nuevo admin (entero)
-        if new_admin_id is not None:
-            new_admin = db.execute(
-                select(User).where(User.id == new_admin_id)
-            ).scalar_one_or_none()
-            if not new_admin:
+        if current_user.is_superuser and institution_id == current_user.institution_id:
+            # si intenta cambiar (a otro id o a None), bloquear
+            if new_admin_id != old_admin_id:
                 raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="El usuario indicado como administrador no existe",
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="El superadmin no puede modificar el administrador de su propia institución",
                 )
 
-            new_admin.is_institution_admin = True
-            new_admin.institution_id = institution_db.id
+        if (
+            current_user.is_institution_admin
+            and institution_db.institution_admin_user_id == current_user.id
+            and new_admin_id != old_admin_id
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No puedes modificar tu propio campo 'institution_admin_user_id'",
+            )
 
-            institution_db.institution_admin_user_id = new_admin_id
+        if new_admin_id == old_admin_id:
+            pass
+        else:
+            # a) Si hay un admin actual y está cambiando o se desasigna, "degradar" al admin anterior
+            if old_admin_id is not None and old_admin_id != new_admin_id:
+                old_admin = db.execute(
+                    select(User).where(User.id == old_admin_id)
+                ).scalar_one_or_none()
+                if old_admin:
+                    old_admin.is_institution_admin = False
 
-        if new_admin_id is None:
-            institution_db.institution_admin_user_id = None
+            # b) Si se asigna un nuevo admin (entero)
+            if new_admin_id is not None:
+                new_admin = db.execute(
+                    select(User).where(User.id == new_admin_id)
+                ).scalar_one_or_none()
+                if not new_admin:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="El usuario indicado como administrador no existe",
+                    )
+
+                new_admin.is_institution_admin = True
+                new_admin.institution_id = institution_db.id
+                institution_db.institution_admin_user_id = new_admin_id
+            else:
+                # c) Si se envía None -> quitar admin
+                institution_db.institution_admin_user_id = None
 
     db.commit()
     db.refresh(institution_db)

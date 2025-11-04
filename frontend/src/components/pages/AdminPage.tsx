@@ -732,19 +732,26 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
         return null;
       }
 
-      if (foundUser.is_institution_admin) {
+      const user = mapApiUserToUser(foundUser);
+
+      if (
+          user.role === Role.InstitutionAdmin &&
+          typeof institutionId === "number" &&
+          String(user.institutionId ?? "") !== String(institutionId)
+      ) {
         setAdminEmailValidation({
           isValid: false,
-          message: "Este usuario ya es administrador",
+          message: "Este usuario ya es administrador de otra institución",
         });
         return null;
       }
 
-      const user = mapApiUserToUser(foundUser);
-
       setAdminEmailValidation({
         isValid: true,
-        message: `Usuario válido: ${user.username || user.email}`,
+        message:
+            user.role === Role.InstitutionAdmin
+                ? "Ya es administrador de esta institución"
+                : `Usuario válido: ${user.username || user.email}`,
       });
 
       return user;
@@ -758,6 +765,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     }
   };
 
+
   const handleSaveInstitution = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -770,27 +778,29 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
 
     let newAdminUserId: number | null = null;
 
-    if (editForm.adminEmail?.trim()) {
-      const user = await validateAdminEmail(
-          editForm.adminEmail,
-          editInstitution.id
-      );
+    const emailTrimmed = (editForm.adminEmail ?? "").trim().toLowerCase();
+    const currentAdminEmail = (editInstitution?.admin_user?.email ?? "")
+        .trim()
+        .toLowerCase();
+    const adminEmailUnchanged =
+        !!emailTrimmed && emailTrimmed === currentAdminEmail;
 
-      if (!user) {
-        return;
-      }
+    if (!editForm.adminEmail?.trim()) {
+      newAdminUserId = null;
+    } else if (adminEmailUnchanged) {
+      newAdminUserId = editInstitution?.admin_user?.id ?? null;
+    } else {
+      const user = await validateAdminEmail(emailTrimmed, editInstitution.id);
+      if (!user) return;
 
       if (
           user.role === Role.InstitutionAdmin &&
-          String(user.institutionId) !== String(editInstitution.id)
+          String(user.institutionId ?? "") !== String(editInstitution.id)
       ) {
         toast.error("Este usuario ya es administrador de otra institución");
         return;
       }
-
       newAdminUserId = user.id;
-    } else {
-      newAdminUserId = null;
     }
 
     const payload = {
