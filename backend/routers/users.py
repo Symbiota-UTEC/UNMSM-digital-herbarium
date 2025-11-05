@@ -1,5 +1,5 @@
 import math
-from typing import List, Optional
+from typing import List, Optional, Literal
 
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -10,7 +10,7 @@ from backend.config.database import get_db
 from backend.models.models import User, Institution
 from backend.auth.jwt import get_current_user
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 router = APIRouter(prefix="/users", tags=["Users"])
@@ -27,8 +27,7 @@ class UserOut(BaseModel):
     institution_id: int
     created_at: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # TODO: estandarizar paginacion
@@ -40,51 +39,91 @@ class UserPaginationResponse(BaseModel):
     offset: int
 
 
+class UserLookupResponse(BaseModel):
+    found: bool
+    same_institution: Optional[bool] = None
+    visibility: Literal["full", "limited", "none"]
+    user: Optional[UserOut] = None
+    message: Optional[str] = None
 
-@router.get("/by-email", response_model=UserOut, summary="Get user by email and optional institution")
+
+@router.get(
+    "/by-email",
+    response_model=UserLookupResponse,
+    summary="Get user by email with role-aware visibility"
+)
 def get_user_by_email(
-        email: str = Query(...),
-        institution_id: Optional[int] = None,  # Filtro opcional
-        db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_user),
+    email: str = Query(...),
+    institution_id: Optional[int] = None,  # opcional; no otorga privilegios
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    # Si el usuario no es superadmin, debemos validar el acceso según su rol
-    if not current_user.is_superuser:
-        # Si no es superadmin, verificar si es admin de la institución
-        if current_user.is_institution_admin:
-            # Si el usuario es admin de institución, solo puede ver usuarios de su institución
-            if not institution_id or institution_id != current_user.institution_id:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="No tienes permisos para acceder a usuarios de otra institución",
-                )
-        else:
-            # Si no es admin de institución, solo puede consultar su propio correo
-            if email != current_user.email:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="No tienes permisos para acceder a este usuario",
-                )
+    # 1) Buscar por email (y opcionalmente confirmar institution_id si se envía)
+    stmt = select(User).where(User.email == email)
+    if institution_id is not None:
+        stmt = stmt.where(User.institution_id == institution_id)
 
-    # Realizar la búsqueda del usuario
-    if institution_id:
-        # Si se proporciona un institution_id, filtrar por email e institution_id
-        user = db.execute(
-            select(User).where(User.email == email, User.institution_id == institution_id)
-        ).scalar_one_or_none()
-    else:
-        # Si no se proporciona un institution_id, solo filtrar por email
-        user = db.execute(
-            select(User).where(User.email == email)
-        ).scalar_one_or_none()
+    target = db.execute(stmt).scalar_one_or_none()
 
-    if not user:
+    if not target:
+        # 404 solo si de verdad NO existe el email en el sistema
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Usuario no encontrado o no tiene permisos para acceder a este usuario",
+            detail="Usuario no encontrado"
         )
 
-    return user
+    same_inst = (target.institution_id == current_user.institution_id)
+
+    # 2) Determinar visibilidad según rol
+    if current_user.is_superuser:
+        # Superuser ve todo
+        return UserLookupResponse(
+            found=True,
+            same_institution=same_inst,
+            visibility="full",
+            user=target
+        )
+
+    if current_user.is_institution_admin:
+        if same_inst:
+            # Admin de institución ve completa la informacion
+            return UserLookupResponse(
+                found=True,
+                same_institution=True,
+                visibility="full",
+                user=target
+            )
+        else:
+            # Admin de institución: existe pero no es de su institución → limited
+            return UserLookupResponse(
+                found=True,
+                same_institution=False,
+                visibility="limited",
+                message="Usuario encontrado pero no pertenece a tu institución"
+            )
+
+    # Usuario regular
+    if email == current_user.email:
+        # Puede ver sus propios datos completos
+        return UserLookupResponse(
+            found=True,
+            same_institution=True,  # por definición comparte su propia institución
+            visibility="full",
+            user=target
+        )
+    else:
+        # Cualquier usuario puede consultar por email:
+        # - solo indicamos si existe y si es o no de su institución
+        # - NO devolvemos datos sensibles
+        return UserLookupResponse(
+            found=True,
+            same_institution=same_inst,
+            visibility="limited",
+            message=(
+                "Usuario pertenece a tu institución" if same_inst
+                else "Usuario encontrado pero no pertenece a tu institución"
+            )
+        )
 
 
 @router.get("/{user_id}", response_model=UserOut, summary="Get user by id")

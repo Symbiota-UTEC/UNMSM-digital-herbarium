@@ -1,4 +1,4 @@
-export type CollectionRole = "viewer" | "editor" | "owner" | "superuser" | "institution_admin";
+export type CollectionRole = "viewer" | "editor" | "owner";
 
 export interface InstitutionOut {
     id: number;
@@ -20,9 +20,9 @@ export interface CollectionOut {
     description?: string | null;
     webSite?: string | null;
     institution?: InstitutionOut | null;
-    creator: AgentOut;
+    creator?: AgentOut | null;
     my_role?: CollectionRole | null;
-    occurrencesCount: number;
+    occurrencesCount?: number;
 }
 
 export interface CollectionCreate {
@@ -40,16 +40,25 @@ export interface CollectionListItem {
     name: string | null;
     occurrencesCount: number;
     my_role?: CollectionRole | null;
+    institutionId?: number | null;
     institutionName?: string | null;
     creatorName?: string | null;
+}
+
+export interface CollectionUserAccessItem {
+    full_name: string;
+    email: string;
+    institution: string | null;
+    role: "viewer" | "editor" | "owner";
 }
 
 export function toCollectionListItem(c: CollectionOut): CollectionListItem {
     return {
         id: c.id,
         name: c.collectionName ?? null,
-        occurrencesCount: c.occurrencesCount,
+        occurrencesCount: c.occurrencesCount ?? 0,
         my_role: c.my_role ?? null,
+        institutionId: c.institution?.id ?? null,
         institutionName: c.institution?.institutionName ?? null,
         creatorName: c.creator?.fullName ?? null,
     };

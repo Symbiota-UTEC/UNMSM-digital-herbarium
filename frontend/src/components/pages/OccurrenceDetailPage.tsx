@@ -128,7 +128,7 @@ export function OccurrenceDetailPage({
 
   const handleBack = () => {
     if (returnTo === 'collection' && collectionId) {
-      onNavigate('collection.ts-detail', {
+      onNavigate('collection-detail', {
         collectionId, 
         collectionName: collectionName || '',
         isOwner: isOwner || false

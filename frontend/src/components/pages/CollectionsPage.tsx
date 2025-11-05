@@ -12,6 +12,7 @@ import { useAuth } from "@contexts/AuthContext";
 import { API, PAGE_SIZE } from "@constants/api";
 import { AutocompleteInstitution } from "../AutocompleteInstitution";
 import { PaginatedResponse } from "@interfaces/utils/pagination";
+import { Role } from "@constants/roles";
 
 import {
   CollectionOut,
@@ -26,6 +27,7 @@ type CollectionsPageProps = {
 
   export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
   const { user, apiFetch, token } = useAuth() as any;
+  console.log(user);
 
   const collectionsPerPage = PAGE_SIZE.COLLECTIONS;
 
@@ -59,6 +61,17 @@ type CollectionsPageProps = {
     institution_id: null,
     creator_agent_id: null,
   });
+
+  const canManageCollection = (c: CollectionListItem) => {
+    // Si usas enum:
+    const isSuper = user?.role === Role.Admin;
+    const isInstAdminSameInst =
+        user?.role === Role.InstitutionAdmin &&
+        Number(user?.institutionId) === Number(c.institutionId); // <-- aquí el fix
+
+    const isOwnerRole = c.my_role === "owner";
+    return isSuper || isInstAdminSameInst || isOwnerRole;
+  };
 
   // CSV (opcional: por ahora solo contamos filas; la carga real de ocurrencias no está en este endpoint)
   const [csvFile, setCsvFile] = useState<File | null>(null);
@@ -112,6 +125,7 @@ type CollectionsPageProps = {
           const data = (await res.json()) as PaginatedResponse<CollectionOut> | CollectionOut[];
           const items = Array.isArray(data) ? data : data.items ?? [];
           const list = items.map(toCollectionListItem);
+          console.log("list, ", list);
 
           setMyItems(list);
           setMyTotalPages(Array.isArray(data) ? 1 : data.total_pages ?? 1);
@@ -148,6 +162,7 @@ type CollectionsPageProps = {
           const data = (await res.json()) as PaginatedResponse<CollectionOut> | CollectionOut[];
           const items = Array.isArray(data) ? data : data.items ?? [];
           const list = items.map(toCollectionListItem);
+          console.log("list, ", list);
 
           setAllowedItems(list);
           setAllowedTotalPages(Array.isArray(data) ? 1 : data.total_pages ?? 1);
@@ -272,7 +287,14 @@ type CollectionsPageProps = {
   };
 
   // ------- Navegación tarjetas -------
-  const goHomeOnClick = () => onNavigate("home");
+    const goToCollectionDetail = (c: CollectionListItem) => {
+      onNavigate("collection-detail", {
+        collectionId: c.id,
+        collectionName: c.name,
+        collectionInstitutionId: Number(c.institutionId),
+        isOwner: canManageCollection(c),
+      });
+    };
 
   // ------- Render -------
   return (
@@ -479,7 +501,7 @@ type CollectionsPageProps = {
                         <Card
                             key={c.id}
                             className="hover:shadow-lg transition-all cursor-pointer h-full border-2 hover:border-primary/50"
-                            onClick={goHomeOnClick}
+                            onClick={() => goToCollectionDetail(c)}
                         >
                           <CardHeader>
                             <div className="flex items-start justify-between">
@@ -552,7 +574,7 @@ type CollectionsPageProps = {
                     <Card
                         key={c.id}
                         className="hover:shadow-lg transition-all cursor-pointer h-full border-2 hover:border-primary/50"
-                        onClick={goHomeOnClick}
+                        onClick={() => goToCollectionDetail(c)}
                     >
                       <CardHeader>
                         <div className="flex items-start justify-between">

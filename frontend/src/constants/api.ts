@@ -8,7 +8,10 @@ export const API = {
         REG_REQUESTS: "/auth/registration-requests",
         REG_REQUEST: "/auth/registration-request",
         USER_BY_EMAIL: "/users/by-email",
-        ADMIN_METRICS: "/admin/metrics"
+        ADMIN_METRICS: "/admin/metrics",
+        COLLECTIONS_ACCESS_USERS: (collectionId: number | string) => `/collections/${collectionId}/access-users`,
+        COLLECTIONS_OCCURRENCES_BRIEF: (collectionId: number | string) => `/collections/${collectionId}/occurrences/brief`,
+        COLLECTIONS_ADD_USER: (collectionId: number | string) => `/collections/${collectionId}/permissions/add-user`,
     },
 };
 

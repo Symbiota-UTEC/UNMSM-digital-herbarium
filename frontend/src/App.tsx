@@ -18,8 +18,9 @@ import { CSVImportPage } from "./components/pages/CSVImportPage";
 import { Toaster } from './components/ui/sonner';
 
 interface NavigationParams {
-  collectionId?: string;
+  collectionId?: number;
   collectionName?: string;
+  collectionInstitutionId?: number;
   isOwner?: boolean;
   occurrenceId?: string;
 }
@@ -56,11 +57,12 @@ function AppContent() {
         return <RegisterPage onNavigate={handleNavigation} />;
       case 'collections':
         return <CollectionsPage onNavigate={handleNavigation} />;
-      case 'collection.ts-detail':
+      case 'collection-detail':
         return (
             <CollectionDetailPage
                 collectionId={navParams.collectionId || ''}
                 collectionName={navParams.collectionName || ''}
+                collectionInstitutionId={navParams.collectionInstitutionId}
                 isOwner={navParams.isOwner || false}
                 onNavigate={handleNavigation}
             />
