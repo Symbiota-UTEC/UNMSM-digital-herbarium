@@ -29,6 +29,14 @@ type CollectionsPageProps = {
   const { user, apiFetch, token } = useAuth() as any;
   console.log(user);
 
+  const isSuper = user?.role === Role.Admin;
+  const isInstAdmin = user?.role === Role.InstitutionAdmin;
+    // Solo los super pueden elegir institución libremente
+  const isRestrictedInstitutionPick = !isSuper; // true = user normal o InstitutionAdmin
+  const userInstitutionId = user?.institutionId != null ? Number(user.institutionId) : null;
+  const userInstitutionName = user?.institution || "";
+  const creatorDisplayName = user?.username || user?.email || "Desconocido";
+
   const collectionsPerPage = PAGE_SIZE.COLLECTIONS;
 
     // ------- Estado: colecciones por agente (mis colecciones) -------
@@ -188,25 +196,42 @@ type CollectionsPageProps = {
   }, [allowedPage, fetchAllowedCollections]);
 
   // ------- Crear colección -------
-  const resetForm = () => {
-    setForm({
-      collectionID: "",
-      collectionCode: "",
-      collectionName: "",
-      description: "",
-      webSite: "",
-      institution_id: null,
-      creator_agent_id: agentId ?? null,
-    });
-    setCsvFile(null);
-    setInstSearchText("");
-    setSelectedInstitutionId(null);
-  };
+    const resetForm = () => {
+      setForm({
+        collectionID: "",
+        collectionCode: "",
+        collectionName: "",
+        description: "",
+        webSite: "",
+        institution_id: null,
+        creator_agent_id: agentId ?? null,
+      });
+      setCsvFile(null);
+
+      if (isRestrictedInstitutionPick) {
+        setSelectedInstitutionId(userInstitutionId);
+        setInstSearchText(
+            userInstitutionName || (userInstitutionId ? `Institución #${userInstitutionId}` : "")
+        );
+      } else {
+        setSelectedInstitutionId(null);
+        setInstSearchText("");
+      }
+    };
 
   useEffect(() => {
     // set default creator from user
     setForm((f) => ({ ...f, creator_agent_id: agentId ?? null }));
   }, [agentId]);
+
+    useEffect(() => {
+      if (isRestrictedInstitutionPick) {
+        setSelectedInstitutionId(userInstitutionId);
+        setInstSearchText(
+            userInstitutionName || (userInstitutionId ? `Institución #${userInstitutionId}` : "")
+        );
+      }
+    }, [isRestrictedInstitutionPick, userInstitutionId, userInstitutionName, open]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -316,14 +341,14 @@ type CollectionsPageProps = {
             <DialogContent className="max-w-2xl">
               <DialogHeader>
                 <DialogTitle>Crear Nueva Colección</DialogTitle>
-                <DialogDescription>Completa los metadatos y (opcional) adjunta un CSV para conteo.</DialogDescription>
+                <DialogDescription>Completa los metadatos de tu nueva colección.</DialogDescription>
               </DialogHeader>
 
-              <Tabs defaultValue="empty" className="w-full">
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="empty">Colección Vacía</TabsTrigger>
-                  <TabsTrigger value="csv">Importar CSV (metadata + conteo)</TabsTrigger>
-                </TabsList>
+              {/*<Tabs defaultValue="empty" className="w-full">*/}
+              {/*  <TabsList className="grid w-full grid-cols-2">*/}
+              {/*    <TabsTrigger value="empty">Colección Vacía</TabsTrigger>*/}
+              {/*    /!*<TabsTrigger value="csv">Importar CSV (metadata + conteo)</TabsTrigger>*!/*/}
+              {/*  </TabsList>*/}
 
                 {/* Form base compartido */}
                 <div className="rounded-lg bg-blue-50 p-4 my-4">
@@ -331,9 +356,6 @@ type CollectionsPageProps = {
                     <Folder className="h-5 w-5 text-blue-600 mt-0.5" />
                     <div>
                       <h4 className="text-sm text-blue-900 mb-1">Metadatos</h4>
-                      <p className="text-sm text-blue-700">
-                        Los siguientes campos serán enviados al endpoint <code>/collections</code>.
-                      </p>
                     </div>
                   </div>
                 </div>
@@ -394,58 +416,35 @@ type CollectionsPageProps = {
 
                   {/* Autocomplete de institución */}
                   <div className="space-y-2">
-                    <Label>Institución</Label>
+                    <Label htmlFor="webSite">Institución</Label>
+
                     <AutocompleteInstitution
                         token={token}
                         apiFetch={apiFetch}
-                        placeholder="Buscar institución..."
-                        disabled={false}
+                        placeholder={isRestrictedInstitutionPick ? (userInstitutionName || "Tu institución") : "Buscar institución..."}
+                        disabled={isRestrictedInstitutionPick}
                         value={instSearchText}
                         onChange={(t) => {
+                          if (isRestrictedInstitutionPick) return; // bloquear edición
                           setInstSearchText(t);
                           setSelectedInstitutionId(null);
                         }}
                         onSelect={(item) => {
+                          if (isRestrictedInstitutionPick) return; // bloquear selección
                           setInstSearchText(item.institutionName);
                           setSelectedInstitutionId(Number(item.id));
                         }}
                         minChars={1}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      {selectedInstitutionId ? `Seleccionada (id=${selectedInstitutionId})` : "Ninguna seleccionada"}
-                    </p>
+
                   </div>
 
-                  {/* Creator agent id (auto) */}
+                  {/* Creator */}
                   <div className="space-y-1">
-                    <Label>Creator Agent ID</Label>
-                    <div className="text-sm">
-                      {agentId ?? <span className="text-red-600">No disponible</span>}
-                    </div>
+                    <Label>Creador</Label>
+                    <div className="text-sm">{creatorDisplayName}</div>
                   </div>
 
-                  <TabsContent value="csv" className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="csv-file">Archivo CSV (opcional)</Label>
-                      <div className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary transition-colors">
-                        <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                        <div className="mb-2">
-                          <label htmlFor="csv-file" className="cursor-pointer text-primary hover:underline">
-                            Seleccionar archivo CSV
-                          </label>
-                          <input id="csv-file" type="file" accept=".csv" onChange={handleFileChange} className="hidden" />
-                        </div>
-                        {csvFile && (
-                            <p className="text-sm text-muted-foreground">
-                              Archivo: <span className="text-foreground">{csvFile.name}</span>
-                            </p>
-                        )}
-                        <p className="text-xs text-muted-foreground mt-2">
-                          (Por ahora solo se contabiliza el número de filas; importación de ocurrencias se hará en otro flujo)
-                        </p>
-                      </div>
-                    </div>
-                  </TabsContent>
 
                   <div className="flex gap-2 pt-2">
                     <Button type="button" variant="outline" onClick={() => setOpen(false)} className="flex-1">
@@ -456,7 +455,7 @@ type CollectionsPageProps = {
                     </Button>
                   </div>
                 </form>
-              </Tabs>
+              {/*</Tabs>*/}
             </DialogContent>
           </Dialog>
         </div>

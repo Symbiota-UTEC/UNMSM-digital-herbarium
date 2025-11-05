@@ -42,6 +42,7 @@ export interface ApiUserOut {
     is_institution_admin: boolean;
     agent_id: number | null;
     institution_id: number | null;
+    institution?: string;
     created_at: string;
 }
 
@@ -96,6 +97,7 @@ export const mapApiUserToUser = (apiUser: ApiUserOut): User => {
         role,
         agentId: apiUser.agent_id ?? null,
         institutionId: apiUser.institution_id ?? null,
+        institution: apiUser.institution ?? null,
     };
 };
 

@@ -19,6 +19,7 @@ import { PaginatedResponse } from "@interfaces/utils/pagination";
 import { CollectionUserAccessItem } from "@interfaces/collection";
 import { ApiUserLookupResponse, mapApiLookupToResult, VISIBILITY } from "@interfaces/auth";
 
+
 // ================== Props ==================
 interface CollectionDetailPageProps {
   collectionId: string;
@@ -50,9 +51,6 @@ export function CollectionDetailPage({
                                      }: CollectionDetailPageProps) {
   const { token } = useAuth();
 
-  console.log("Is Owner: ", isOwner);
-  console.log("institution: ", collectionInstitutionId);
-
   // ================== Estado: usuarios con acceso ==================
   const [usersResp, setUsersResp] = useState<PaginatedResponse<CollectionUserAccessItem> | null>(null);
   const [usersLimit, setUsersLimit] = useState(6);
@@ -74,6 +72,28 @@ export function CollectionDetailPage({
   const [showDeleteCollectionDialog, setShowDeleteCollectionDialog] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const [isUsersExpanded, setIsUsersExpanded] = useState(true);
+
+  const STATUS_HEX = {
+    ok:    "#22c55e",
+    warn:  "#eab308",
+    error: "#ef4444",
+  } as const;
+
+  const statusColor =
+      emailStatus === "ok"
+          ? STATUS_HEX.ok
+          : emailStatus === "warn"
+              ? STATUS_HEX.warn
+              : emailStatus === "error"
+                  ? STATUS_HEX.error
+                  : null;
+
+  const statusStyle = statusColor
+      ? ({
+        borderColor: statusColor,
+        boxShadow: `0 0 0 2px ${statusColor}55`,
+      } as React.CSSProperties)
+      : undefined;
 
   // ================== Cargas ==================
   const fetchUsers = useCallback(async () => {
@@ -106,97 +126,94 @@ export function CollectionDetailPage({
   useEffect(() => { fetchOccurrences(); }, [fetchOccurrences]);
 
   // ================== Validación de email (debounce) ==================
-  useEffect(() => {
-    if (!showAddUserDialog) return;
-    if (!emailInput.trim()) {
+  const validateAddUserEmail = useCallback(async (rawEmail: string) => {
+    const email = rawEmail.trim();
+    if (!email) {
       setEmailStatus("idle");
       setEmailHelp("");
-      return;
+      return null;
     }
 
-    let cancelled = false;
-    setEmailStatus("checking");
-    setEmailHelp("Verificando usuario...");
+    try {
+      setEmailStatus("checking");
+      setEmailHelp("Verificando usuario...");
 
-    const t = setTimeout(async () => {
-      try {
-        const params = new URLSearchParams({ email: emailInput.trim() });
+      const params = new URLSearchParams({ email });
+      const res = await apiFetch(
+          `${API.BASE_URL}${API.PATHS.USER_BY_EMAIL}?${params.toString()}`,
+          { headers: { Authorization: token ? `Bearer ${token}` : "" } }
+      );
 
-        const res = await apiFetch(
-            `${API.BASE_URL}${API.PATHS.USER_BY_EMAIL}?${params.toString()}`,
-            { headers: { Authorization: token ? `Bearer ${token}` : "" } }
-        );
-
-        if (cancelled) return;
-
-        if (res.status === 404) {
-          setEmailStatus("error");
-          setEmailHelp("No existe un usuario con ese correo.");
-          return;
-        }
-        if (!res.ok) {
-          setEmailStatus("error");
-          setEmailHelp("No se pudo verificar el usuario.");
-          return;
-        }
-
-        const payload: ApiUserLookupResponse = await res.json();
-        const r = mapApiLookupToResult(payload);
-
-        if (!r.found) {
-          setEmailStatus("error");
-          setEmailHelp("No existe un usuario con ese correo.");
-          return;
-        }
-
-        // --- Caso SUPERUSER ---
-        // full: tenemos user mapeado → podemos revisar rol
-        if (r.visibility === VISIBILITY.FULL && r.user?.role === Role.Admin) {
-          setEmailStatus("warn");
-          setEmailHelp("Este usuario es superadministrador: ya tiene acceso a todas las colecciones.");
-          return;
-        }
-        // limited: sin user, pero el backend puede mandar un mensaje indicándolo
-        if (
-            r.visibility === VISIBILITY.LIMITED &&
-            (r.message?.toLowerCase().includes("superadministrador") ||
-                r.message?.toLowerCase().includes("superusuario"))
-        ) {
-          setEmailStatus("warn");
-          setEmailHelp("Este usuario es superadministrador: ya tiene acceso a todas las colecciones.");
-          return;
-        }
-
-        // --- Misma institución vs otra ---
-        const sameInstitution =
-            r.sameInstitution === true ||
-            (r.visibility === VISIBILITY.FULL &&
-                r.user?.institutionId === collectionInstitutionId);
-
-        if (sameInstitution) {
-          setEmailStatus("ok");
-          setEmailHelp("Usuario encontrado en la misma institución.");
-        } else {
-          setEmailStatus("warn");
-          setEmailHelp("El usuario existe pero pertenece a otra institución.");
-        }
-      } catch (e) {
-        console.error(e);
-        if (!cancelled) {
-          setEmailStatus("error");
-          setEmailHelp("No se pudo verificar el usuario.");
-        }
+      if (res.status === 404) {
+        setEmailStatus("error");
+        setEmailHelp("No existe un usuario con ese correo.");
+        return null;
       }
-    }, 450);
+      if (!res.ok) {
+        setEmailStatus("error");
+        setEmailHelp("No se pudo verificar el usuario.");
+        return null;
+      }
 
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-    };
-  }, [emailInput, showAddUserDialog, collectionInstitutionId, token]);
+      const payload: ApiUserLookupResponse = await res.json();
+      const r = mapApiLookupToResult(payload);
+
+      if (!r.found) {
+        setEmailStatus("error");
+        setEmailHelp("No existe un usuario con ese correo.");
+        return null;
+      }
+
+      // SUPERADMIN
+      if (r.visibility === VISIBILITY.FULL && r.user?.role === Role.Admin) {
+        setEmailStatus("warn");
+        setEmailHelp("Este usuario es superadministrador: ya tiene acceso a todas las colecciones.");
+        return r; // válido, pero en 'warn'
+      }
+      if (
+          r.visibility === VISIBILITY.LIMITED &&
+          (r.message?.toLowerCase().includes("superadministrador") ||
+              r.message?.toLowerCase().includes("superusuario"))
+      ) {
+        setEmailStatus("warn");
+        setEmailHelp("Este usuario es superadministrador: ya tiene acceso a todas las colecciones.");
+        return r;
+      }
+
+      // Misma institución vs otra
+      const sameInstitution =
+          r.sameInstitution === true ||
+          (r.visibility === VISIBILITY.FULL && r.user?.institutionId === collectionInstitutionId);
+
+      if (sameInstitution) {
+        setEmailStatus("ok");
+        setEmailHelp("Usuario encontrado en la misma institución.");
+      } else {
+        setEmailStatus("warn");
+        setEmailHelp("El usuario existe pero pertenece a otra institución.");
+        console.log("[AddUser] status=warn"); // <- debería verse en consola
+
+      }
+
+      return r; // encontrado (ok o warn)
+    } catch (e) {
+      console.error(e);
+      setEmailStatus("error");
+      setEmailHelp("No se pudo verificar el usuario.");
+      return null;
+    }
+  }, [token, collectionInstitutionId]);
 
   // ================== Agregar usuario ==================
   const handleAddUser = useCallback(async (e: React.FormEvent) => {
+    if (emailStatus === "idle") {
+      const r = await validateAddUserEmail(emailInput);
+      if (!r) {
+        toast.error("El correo no es válido");
+        return;
+      }
+    }
+
     e.preventDefault();
     if (!emailInput.trim()) {
       toast.error("Ingresa un correo válido");
@@ -317,43 +334,65 @@ export function CollectionDetailPage({
                                     id="userEmail"
                                     type="email"
                                     value={emailInput}
-                                    onChange={(e) => setEmailInput(e.target.value)}
+                                    onChange={(e) => {
+                                      setEmailInput(e.target.value);
+                                      setEmailStatus("idle");
+                                      setEmailHelp("");
+                                    }}
+                                    onBlur={(e) => { void validateAddUserEmail(e.target.value); }}
                                     placeholder="usuario@ejemplo.com"
                                     required
-                                    className={
-                                      emailStatus === "error"
-                                          ? "border-red-500"
-                                          : emailStatus === "warn"
-                                              ? "border-amber-500"
-                                              : emailStatus === "ok"
-                                                  ? "border-emerald-500"
-                                                  : ""
-                                    }
+                                    aria-invalid={emailStatus === "error" ? true : undefined}
+
+                                    // 🔥 La clave: estilos inline que NO pueden ser pisados
+                                    style={statusStyle}
+
+                                    // opcional: quita cualquier ring propio del componente
+                                    className="focus-visible:outline-none"
                                 />
+
                                 {emailStatus !== "idle" && (
                                     <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                                      {emailStatus === "checking" && <Info className="h-4 w-4 text-muted-foreground animate-pulse" />}
-                                      {emailStatus === "ok" && <span className="text-emerald-600 text-sm font-medium">OK</span>}
-                                      {emailStatus === "warn" && <span className="text-amber-600 text-sm font-medium">Warn</span>}
-                                      {emailStatus === "error" && <span className="text-red-600 text-sm font-medium">Error</span>}
+                                      {emailStatus === "checking" && (
+                                          <Info className="h-4 w-4 text-muted-foreground animate-pulse" />
+                                      )}
+                                      {emailStatus === "ok"   && (
+                                          <span style={{ color: STATUS_HEX.ok }} className="text-sm font-medium">
+          OK
+        </span>
+                                      )}
+                                      {emailStatus === "warn" && (
+                                          <span style={{ color: STATUS_HEX.warn }} className="text-sm font-medium">
+          Warn
+        </span>
+                                      )}
+                                      {emailStatus === "error" && (
+                                          <span style={{ color: STATUS_HEX.error }} className="text-sm font-medium">
+          Error
+        </span>
+                                      )}
                                     </div>
                                 )}
                               </div>
+
                               {emailHelp && (
                                   <p
-                                      className={`text-sm ${
-                                          emailStatus === "error"
-                                              ? "text-red-600"
-                                              : emailStatus === "warn"
-                                                  ? "text-amber-600"
-                                                  : emailStatus === "ok"
-                                                      ? "text-emerald-600"
-                                                      : "text-muted-foreground"
-                                      }`}
+                                      className="text-sm"
+                                      style={{
+                                        color:
+                                            emailStatus === "error"
+                                                ? STATUS_HEX.error
+                                                : emailStatus === "warn"
+                                                    ? STATUS_HEX.warn
+                                                    : emailStatus === "ok"
+                                                        ? STATUS_HEX.ok
+                                                        : undefined,
+                                      }}
                                   >
                                     {emailHelp}
                                   </p>
                               )}
+
                             </div>
 
                             {/* Rol fijo: viewer (disabled UI para que quede claro) */}

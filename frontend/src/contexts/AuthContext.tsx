@@ -28,6 +28,7 @@ function decodeJwtPayload(token: string): any | null {
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  console.log(user);
   const [token, setToken] = useState<string | null>(null);
 
   // limpiar cualquier timer de auto-logout
