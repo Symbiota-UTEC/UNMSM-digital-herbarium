@@ -10,6 +10,7 @@ from backend.routers import auth as auth_router
 from backend.routers import users as users_router
 from backend.routers import admin as admin_router
 from backend.routers import collections as collections_router
+from backend.routers import upload as upload_router
 
 models_module.Base.metadata.create_all(bind=engine)
 
@@ -34,6 +35,7 @@ app.include_router(institutions_router.router, prefix="/api")
 app.include_router(users_router.router, prefix="/api")
 app.include_router(admin_router.router, prefix="/api")
 app.include_router(collections_router.router, prefix="/api")
+app.include_router(upload_router.router, prefix="/api")
 
 @app.get("/", tags=["meta"])
 def root():

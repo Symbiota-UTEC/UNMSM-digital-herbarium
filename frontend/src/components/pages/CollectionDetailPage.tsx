@@ -66,7 +66,7 @@ export function CollectionDetailPage({
 
   // ================== Estado: ocurrencias ==================
   const [occResp, setOccResp] = useState<PaginatedResponse<OccurrenceBriefItem> | null>(null);
-  const [occLimit] = useState(3); // Admin-style: estático 3 por página
+  const [occLimit] = useState(5); // Admin-style: estático 3 por página
   const [occOffset, setOccOffset] = useState(0);
 
   const occCurrentPage = useMemo(() => occResp?.current_page ?? (occOffset / occLimit + 1), [occResp, occOffset, occLimit]);
@@ -275,6 +275,15 @@ export function CollectionDetailPage({
     setUsersOffset(newOffset);
   };
   const gotoOccPage = (page: number) => setOccOffset((page - 1) * occLimit);
+
+  const goToOccurrenceDetail = (occId: number) => {
+    onNavigate("occurrence-detail", {
+      occurrenceId: String(occId),
+      collectionId,
+      collectionName,
+      isOwner,
+    });
+  };
 
   return (
       <div className="container mx-auto px-4 py-8">
@@ -567,7 +576,13 @@ export function CollectionDetailPage({
                             <TableCell>{occ.date ? new Date(occ.date).toLocaleDateString("es-ES") : "—"}</TableCell>
                             <TableCell>
                               <div className="flex gap-2">
-                                <Button variant="outline" size="sm" disabled title="Próximamente" className="h-9 w-9 p-0">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-9 w-9 p-0"
+                                    onClick={() => goToOccurrenceDetail(occ.id)}
+                                    title="Ver detalle"
+                                >
                                   <Eye className="h-4 w-4" />
                                 </Button>
                                 {isOwner && (
@@ -582,6 +597,7 @@ export function CollectionDetailPage({
                                 )}
                               </div>
                             </TableCell>
+
                           </TableRow>
                       ))}
                     </TableBody>

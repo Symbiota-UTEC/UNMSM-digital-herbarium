@@ -12,6 +12,7 @@ export const API = {
         COLLECTIONS_ACCESS_USERS: (collectionId: number | string) => `/collections/${collectionId}/access-users`,
         COLLECTIONS_OCCURRENCES_BRIEF: (collectionId: number | string) => `/collections/${collectionId}/occurrences/brief`,
         COLLECTIONS_ADD_USER: (collectionId: number | string) => `/collections/${collectionId}/permissions/add-user`,
+        OCCURRENCE_BY_ID: (occurrenceId: number | string) => `/occurrences/${occurrenceId}`,
     },
 };
 
