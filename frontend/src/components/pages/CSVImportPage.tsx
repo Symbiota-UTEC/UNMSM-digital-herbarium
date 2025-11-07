@@ -19,6 +19,7 @@ import { ArrowLeft, Upload, FileSpreadsheet, CheckCircle, X, Info, Download } fr
 import { toast } from "sonner@2.0.3";
 import { useAuth } from "@contexts/AuthContext";
 import { API } from "@constants/api";
+import Papa from 'papaparse';
 
 interface CSVImportPageProps {
     collectionId: string;
@@ -167,14 +168,97 @@ const AUTO_MAP_RULES: Array<{ pattern: RegExp; target: string }> = [
     { pattern: /\b(rank|rango|taxon\s*rank)\b/i, target: "Taxon.taxonRank" }
 ];
 
-// ============= Utils CSV =============
-const readCSVText = (file: File): Promise<string> =>
-    new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => resolve((e.target?.result as string) ?? "");
-        reader.onerror = reject;
-        reader.readAsText(file);
-    });
+
+
+type Guess = { text: string; encoding: string; source: "bom" | "heuristic" };
+
+const ENCODING_CANDIDATES = [
+  "utf-8",
+  "windows-1252",
+  "iso-8859-1",
+  "iso-8859-15",
+  "macintosh",
+] as const;
+
+const decodeWith = (bytes: Uint8Array, enc: string): string => {
+  let out = new TextDecoder(enc as any, { fatal: false }).decode(bytes);
+  if (out.charCodeAt(0) === 0xfeff) out = out.slice(1);
+  return out;
+};
+
+const hasManyReplacements = (s: string) => (s.match(/\uFFFD/g) || []).length;
+const countControlWeird = (s: string) => {
+  let bad = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 0x20 && c !== 9 && c !== 10 && c !== 13) bad++;
+  }
+  return bad;
+};
+const looksLikeUTF8Misdecoded = (s: string) => /Ã[\x80-\xBFÀ-ÿA-Za-z]/.test(s);
+const countSpanishDiacritics = (s: string) =>
+  (s.match(/[áéíóúÁÉÍÓÚñÑüÜ]/g) || []).length;
+
+const scoreDecoded = (s: string) => {
+  const rep = hasManyReplacements(s);
+  const ctrl = countControlWeird(s);
+  const mis = looksLikeUTF8Misdecoded(s) ? 5 : 0;
+  const diac = countSpanishDiacritics(s);
+  return diac * 3 - rep * 10 - ctrl * 2 - mis * 8;
+};
+
+const detectBOM = (bytes: Uint8Array): { enc?: string; offset: number } => {
+  if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+    return { enc: "utf-8", offset: 3 };
+  }
+  if (bytes.length >= 2) {
+    if (bytes[0] === 0xff && bytes[1] === 0xfe) return { enc: "utf-16le", offset: 2 };
+    if (bytes[0] === 0xfe && bytes[1] === 0xff) return { enc: "utf-16be", offset: 2 };
+  }
+  return { offset: 0 };
+};
+
+export const guessDecode = (bytes: Uint8Array): Guess => {
+  const bom = detectBOM(bytes);
+  if (bom.enc) {
+    try {
+      const txt = decodeWith(bytes.subarray(bom.offset), bom.enc);
+      return { text: txt, encoding: bom.enc, source: "bom" };
+    } catch { /* fall-through */ }
+  }
+
+  try {
+    const utf8 = decodeWith(bytes, "utf-8");
+    const bad = hasManyReplacements(utf8);
+    if (bad === 0 && !looksLikeUTF8Misdecoded(utf8)) {
+      return { text: utf8, encoding: "utf-8", source: "heuristic" };
+    }
+  } catch {}
+
+  let best: { enc: string; text: string; score: number } | null = null;
+  for (const enc of ENCODING_CANDIDATES) {
+    try {
+      const txt = decodeWith(bytes, enc);
+      const sc = scoreDecoded(txt);
+      if (!best || sc > best.score) best = { enc, text: txt, score: sc };
+    } catch { }
+  }
+  if (best) return { text: best.text, encoding: best.enc, source: "heuristic" };
+
+  return { text: new TextDecoder("utf-8").decode(bytes), encoding: "utf-8", source: "heuristic" };
+};
+
+export const readFileBytes = (file: File): Promise<Uint8Array> =>
+  new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = (e) => {
+      const buf = e.target?.result as ArrayBuffer | null;
+      if (!buf) return resolve(new Uint8Array());
+      resolve(new Uint8Array(buf));
+    };
+    fr.onerror = reject;
+    fr.readAsArrayBuffer(file);
+  });
 
 const splitCSVLine = (line: string): string[] => {
     const parts = line.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/g);
@@ -209,6 +293,10 @@ export function CSVImportPage({ collectionId, collectionName, onNavigate }: CSVI
 
     const [datasetModel, setDatasetModel] = useState<DatasetModel>("Occurrence");
     const [csvFile, setCSVFile] = useState<File | null>(null);
+
+    const [csvBytes, setCsvBytes] = useState<Uint8Array | null>(null);
+    const [encodingUsed, setEncodingUsed] = useState<string>("utf-8");
+    const [encodingAuto, setEncodingAuto] = useState<boolean>(true);
 
     const [rawCSVText, setRawCSVText] = useState<string>("");
     const [csvHeaders, setCSVHeaders] = useState<string[]>([]);
@@ -256,39 +344,95 @@ export function CSVImportPage({ collectionId, collectionName, onNavigate }: CSVI
             toast.error("Por favor, selecciona un archivo .csv");
             return;
         }
-        setCSVFile(file);
+        try {
+            setCSVFile(file);
+            setIsProcessing(true);
 
-        const csvText = await readCSVText(file);
-        setRawCSVText(csvText);
+            // 1) bytes crudos
+            const bytes = await readFileBytes(file);
+            setCsvBytes(bytes);
 
-        const { headers, rows } = parseCSVAll(csvText);
-        if (headers.length === 0 || rows.length === 0) {
-            toast.error("El archivo CSV debe tener encabezados y al menos una fila de datos");
-            return;
-        }
-        setCSVHeaders(headers);
-        setCSVRows(rows);
-        setRowCount(rows.length);
+            // 2) decodificación inteligente
+            const { text, encoding } = guessDecode(bytes);
+            setEncodingUsed(encoding);
+            setEncodingAuto(true);
 
-        const first = rows[0] || [];
-        const detected: CSVColumn[] = headers.map((h, idx) => ({
-            name: h.trim(),
-            sample: first[idx] || ""
-        }));
-        setColumns(detected);
-
-        const mapping: ColumnMapping = {};
-        detected.forEach((col) => {
-            const name = col.name;
-            let mapped = "ignore";
-            for (const rule of AUTO_MAP_RULES) {
-                if (rule.pattern.test(name)) { mapped = rule.target; break; }
+            // 3) parse con tus utilidades existentes
+            const { headers, rows } = parseCSVAll(text);
+            if (headers.length === 0 || rows.length === 0) {
+                toast.error("El archivo CSV debe tener encabezados y al menos una fila de datos");
+                setIsProcessing(false);
+                return;
             }
-            mapping[name] = mapped;
-        });
-        setColumnMapping(mapping);
 
-        toast.success(`Archivo cargado: ${rows.length} filas detectadas`);
+            setRawCSVText(text);
+            setCSVHeaders(headers);
+            setCSVRows(rows);
+            setRowCount(rows.length);
+
+            const first = rows[0] || [];
+            const detected: CSVColumn[] = headers.map((h, idx) => ({
+                name: h.trim(),
+                sample: first[idx] || ""
+            }));
+            setColumns(detected);
+
+            const mapping: ColumnMapping = {};
+            detected.forEach((col) => {
+                const name = col.name;
+                let mapped = "ignore";
+                for (const rule of AUTO_MAP_RULES) {
+                    if (rule.pattern.test(name)) { mapped = rule.target; break; }
+                }
+                mapping[name] = mapped;
+            });
+            setColumnMapping(mapping);
+
+            toast.success(`Archivo cargado (${encoding}). Filas detectadas: ${rows.length}`);
+        } catch (err) {
+            console.error(err);
+            toast.error("No se pudo leer el CSV.");
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const handleEncodingChange = (enc: string) => {
+        if (!csvBytes) return;
+        try {
+            const text = decodeWith(csvBytes, enc);
+            // re-parsea
+            const { headers, rows } = parseCSVAll(text);
+            setRawCSVText(text);
+            setCSVHeaders(headers);
+            setCSVRows(rows);
+            setRowCount(rows.length);
+
+            const first = rows[0] || [];
+            const detected: CSVColumn[] = headers.map((h, idx) => ({
+                name: h.trim(),
+                sample: first[idx] || ""
+            }));
+            setColumns(detected);
+            // mantenemos tus mapeos actuales si los headers coinciden;
+            // si no, los reseteamos por seguridad:
+            setColumnMapping((prev) => {
+                const newMap: ColumnMapping = {};
+                const prevKeys = new Set(Object.keys(prev));
+                headers.forEach((h) => {
+                    if (prevKeys.has(h)) newMap[h] = prev[h];
+                    else newMap[h] = "ignore";
+                });
+                return newMap;
+            });
+
+            setEncodingUsed(enc);
+            setEncodingAuto(false);
+            toast.success(`Codificación aplicada: ${enc}`);
+        } catch (err) {
+            console.error(err);
+            toast.error(`No se pudo decodificar como ${enc}`);
+        }
     };
 
     const handleMappingChange = (csvColumn: string, value: string) => {
@@ -297,6 +441,9 @@ export function CSVImportPage({ collectionId, collectionName, onNavigate }: CSVI
 
     const handleRemoveFile = () => {
         setCSVFile(null);
+        setCsvBytes(null);
+        setEncodingUsed("utf-8");
+        setEncodingAuto(true);
         setColumns([]);
         setColumnMapping({});
         setRowCount(0);
@@ -552,6 +699,30 @@ export function CSVImportPage({ collectionId, collectionName, onNavigate }: CSVI
                                 </Button>
                             </div>
                         </CardHeader>
+                        <CardContent>
+                        <div className="flex flex-wrap items-center gap-4">
+                            <div className="grid gap-2">
+                            <Label>Codificación del archivo</Label>
+                            <Select value={encodingUsed} onValueChange={(v) => handleEncodingChange(v)}>
+                                <SelectTrigger className="w-[220px]">
+                                <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                <SelectItem value="utf-8">UTF-8</SelectItem>
+                                <SelectItem value="windows-1252">Windows-1252 (ANSI)</SelectItem>
+                                <SelectItem value="iso-8859-1">ISO-8859-1</SelectItem>
+                                <SelectItem value="iso-8859-15">ISO-8859-15</SelectItem>
+                                <SelectItem value="macintosh">Macintosh</SelectItem>
+                                <SelectItem value="utf-16le">UTF-16 LE</SelectItem>
+                                <SelectItem value="utf-16be">UTF-16 BE</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <span className="text-xs text-muted-foreground">
+                                {encodingAuto ? "Detectado automáticamente" : "Forzado manualmente"}
+                            </span>
+                            </div>
+                        </div>
+                        </CardContent>
                     </Card>
 
                     {/* Paso 2: Mapeo */}
