@@ -72,7 +72,7 @@ import { toast } from "sonner@2.0.3";
 import { Role } from "@constants/roles";
 import { useAuth } from "@contexts/AuthContext";
 import { API, PAGE_SIZE } from "@constants/api";
-import { User, ApiUserOut, mapApiUserToUser } from "@interfaces/auth";
+import { User, ApiUserOut, ApiUserLookupResponse, mapApiUserToUser, VISIBILITY, mapApiLookupToResult } from "@interfaces/auth";
 import { ScopedTotals, AdminMetrics } from "@interfaces/admin";
 import {
   BasicInstitutionInfo,
@@ -301,59 +301,12 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     fetchMetrics();
   }, [token]);
 
-  // Load institutions (left column) with selection/pagination
-  useEffect(() => {
-    const fetchInstitutions = async () => {
-      try {
-        setIsLoadingInstitutions(true);
+  const fetchInstitutions = useCallback(async () => {
+    try {
+      setIsLoadingInstitutions(true);
 
-        // Institution Admin: fetch its single institution
-        if (isInstitutionAdmin && user?.institutionId) {
-          const endpoint = `${API.BASE_URL}${API.PATHS.INSTITUTIONS}/${user.institutionId}`;
-          const res = await apiFetch(endpoint, {
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-          });
-          if (!res.ok) throw new Error(`Error ${res.status}`);
-
-          const one = (await res.json()) as Institution | null;
-          setInstitutions(one ? [one] : []);
-          setInstitutionsTotal(one ? 1 : 0);
-          setInstitutionsTotalPages(1);
-          setInstitutionsPage(1);
-          return;
-        }
-
-        // Exact selection from autocomplete
-        if (instSelectedId != null) {
-          const res = await apiFetch(
-              `${API.BASE_URL}${API.PATHS.INSTITUTIONS}/${instSelectedId}`,
-              {
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${token}`,
-                },
-              }
-          );
-          if (!res.ok) throw new Error(`Error ${res.status}`);
-          const one = await res.json();
-          setInstitutions(one ? [one] : []);
-          setInstitutionsTotal(one ? 1 : 0);
-          setInstitutionsTotalPages(1);
-          setInstitutionsPage(1);
-          return;
-        }
-
-        // System Admin: paginated list (optionally filtered by name_prefix)
-        const offset = (institutionsPage - 1) * institutionsPerPage;
-        const params = new URLSearchParams({
-          limit: String(institutionsPerPage),
-          offset: String(offset),
-        });
-
-        const endpoint = `${API.BASE_URL}${API.PATHS.INSTITUTIONS}?${params.toString()}`;
+      if (isInstitutionAdmin && user?.institutionId) {
+        const endpoint = `${API.BASE_URL}${API.PATHS.INSTITUTIONS}/${user.institutionId}`;
         const res = await apiFetch(endpoint, {
           headers: {
             "Content-Type": "application/json",
@@ -362,22 +315,63 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
         });
         if (!res.ok) throw new Error(`Error ${res.status}`);
 
-        const data = (await res.json()) as InstitutionPage;
-        setInstitutions(data.items ?? []);
-        setInstitutionsTotal(data.total ?? 0);
-        setInstitutionsTotalPages(data.total_pages ?? 1);
-      } catch (err) {
-        console.error(err);
-        toast.error("No se pudieron cargar las instituciones");
-        setInstitutions([]);
-        setInstitutionsTotal(0);
+        const one = (await res.json()) as Institution | null;
+        setInstitutions(one ? [one] : []);
+        setInstitutionsTotal(one ? 1 : 0);
         setInstitutionsTotalPages(1);
-      } finally {
-        setIsLoadingInstitutions(false);
+        setInstitutionsPage(1);
+        return;
       }
-    };
 
-    if (token) fetchInstitutions();
+      // Exact selection from autocomplete
+      if (instSelectedId != null) {
+        const res = await apiFetch(
+            `${API.BASE_URL}${API.PATHS.INSTITUTIONS}/${instSelectedId}`,
+            {
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+            }
+        );
+        if (!res.ok) throw new Error(`Error ${res.status}`);
+        const one = await res.json();
+        setInstitutions(one ? [one] : []);
+        setInstitutionsTotal(one ? 1 : 0);
+        setInstitutionsTotalPages(1);
+        setInstitutionsPage(1);
+        return;
+      }
+
+      // System Admin: paginated list
+      const offset = (institutionsPage - 1) * institutionsPerPage;
+      const params = new URLSearchParams({
+        limit: String(institutionsPerPage),
+        offset: String(offset),
+      });
+
+      const endpoint = `${API.BASE_URL}${API.PATHS.INSTITUTIONS}?${params.toString()}`;
+      const res = await apiFetch(endpoint, {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+
+      const data = (await res.json()) as InstitutionPage;
+      setInstitutions(data.items ?? []);
+      setInstitutionsTotal(data.total ?? 0);
+      setInstitutionsTotalPages(data.total_pages ?? 1);
+    } catch (err) {
+      console.error(err);
+      toast.error("No se pudieron cargar las instituciones");
+      setInstitutions([]);
+      setInstitutionsTotal(0);
+      setInstitutionsTotalPages(1);
+    } finally {
+      setIsLoadingInstitutions(false);
+    }
   }, [
     token,
     apiFetch,
@@ -385,9 +379,12 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     user?.institutionId,
     institutionsPage,
     institutionsPerPage,
-    // 👇 OJO: ya NO dependemos de instSearchText para evitar requests mientras escribes
     instSelectedId,
   ]);
+
+  useEffect(() => {
+    if (token) fetchInstitutions();
+  }, [token, fetchInstitutions]);
 
   // Reset right-column institution filter when text is cleared
   useEffect(() => {
@@ -636,6 +633,12 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       setNewInstitutionPhone("");
       setNewInstitutionWebSite("");
 
+      setInstSelectedId(null);
+
+      await fetchInstitutions();
+
+      setShowInstitutionDialog(false);
+      toast.success("Institución creada correctamente");
       setInstitutionsPage(1);
       setShowInstitutionDialog(false);
 
@@ -693,13 +696,19 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       return null;
     }
 
+    if (email.trim() === user.email)
+    {
+      setAdminEmailValidation({
+        isValid: false,
+        message: "No puedes asignarte a ti mismo porque ya eres super administrador",
+      });
+      return null;
+    }
+
     try {
       const emailTrimmed = email.trim();
 
       const params = new URLSearchParams({ email: emailTrimmed });
-      if (typeof institutionId === "number") {
-        params.set("institution_id", String(institutionId));
-      }
 
       const response = await apiFetch(
           `${API.BASE_URL}${API.PATHS.USER_BY_EMAIL}?${params.toString()}`,
@@ -725,9 +734,11 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
         return null;
       }
 
-      const foundUser: ApiUserOut = await response.json();
+      const apiResp: ApiUserLookupResponse = await response.json();
+      const result = mapApiLookupToResult(apiResp);
 
-      if (!foundUser) {
+      // No existe
+      if (!result.found) {
         setAdminEmailValidation({
           isValid: false,
           message: "Usuario no encontrado",
@@ -735,17 +746,24 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
         return null;
       }
 
-      const user = mapApiUserToUser(foundUser);
+      const user = result.user;
 
       if (
-          user.role === Role.InstitutionAdmin &&
           typeof institutionId === "number" &&
-          String(user.institutionId ?? "") !== String(institutionId)
+          user.institutionId !== null &&
+          user.institutionId !== institutionId
       ) {
-        setAdminEmailValidation({
-          isValid: false,
-          message: "Este usuario ya es administrador de otra institución",
-        });
+        if (user.role === Role.InstitutionAdmin) {
+          setAdminEmailValidation({
+            isValid: false,
+              message: "Este usuario ya es administrador de otra institución",
+          });
+        } else {
+          setAdminEmailValidation({
+            isValid: false,
+            message: "El usuario no pertenece a esta institución",
+          });
+        }
         return null;
       }
 
@@ -756,8 +774,8 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
                 ? "Ya es administrador de esta institución"
                 : `Usuario válido: ${user.username || user.email}`,
       });
-
       return user;
+
     } catch (error) {
       console.error(error);
       setAdminEmailValidation({

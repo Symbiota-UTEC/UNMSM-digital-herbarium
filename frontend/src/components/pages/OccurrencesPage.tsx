@@ -1,157 +1,240 @@
-import { useState } from "react";
-import { Button } from "../ui/button";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "../ui/dialog";
-import { Input } from "../ui/input";
-import { Label } from "../ui/label";
-import { Textarea } from "../ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
+import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
-import { Plus, MapPin, Calendar, Leaf, Eye } from "lucide-react";
-import { toast } from "sonner@2.0.3";
+import { MapPin, Calendar, Leaf, Eye, Users, University } from "lucide-react";
+import { API } from "@constants/api";
+import {useAuth} from "@contexts/AuthContext";
 
-interface Occurrence {
-  id: string;
-  specimenCode: string;
-  collection: string;
-  scientificName: string;
-  location: string;
-  latitude: string;
-  longitude: string;
-  date: string;
-  collector: string;
-  notes: string;
+
+export interface InstitutionOut {
+  id: number;
+  institutionCode?: string | null;
+  institutionName?: string | null;
+}
+
+export interface OccurrenceListItem {
+  id: number;
+  catalogNumber?: string | null;
+  scientificName?: string | null;
+  collectionName?: string | null;
+  institution?: InstitutionOut | null;
+  locality?: string | null;
+  modified?: string | null;   // ISO string
+  recordedBy?: string | null;
+}
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  limit: number;
+  offset: number;
+  current_page: number;
+  total_pages: number;
+  remaining_pages: number;
 }
 
 interface OccurrencesPageProps {
-  onNavigate: (page: string) => void;
+  onNavigate: (page: string, params?: Record<string, any>) => void;
 }
 
-export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
-  const [occurrences, setOccurrences] = useState<Occurrence[]>([
-    {
-      id: '1',
-      specimenCode: 'FAM-2024-001',
-      collection: 'Flora Amazónica 2024',
-      scientificName: 'Heliconia bihai',
-      location: 'Río Negro, Amazonas',
-      latitude: '-0.5234',
-      longitude: '-64.7823',
-      date: '2024-03-15',
-      collector: 'Dr. Juan Pérez',
-      notes: 'Espécimen en buen estado, flores rojas'
-    },
-    {
-      id: '2',
-      specimenCode: 'FAM-2024-002',
-      collection: 'Flora Amazónica 2024',
-      scientificName: 'Ceiba pentandra',
-      location: 'Selva de Manaos',
-      latitude: '-3.1190',
-      longitude: '-60.0217',
-      date: '2024-03-17',
-      collector: 'Dr. Juan Pérez',
-      notes: 'Árbol de gran tamaño, muestra de corteza y hojas'
-    },
-    {
-      id: '3',
-      specimenCode: 'HA-2024-001',
-      collection: 'Herbáceas Andinas',
-      scientificName: 'Gentiana sedifolia',
-      location: 'Valle Sagrado, Cusco',
-      latitude: '-13.2987',
-      longitude: '-72.1345',
-      date: '2024-01-20',
-      collector: 'Dra. María García',
-      notes: 'Flores azules, altitud 3800 msnm'
-    }
-  ]);
+// Ajusta estas constantes a tu proyecto
+const PAGE_SIZE_DEFAULT = 20;
 
-  const handleViewClick = (occurrenceId: string) => {
-    onNavigate('occurrence-detail', { occurrenceId });
+export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
+  const { token } = useAuth();
+
+  const [items, setItems] = useState<OccurrenceListItem[]>([]);
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(PAGE_SIZE_DEFAULT);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [q, setQ] = useState("");
+
+  const totalPages = useMemo(() => Math.max(Math.ceil(total / pageSize), 1), [total, pageSize]);
+
+  const fetchOccurrences = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: String(page),
+        page_size: String(pageSize),
+      });
+      if (q.trim()) params.set("q", q.trim());
+
+      const res = await fetch(`${API.BASE_URL}/occurrences?${params.toString()}`, {
+        credentials: "include",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}`},
+      });
+      if (!res.ok) {
+        throw new Error(`Error ${res.status}`);
+      }
+      const data: PaginatedResponse<OccurrenceListItem> = await res.json();
+      setItems(data.items ?? []);
+      setTotal(data.total ?? 0);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchOccurrences();
+  }, [page, pageSize]);
+
+  const handleViewClick = (occurrenceId: number) => {
+    onNavigate("occurrence-detail", { occurrenceId });
+  };
+
+  const formatDate = (iso?: string | null) => {
+    if (!iso) return "-";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "-";
+    return d.toLocaleDateString("es-ES");
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-3xl mb-2">Ocurrencias</h1>
-          <p className="text-muted-foreground">
-            Registro de muestras de hojas secas y especímenes
-          </p>
-        </div>
-        
-        <Button onClick={() => onNavigate('new-occurrence')}>
-          <Plus className="h-4 w-4 mr-2" />
-          Nueva Ocurrencia
-        </Button>
-      </div>
+      <div className="container mx-auto px-4 py-8">
+        <div className="mb-6 flex items-center justify-between gap-3">
+          <div>
+            <h1 className="text-3xl mb-2">Ocurrencias</h1>
+            <p className="text-muted-foreground">
+              Registro de ocurrencias a las que tienes acceso
+            </p>
+          </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Registro de Ocurrencias</CardTitle>
-          <CardDescription>
-            {occurrences.length} especímenes registrados
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Código</TableHead>
-                <TableHead>Nombre Científico</TableHead>
-                <TableHead>Colección</TableHead>
-                <TableHead>Ubicación</TableHead>
-                <TableHead>Fecha</TableHead>
-                <TableHead>Recolector</TableHead>
-                <TableHead>Acciones</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {occurrences.map((occurrence) => (
-                <TableRow key={occurrence.id}>
-                  <TableCell>
-                    <Badge variant="outline">{occurrence.specimenCode}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Leaf className="h-4 w-4 text-primary" />
-                      <span className="italic">{occurrence.scientificName}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>{occurrence.collection}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      <MapPin className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-sm">{occurrence.location}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      <Calendar className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-sm">
-                        {new Date(occurrence.date).toLocaleDateString('es-ES')}
-                      </span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-sm">{occurrence.collector}</TableCell>
-                  <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleViewClick(occurrence.id)}
-                      title="Ver detalles"
-                    >
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-    </div>
+          <div className="flex items-center gap-2">
+            <input
+                className="border rounded-md px-3 py-2 text-sm"
+                placeholder="Buscar por catálogo, científico, colección, universidad, localidad…"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+            />
+            <Button onClick={() => { setPage(1); fetchOccurrences(); }}>
+              Buscar
+            </Button>
+          </div>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-primary" />
+              <div>
+                <CardTitle>Ocurrencias Compartidas</CardTitle>
+                <CardDescription>
+                  {loading ? "Cargando…" : `${total} ocurrencias disponibles`}
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Código</TableHead>
+                    <TableHead>Nombre Científico</TableHead>
+                    <TableHead>Universidad</TableHead>
+                    <TableHead>Colección</TableHead>
+                    <TableHead>Ubicación</TableHead>
+                    <TableHead>Fecha</TableHead>
+                    <TableHead>Recolector</TableHead>
+                    <TableHead>Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {!loading && items.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={8} className="text-center text-sm text-muted-foreground py-8">
+                          Sin resultados
+                        </TableCell>
+                      </TableRow>
+                  )}
+
+                  {items.map((occ) => (
+                      <TableRow key={occ.id}>
+                        <TableCell>
+                          <Badge variant="outline">{occ.catalogNumber ?? "-"}</Badge>
+                        </TableCell>
+
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Leaf className="h-4 w-4 text-primary" />
+                            <span className="italic">{occ.scientificName ?? "-"}</span>
+                          </div>
+                        </TableCell>
+
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <University className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-sm">
+                          {occ.institution?.institutionName ?? "-"}
+                        </span>
+                          </div>
+                        </TableCell>
+
+                        <TableCell>{occ.collectionName ?? "-"}</TableCell>
+
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <MapPin className="h-3 w-3 text-muted-foreground" />
+                            <span className="text-sm">{occ.locality ?? "-"}</span>
+                          </div>
+                        </TableCell>
+
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3 text-muted-foreground" />
+                            <span className="text-sm">{formatDate(occ.modified)}</span>
+                          </div>
+                        </TableCell>
+
+                        <TableCell className="text-sm">{occ.recordedBy ?? "-"}</TableCell>
+
+                        <TableCell>
+                          <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleViewClick(occ.id)}
+                              title="Ver detalles"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Paginación simple */}
+            <div className="flex items-center justify-between mt-4">
+            <span className="text-sm text-muted-foreground">
+              Página {page} de {totalPages}
+            </span>
+              <div className="flex items-center gap-2">
+                <Button
+                    variant="outline"
+                    disabled={page <= 1 || loading}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  Anterior
+                </Button>
+                <Button
+                    variant="default"
+                    disabled={page >= totalPages || loading}
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                >
+                  Siguiente
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
   );
 }

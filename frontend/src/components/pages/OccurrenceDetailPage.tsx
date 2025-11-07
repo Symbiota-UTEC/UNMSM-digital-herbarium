@@ -1,578 +1,413 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "../ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { Separator } from "../ui/separator";
-import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
+
+import { API } from "@constants/api";
+import { useAuth } from "@contexts/AuthContext";
+import type { OccurrenceItem } from "@interfaces/occurrence";
 
 interface OccurrenceDetailPageProps {
   occurrenceId: string;
   onNavigate: (page: string, params?: Record<string, any>) => void;
-  returnTo?: 'occurrences' | 'collection';
+  returnTo?: "occurrences" | "collection";
   collectionId?: string;
   collectionName?: string;
   isOwner?: boolean;
 }
 
-export function OccurrenceDetailPage({ 
-  occurrenceId, 
-  onNavigate, 
-  returnTo = 'occurrences',
-  collectionId,
-  collectionName,
-  isOwner 
-}: OccurrenceDetailPageProps) {
-  // Datos simulados de la ocurrencia
-  const occurrence = {
-    // Colección & Registro
-    collectionName: collectionName || 'Flora Amazónica 2024',
-    catalogNumber: 'BOT-2024-001',
-    occurrenceID: 'urn:uuid:a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d',
-    recordNumber: 'JP-2024-045',
-    preparations: 'Herbarium sheet',
-    disposition: 'In collection.ts',
-    
-    // Evento
-    eventDate: '2024-03-15',
-    eventDateEnd: '',
-    recordedBy: ['Dr. Juan Pérez', 'Dra. Ana Torres'],
-    recordedByID: ['https://orcid.org/0000-0001-2345-6789'],
-    individualCount: 3,
-    samplingProtocol: 'Transecto 50m x 2m',
-    
-    // Localización
-    country: 'Perú',
-    stateProvince: 'Amazonas',
-    county: 'Condorcanqui',
-    municipality: 'El Cenepa',
-    locality: 'Río Santiago, sector Wawas, bosque primario húmedo tropical',
-    decimalLatitude: -3.2505,
-    decimalLongitude: -78.5255,
-    geodeticDatum: 'WGS84',
-    coordinateUncertainty: 50,
-    minimumElevation: 250,
-    maximumElevation: 280,
-    habitat: 'Bosque primario húmedo tropical, suelo arcilloso con abundante materia orgánica. Vegetación asociada: Cecropia spp., Inga spp.',
-    
-    // Identificación
-    scientificName: 'Cinchona officinalis L.',
-    identifiedBy: ['Dr. Carlos Mendoza'],
-    identifiedByID: ['https://orcid.org/0000-0002-3456-7890'],
-    dateIdentified: '2024-03-20',
-    identificationQualifier: '',
-    identificationReferences: 'Flora of Ecuador, Vol. 62 (2008)',
-    isCurrent: true,
-    verificationStatus: 'confirmed',
-    identificationRemarks: 'Identificación confirmada por especialista en Rubiaceae',
-    typeStatus: '',
-    
-    // Organismo
-    hasOrganism: true,
-    organismID: 'urn:uuid:org-123-456-789',
-    organismScope: 'individual',
-    sex: 'hermaphrodite',
-    lifeStage: 'adulto',
-    reproductiveCondition: 'en flor',
-    establishmentMeans: 'native',
-    organismRemarks: 'Árbol de aproximadamente 8m de altura',
-    
-    // Observaciones
-    occurrenceRemarks: 'Espécimen en buen estado de conservación. Flores de color rosado intenso.',
-    measurements: [
-      { type: 'Altura del árbol', value: '8', unit: 'm' },
-      { type: 'DAP', value: '15', unit: 'cm' },
-      { type: 'Longitud de hoja', value: '12', unit: 'cm' }
-    ],
-    
-    // Derechos
-    license: 'CC-BY-4.0',
-    rightsHolder: 'Universidad Nacional de la Amazonía Peruana',
-    accessRights: 'Acceso libre para fines educativos y de investigación',
-    modified: '2024-03-21T10:30:00Z'
-  };
+export function OccurrenceDetailPage({
+                                       occurrenceId,
+                                       onNavigate,
+                                       returnTo = "occurrences",
+                                       collectionId,
+                                       collectionName,
+                                       isOwner,
+                                     }: OccurrenceDetailPageProps) {
+  const { token } = useAuth();
+  const [data, setData] = useState<OccurrenceItem | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Imágenes simuladas
-  const [images] = useState([
-    {
-      id: '1',
-      url: 'https://images.unsplash.com/photo-1530027644375-9c83053d392e?w=800',
-      title: 'Vista general del espécimen',
-      creator: 'Dr. Juan Pérez',
-      rightsHolder: 'Universidad Nacional de la Amazonía Peruana'
-    },
-    {
-      id: '2',
-      url: 'https://images.unsplash.com/photo-1466781783364-36c955e42a7f?w=800',
-      title: 'Detalle de flores',
-      creator: 'Dr. Juan Pérez',
-      rightsHolder: 'Universidad Nacional de la Amazonía Peruana'
-    },
-    {
-      id: '3',
-      url: 'https://images.unsplash.com/photo-1501004318641-b39e6451bec6?w=800',
-      title: 'Detalle de hojas',
-      creator: 'Dra. Ana Torres',
-      rightsHolder: 'Universidad Nacional de la Amazonía Peruana'
-    }
-  ]);
+  const show = (v: unknown) => (v === null || v === undefined || v === "" ? "—" : String(v));
 
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  useEffect(() => {
+    let isMounted = true;
 
-  const handlePreviousImage = () => {
-    setCurrentImageIndex((prev) => (prev > 0 ? prev - 1 : images.length - 1));
-  };
+    const fetchOccurrence = async () => {
+      try {
+        setLoading(true);
+        setError(null);
 
-  const handleNextImage = () => {
-    setCurrentImageIndex((prev) => (prev < images.length - 1 ? prev + 1 : 0));
-  };
+        const url = `${API.BASE_URL}${API.PATHS.OCCURRENCE_BY_ID(occurrenceId)}`;
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+
+        const res = await fetch(url, { headers, credentials: "include" });
+        if (!res.ok) {
+          const txt = await res.text().catch(() => "");
+          throw new Error(`Error ${res.status}: ${txt || res.statusText}`);
+        }
+        const json = (await res.json()) as OccurrenceItem;
+
+        if (isMounted) setData(json);
+      } catch (e: any) {
+        if (isMounted) setError(e?.message || "Error al cargar la ocurrencia");
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    fetchOccurrence();
+    return () => {
+      isMounted = false;
+    };
+  }, [occurrenceId, token]);
+
+  const sciName = useMemo(() => {
+    return data?.taxon?.scientificName || "Sin nombre científico";
+  }, [data]);
 
   const handleBack = () => {
-    if (returnTo === 'collection' && collectionId) {
-      onNavigate('collection.ts-detail', {
-        collectionId, 
-        collectionName: collectionName || '',
-        isOwner: isOwner || false
+    if (returnTo === "collection" && collectionId) {
+      onNavigate("collection-detail", {
+        collectionId,
+        collectionName: collectionName || "",
+        isOwner: isOwner || false,
       });
     } else {
-      onNavigate('occurrences');
+      onNavigate("occurrences");
     }
   };
 
+  if (loading) {
+    return (
+        <div className="container mx-auto px-4 py-8">
+          <Button variant="ghost" onClick={handleBack} className="mb-4">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Volver
+          </Button>
+          <p className="text-sm text-muted-foreground">Cargando ocurrencia...</p>
+        </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+        <div className="container mx-auto px-4 py-8">
+          <Button variant="ghost" onClick={handleBack} className="mb-4">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Volver
+          </Button>
+          <p className="text-sm text-red-600">No se pudo cargar la ocurrencia: {error || "Desconocido"}</p>
+        </div>
+    );
+  }
+
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-6">
-        <Button variant="ghost" onClick={handleBack} className="mb-4">
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          {returnTo === 'collection' ? `Volver a ${collectionName}` : 'Volver a Ocurrencias'}
-        </Button>
-        
-        <div className="flex justify-between items-start">
-          <div>
-            <h1 className="text-3xl mb-2">{occurrence.scientificName}</h1>
-            <p className="text-muted-foreground">
-              Código: {occurrence.catalogNumber} | Colección: {occurrence.collectionName}
-            </p>
+      <div className="container mx-auto px-4 py-8">
+        {/* Back */}
+        <div className="mb-6">
+          <Button variant="ghost" onClick={handleBack} className="mb-4">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            {returnTo === "collection" ? `Volver a ${collectionName}` : "Volver a Ocurrencias"}
+          </Button>
+
+          {/* Header */}
+          <div className="flex justify-between items-start">
+            <div>
+              <h1 className="text-3xl mb-2 italic">{sciName}</h1>
+              <p className="text-muted-foreground">
+                Código: {show(data.catalogNumber)} | Colección: {show(data.collection?.collectionName)}
+              </p>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        {/* Columna principal - Información */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* 1. Colección & Registro */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Colección & Registro</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Colección</p>
-                  <p>{occurrence.collectionName}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Número de Catálogo</p>
-                  <p>{occurrence.catalogNumber}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Número de Registro</p>
-                  <p>{occurrence.recordNumber || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Preparación</p>
-                  <p>{occurrence.preparations}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Disposición</p>
-                  <Badge variant="secondary">{occurrence.disposition}</Badge>
-                </div>
-              </div>
-              <Separator />
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Occurrence ID</p>
-                <p className="font-mono text-xs break-all">{occurrence.occurrenceID}</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* 2. Evento de Registro */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Evento de Registro</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Fecha del Evento</p>
-                  <p>{new Date(occurrence.eventDate).toLocaleDateString('es-ES', { 
-                    year: 'numeric', 
-                    month: 'long', 
-                    day: 'numeric' 
-                  })}</p>
-                </div>
-                {occurrence.individualCount && (
-                  <div>
-                    <p className="text-sm text-muted-foreground">Número de Individuos</p>
-                    <p>{occurrence.individualCount}</p>
-                  </div>
-                )}
-              </div>
-              
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">Registrado por</p>
-                <div className="flex flex-wrap gap-2">
-                  {occurrence.recordedBy.map((person, index) => (
-                    <Badge key={index} variant="outline">{person}</Badge>
-                  ))}
-                </div>
-              </div>
-              
-              {occurrence.recordedByID.length > 0 && (
-                <div>
-                  <p className="text-sm text-muted-foreground mb-2">ORCID</p>
-                  <div className="flex flex-wrap gap-2">
-                    {occurrence.recordedByID.map((id, index) => (
-                      <a 
-                        key={index} 
-                        href={id} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-xs font-mono text-primary hover:underline"
-                      >
-                        {id}
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              )}
-              
-              {occurrence.samplingProtocol && (
-                <div>
-                  <p className="text-sm text-muted-foreground">Protocolo de Muestreo</p>
-                  <p>{occurrence.samplingProtocol}</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* 3. Localización */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Localización</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">País</p>
-                  <p>{occurrence.country}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Departamento/Provincia</p>
-                  <p>{occurrence.stateProvince}</p>
-                </div>
-                {occurrence.county && (
-                  <div>
-                    <p className="text-sm text-muted-foreground">Provincia/Condado</p>
-                    <p>{occurrence.county}</p>
-                  </div>
-                )}
-                {occurrence.municipality && (
-                  <div>
-                    <p className="text-sm text-muted-foreground">Municipio/Distrito</p>
-                    <p>{occurrence.municipality}</p>
-                  </div>
-                )}
-              </div>
-              
-              <div>
-                <p className="text-sm text-muted-foreground">Localidad</p>
-                <p>{occurrence.locality}</p>
-              </div>
-              
-              <Separator />
-              
-              <div className="grid md:grid-cols-3 gap-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Latitud</p>
-                  <p className="font-mono">{occurrence.decimalLatitude}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Longitud</p>
-                  <p className="font-mono">{occurrence.decimalLongitude}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Datum</p>
-                  <p>{occurrence.geodeticDatum}</p>
-                </div>
-              </div>
-              
-              <div className="grid md:grid-cols-3 gap-4">
-                {occurrence.coordinateUncertainty && (
-                  <div>
-                    <p className="text-sm text-muted-foreground">Incertidumbre</p>
-                    <p>±{occurrence.coordinateUncertainty}m</p>
-                  </div>
-                )}
-                {occurrence.minimumElevation && (
-                  <div>
-                    <p className="text-sm text-muted-foreground">Elevación Min</p>
-                    <p>{occurrence.minimumElevation}m</p>
-                  </div>
-                )}
-                {occurrence.maximumElevation && (
-                  <div>
-                    <p className="text-sm text-muted-foreground">Elevación Max</p>
-                    <p>{occurrence.maximumElevation}m</p>
-                  </div>
-                )}
-              </div>
-              
-              {occurrence.habitat && (
-                <>
-                  <Separator />
-                  <div>
-                    <p className="text-sm text-muted-foreground">Hábitat / Sustrato</p>
-                    <p className="mt-1">{occurrence.habitat}</p>
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* 4. Identificación */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Identificación</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div>
-                <p className="text-sm text-muted-foreground">Nombre Científico</p>
-                <p className="text-xl italic">{occurrence.scientificName}</p>
-              </div>
-              
-              <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Fecha de Identificación</p>
-                  <p>{new Date(occurrence.dateIdentified).toLocaleDateString('es-ES')}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Estado de Verificación</p>
-                  <Badge variant={occurrence.verificationStatus === 'confirmed' ? 'default' : 'secondary'}>
-                    {occurrence.verificationStatus === 'confirmed' ? 'Confirmado' : 
-                     occurrence.verificationStatus === 'pending' ? 'Pendiente' :
-                     occurrence.verificationStatus === 'provisionally_accepted' ? 'Prov. Aceptado' : 'Rechazado'}
-                  </Badge>
-                </div>
-              </div>
-              
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">Identificado por</p>
-                <div className="flex flex-wrap gap-2">
-                  {occurrence.identifiedBy.map((person, index) => (
-                    <Badge key={index} variant="outline">{person}</Badge>
-                  ))}
-                </div>
-              </div>
-              
-              {occurrence.identificationReferences && (
-                <div>
-                  <p className="text-sm text-muted-foreground">Referencias</p>
-                  <p>{occurrence.identificationReferences}</p>
-                </div>
-              )}
-              
-              {occurrence.identificationRemarks && (
-                <div>
-                  <p className="text-sm text-muted-foreground">Notas de Identificación</p>
-                  <p>{occurrence.identificationRemarks}</p>
-                </div>
-              )}
-              
-              {occurrence.typeStatus && (
-                <div>
-                  <p className="text-sm text-muted-foreground">Estado de Tipo</p>
-                  <Badge>{occurrence.typeStatus}</Badge>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* 5. Organismo (si aplica) */}
-          {occurrence.hasOrganism && (
+        <div className="grid lg:grid-cols-3 gap-6">
+          {/* Columna principal */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* 1. Colección & Registro */}
             <Card>
               <CardHeader>
-                <CardTitle>Organismo</CardTitle>
+                <CardTitle>Colección & Registro</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
-                    <p className="text-sm text-muted-foreground">Alcance</p>
-                    <p className="capitalize">{occurrence.organismScope}</p>
+                    <p className="text-sm text-muted-foreground">Colección</p>
+                    <p>{show(data.collection?.collectionName)}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Sexo</p>
-                    <p className="capitalize">{occurrence.sex}</p>
+                    <p className="text-sm text-muted-foreground">Código de Colección</p>
+                    <p>{show(data.collection?.collectionCode)}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Estado de Vida</p>
-                    <p className="capitalize">{occurrence.lifeStage}</p>
+                    <p className="text-sm text-muted-foreground">Número de Catálogo</p>
+                    <p>{show(data.catalogNumber)}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Condición Reproductiva</p>
-                    <p className="capitalize">{occurrence.reproductiveCondition}</p>
+                    <p className="text-sm text-muted-foreground">Número de Registro</p>
+                    <p>{show(data.recordNumber)}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Establecimiento</p>
-                    <Badge variant="secondary" className="capitalize">{occurrence.establishmentMeans}</Badge>
+                    <p className="text-sm text-muted-foreground">Registrado por</p>
+                    <p>{show(data.recordedBy)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Individuos</p>
+                    <p>{show(data.individualCount)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Preparación</p>
+                    <p>{show(data.preparations)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Disposición</p>
+                    {data.disposition ? <Badge variant="secondary">{data.disposition}</Badge> : <p>—</p>}
                   </div>
                 </div>
-                {occurrence.organismRemarks && (
-                  <>
-                    <Separator />
-                    <div>
-                      <p className="text-sm text-muted-foreground">Notas</p>
-                      <p>{occurrence.organismRemarks}</p>
-                    </div>
-                  </>
-                )}
+
+                <Separator />
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Occurrence ID</p>
+                  <p className="font-mono text-xs break-all">{show(data.occurrenceID)}</p>
+                </div>
               </CardContent>
             </Card>
-          )}
 
-          {/* 6. Mediciones */}
-          {occurrence.measurements.length > 0 && (
+            {/* 2. Evento */}
             <Card>
               <CardHeader>
-                <CardTitle>Mediciones</CardTitle>
+                <CardTitle>Evento</CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {occurrence.measurements.map((measurement, index) => (
-                    <div key={index} className="flex justify-between items-center p-2 border rounded">
-                      <span className="text-sm">{measurement.type}</span>
-                      <span>
-                        <span className="mr-1">{measurement.value}</span>
-                        <span className="text-sm text-muted-foreground">{measurement.unit}</span>
-                      </span>
-                    </div>
-                  ))}
+              <CardContent className="space-y-3">
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Fecha (texto)</p>
+                    <p>{show(data.event?.eventDate)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Fecha (año/mes/día)</p>
+                    <p>
+                      {show(data.event?.year)}/{show(data.event?.month)}/{show(data.event?.day)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Verbatim Event Date</p>
+                    <p>{show(data.event?.verbatimEventDate)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Field Number</p>
+                    <p>{show(data.event?.fieldNumber)}</p>
+                  </div>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Protocolo de Muestreo</p>
+                    <p>{show(data.event?.samplingProtocol)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Esfuerzo de Muestreo</p>
+                    <p>{show(data.event?.samplingEffort)}</p>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-sm text-muted-foreground">Hábitat</p>
+                  <p>{show(data.event?.habitat)}</p>
+                </div>
+
+                <div>
+                  <p className="text-sm text-muted-foreground">Notas del Evento</p>
+                  <p>{show(data.event?.eventRemarks)}</p>
                 </div>
               </CardContent>
             </Card>
-          )}
 
-          {/* 7. Observaciones */}
-          {occurrence.occurrenceRemarks && (
+            {/* 3. Localización */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Localización</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Departamento/Provincia</p>
+                    <p>{show(data.location?.stateProvince)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Provincia / Condado</p>
+                    <p>{show(data.location?.county)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Municipio / Distrito</p>
+                    <p>{show(data.location?.municipality)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Localidad</p>
+                    <p>{show(data.location?.locality)}</p>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-sm text-muted-foreground">Localidad (verbatim)</p>
+                  <p>{show(data.location?.verbatimLocality)}</p>
+                </div>
+
+                <Separator />
+
+                <div className="grid md:grid-cols-3 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Latitud</p>
+                    <p className="font-mono">{show(data.location?.decimalLatitude)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Longitud</p>
+                    <p className="font-mono">{show(data.location?.decimalLongitude)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Datum</p>
+                    <p>{show(data.location?.geodeticDatum)}</p>
+                  </div>
+                </div>
+
+                <div className="grid md:grid-cols-3 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Incertidumbre (m)</p>
+                    <p>{show(data.location?.coordinateUncertaintyInMeters)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Precisión</p>
+                    <p>{show(data.location?.coordinatePrecision)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Elevación (min/max)</p>
+                    <p>
+                      {show(data.location?.minimumElevationInMeters)} / {show(data.location?.maximumElevationInMeters)}
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-sm text-muted-foreground">Elevación (verbatim)</p>
+                  <p>{show(data.location?.verbatimElevation)}</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 4. Taxón */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Identificación (Taxón)</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Nombre científico</p>
+                    <p className="italic">{show(data.taxon?.scientificName)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Autoría</p>
+                    <p>{show(data.taxon?.scientificNameAuthorship)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Familia</p>
+                    <p>{show(data.taxon?.family)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Género</p>
+                    <p>{show(data.taxon?.genus)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Epíteto específico</p>
+                    <p>{show(data.taxon?.specificEpithet)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Infraespecífico</p>
+                    <p>{show(data.taxon?.infraspecificEpithet)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Rango</p>
+                    <p>{show(data.taxon?.taxonRank)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Nombre aceptado</p>
+                    <p>{show(data.taxon?.acceptedNameUsage)}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 5. Observaciones */}
             <Card>
               <CardHeader>
                 <CardTitle>Observaciones</CardTitle>
               </CardHeader>
               <CardContent>
-                <p>{occurrence.occurrenceRemarks}</p>
+                <p>{show(data.occurrenceRemarks)}</p>
               </CardContent>
             </Card>
-          )}
 
-          {/* 8. Derechos */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Derechos & Publicación</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Licencia</p>
-                  <Badge>{occurrence.license}</Badge>
+            {/* 6. Derechos */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Derechos & Publicación</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Licencia</p>
+                    {data.license ? <Badge>{data.license}</Badge> : <p>—</p>}
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Titular de Derechos</p>
+                    <p>{show(data.rightsHolder)}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Titular de Derechos</p>
-                  <p className="text-sm">{occurrence.rightsHolder}</p>
-                </div>
-              </div>
-              {occurrence.accessRights && (
                 <div>
                   <p className="text-sm text-muted-foreground">Derechos de Acceso</p>
-                  <p className="text-sm">{occurrence.accessRights}</p>
+                  <p>{show(data.accessRights)}</p>
                 </div>
-              )}
-              <div>
-                <p className="text-sm text-muted-foreground">Última Modificación</p>
-                <p className="text-sm">{new Date(occurrence.modified).toLocaleString('es-ES')}</p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Última Modificación</p>
+                  {/* backend ya envía dd/mm/aaaa (string) */}
+                  <p className="text-sm">{show(data.modified)}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Citación</p>
+                  <p className="text-sm">{show(data.bibliographicCitation)}</p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
 
-        {/* Columna lateral - Imágenes */}
-        <div className="lg:col-span-1">
-          <Card className="sticky top-4">
-            <CardHeader>
-              <CardTitle>Multimedia</CardTitle>
-              <CardDescription>
-                {images.length} {images.length === 1 ? 'imagen' : 'imágenes'}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {images.length > 0 ? (
-                <div className="space-y-4">
-                  <div className="relative aspect-square bg-muted rounded-lg overflow-hidden">
-                    <img 
-                      src={images[currentImageIndex].url} 
-                      alt={images[currentImageIndex].title}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  
-                  {images.length > 1 && (
-                    <div className="flex items-center justify-between">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handlePreviousImage}
-                      >
-                        <ChevronLeft className="h-4 w-4" />
-                      </Button>
-                      
-                      <span className="text-sm text-muted-foreground">
-                        {currentImageIndex + 1} / {images.length}
-                      </span>
-                      
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleNextImage}
-                      >
-                        <ChevronRight className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  )}
-                  
-                  <Separator />
-                  
-                  <div className="space-y-2">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Título</p>
-                      <p className="text-sm">{images[currentImageIndex].title}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Fotógrafo</p>
-                      <p className="text-sm">{images[currentImageIndex].creator}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Titular de Derechos</p>
-                      <p className="text-sm">{images[currentImageIndex].rightsHolder}</p>
-                    </div>
-                  </div>
+          {/* Columna lateral vacía por ahora (sin multimedia ni organism/measurements) */}
+          <div className="lg:col-span-1 space-y-6">
+            <Card className="sticky top-4">
+              <CardHeader>
+                <CardTitle>Resumen (proximamente multimedia)</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="text-sm">
+                  <span className="text-muted-foreground">ID:</span>{" "}
+                  <span className="font-mono">{data.id}</span>
                 </div>
-              ) : (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  No hay imágenes disponibles
-                </p>
-              )}
-            </CardContent>
-          </Card>
+                <div className="text-sm">
+                  <span className="text-muted-foreground">Colección ID:</span>{" "}
+                  <span>{show(data.collection?.id)}</span>
+                </div>
+                <div className="text-sm">
+                  <span className="text-muted-foreground">Institución ID:</span>{" "}
+                  <span>{show(data.collection?.institution_id)}</span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
-    </div>
   );
 }

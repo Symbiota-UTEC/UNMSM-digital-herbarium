@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "../ui/dialog";
@@ -6,463 +6,612 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { Plus, Folder, Calendar, MapPin, Upload, FileSpreadsheet, Users } from "lucide-react";
+import { Plus, Folder, Upload, Users, ChevronLeft, ChevronRight, Shield } from "lucide-react";
 import { toast } from "sonner@2.0.3";
 import { useAuth } from "@contexts/AuthContext";
-import { Collection } from "@interfaces/collection";
+import { API, PAGE_SIZE } from "@constants/api";
+import { AutocompleteInstitution } from "../AutocompleteInstitution";
+import { PaginatedResponse } from "@interfaces/utils/pagination";
+import { Role } from "@constants/roles";
 
-interface CollectionsPageProps {
-  onNavigate: (page: string, params?: { collectionId?: string; collectionName?: string; isOwner?: boolean }) => void;
-}
+import {
+  CollectionOut,
+  CollectionCreate,
+  CollectionListItem,
+  toCollectionListItem,
+} from "@interfaces/collection";
 
-export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
-  const { user } = useAuth();
-  const currentUserId = user?.id || '2';
+type CollectionsPageProps = {
+  onNavigate: (page: string, params?: any) => void;
+};
 
-  // Mock de instituciones disponibles
-  const institutions = [
-    'Universidad Nacional de Botánica',
-    'Instituto de Investigación Amazónica',
-    'Jardín Botánico Nacional',
-    'Academia de Ciencias Naturales'
-  ];
+  export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
+  const { user, apiFetch, token } = useAuth() as any;
+  console.log(user);
 
-  const [collections, setCollections] = useState<Collection[]>([
-    {
-      id: '1',
-      name: 'Flora Amazónica 2024',
-      description: 'Colección de especímenes recolectados en la región amazónica durante la expedición de marzo 2024',
-      location: 'Amazonas, Brasil',
-      date: '2024-03-15',
-      occurrencesCount: 45,
-      institution: 'Universidad Nacional de Botánica',
-      ownerId: currentUserId
-    },
-    {
-      id: '2',
-      name: 'Herbáceas Andinas',
-      description: 'Muestras de plantas herbáceas de los Andes centrales',
-      location: 'Cusco, Perú',
-      date: '2024-01-20',
-      occurrencesCount: 32,
-      institution: 'Instituto de Investigación Amazónica',
-      ownerId: currentUserId
-    },
-    {
-      id: '3',
-      name: 'Plantas Medicinales Locales',
-      description: 'Catálogo de plantas con usos medicinales tradicionales',
-      location: 'Varios',
-      date: '2023-11-10',
-      occurrencesCount: 28,
-      institution: 'Jardín Botánico Nacional',
-      ownerId: 'other-user'
-    }
-  ]);
+  const isSuper = user?.role === Role.Admin;
+  const isInstAdmin = user?.role === Role.InstitutionAdmin;
+    // Solo los super pueden elegir institución libremente
+  const isRestrictedInstitutionPick = !isSuper; // true = user normal o InstitutionAdmin
+  const userInstitutionId = user?.institutionId != null ? Number(user.institutionId) : null;
+  const userInstitutionName = user?.institution || "";
+  const creatorDisplayName = user?.username || user?.email || "Desconocido";
 
+  const collectionsPerPage = PAGE_SIZE.COLLECTIONS;
+
+    // ------- Estado: colecciones por agente (mis colecciones) -------
+  const [myItems, setMyItems] = useState<CollectionListItem[]>([]);
+  const [myLoading, setMyLoading] = useState(false);
+  const [myPage, setMyPage] = useState(1);
+  const [myTotalPages, setMyTotalPages] = useState(1);
+
+  // ------- Estado: colecciones permitidas -------
+  const [allowedItems, setAllowedItems] = useState<CollectionListItem[]>([]);
+  const [allowedLoading, setAllowedLoading] = useState(false);
+  const [allowedPage, setAllowedPage] = useState(1);
+  const [allowedTotalPages, setAllowedTotalPages] = useState(1);
+
+  // ------- Diálogo de creación -------
   const [open, setOpen] = useState(false);
-  const [newCollection, setNewCollection] = useState({
-    name: '',
-    description: '',
-    location: '',
-    date: '',
-    institution: ''
+  const [creating, setCreating] = useState(false);
+
+  // Selección de institución (usamos AutocompleteInstitution para obtener el id)
+  const [instSearchText, setInstSearchText] = useState("");
+  const [selectedInstitutionId, setSelectedInstitutionId] = useState<number | null>(null);
+
+  // Form de creación (solo campos que POST acepta)
+  const [form, setForm] = useState<CollectionCreate>({
+    collectionID: "",
+    collectionCode: "",
+    collectionName: "",
+    description: "",
+    webSite: "",
+    institution_id: null,
+    creator_agent_id: null,
   });
+
+  const canManageCollection = (c: CollectionListItem) => {
+    // Si usas enum:
+    const isSuper = user?.role === Role.Admin;
+    const isInstAdminSameInst =
+        user?.role === Role.InstitutionAdmin &&
+        Number(user?.institutionId) === Number(c.institutionId); // <-- aquí el fix
+
+    const isOwnerRole = c.my_role === "owner";
+    return isSuper || isInstAdminSameInst || isOwnerRole;
+  };
+
+  // CSV (opcional: por ahora solo contamos filas; la carga real de ocurrencias no está en este endpoint)
   const [csvFile, setCsvFile] = useState<File | null>(null);
 
-  const handleSubmitEmpty = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newCollection.institution) {
-      toast.error('Por favor selecciona una institución');
-      return;
-    }
-    const collection: Collection = {
-      id: Date.now().toString(),
-      ...newCollection,
-      occurrencesCount: 0,
-      ownerId: currentUserId
+  const agentId = user?.agentId ?? null; // <- crítico para /by-agent/{agent_id}
+
+  // Helpers UI
+  const roleBadge = (role?: string | null) => {
+    if (!role) return null;
+    const map: Record<string, string> = {
+      superuser: "bg-purple-100 text-purple-800",
+      institution_admin: "bg-orange-100 text-orange-800",
+      owner: "bg-blue-100 text-blue-800",
+      editor: "bg-emerald-100 text-emerald-800",
+      viewer: "bg-gray-100 text-gray-800",
     };
-    setCollections([collection, ...collections]);
-    resetForm();
-    toast.success('Colección vacía creada exitosamente');
+    const cls = map[role] ?? "bg-gray-100 text-gray-800";
+    const label: Record<string, string> = {
+      superuser: "Superuser",
+      institution_admin: "Admin institución",
+      owner: "Propietario",
+      editor: "Editor",
+      viewer: "Lector",
+    };
+    return (
+        <span className={`text-xs px-2 py-1 rounded ${cls}`} title="Tu rol en esta colección">
+        {label[role] ?? role}
+      </span>
+    );
   };
 
-  const handleSubmitWithCSV = (e: React.FormEvent) => {
+  // ------- Fetchers -------
+  const fetchMyCollections = useCallback(
+      async (page: number) => {
+        if (!token || !agentId) return;
+        try {
+          setMyLoading(true);
+          const limit = collectionsPerPage;
+          const offset = (page - 1) * limit;
+          const url = `${API.BASE_URL}/collections/by-agent/${agentId}?limit=${limit}&offset=${offset}`;
+
+          const res = await apiFetch(url, {
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          });
+          if (!res.ok) {
+            const txt = await res.text();
+            console.error("by-agent error:", txt);
+            throw new Error("No se pudieron cargar tus colecciones");
+          }
+
+          const data = (await res.json()) as PaginatedResponse<CollectionOut> | CollectionOut[];
+          const items = Array.isArray(data) ? data : data.items ?? [];
+          const list = items.map(toCollectionListItem);
+          console.log("list, ", list);
+
+          setMyItems(list);
+          setMyTotalPages(Array.isArray(data) ? 1 : data.total_pages ?? 1);
+        } catch (e) {
+          console.error(e);
+          toast.error("No se pudieron cargar tus colecciones");
+          setMyItems([]);
+          setMyTotalPages(1);
+        } finally {
+          setMyLoading(false);
+        }
+      },
+      [apiFetch, token, agentId]
+  );
+
+  const fetchAllowedCollections = useCallback(
+      async (page: number) => {
+        if (!token) return;
+        try {
+          setAllowedLoading(true);
+          const limit = collectionsPerPage;
+          const offset = (page - 1) * limit;
+          const url = `${API.BASE_URL}/collections/allowed?limit=${limit}&offset=${offset}`;
+
+          const res = await apiFetch(url, {
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          });
+          if (!res.ok) {
+            const txt = await res.text();
+            console.error("allowed error:", txt);
+            throw new Error("No se pudieron cargar las colecciones permitidas");
+          }
+
+          const data = (await res.json()) as PaginatedResponse<CollectionOut> | CollectionOut[];
+          const items = Array.isArray(data) ? data : data.items ?? [];
+          const list = items.map(toCollectionListItem);
+          console.log("list, ", list);
+
+          setAllowedItems(list);
+          setAllowedTotalPages(Array.isArray(data) ? 1 : data.total_pages ?? 1);
+        } catch (e) {
+          console.error(e);
+          toast.error("No se pudieron cargar las colecciones permitidas");
+          setAllowedItems([]);
+          setAllowedTotalPages(1);
+        } finally {
+          setAllowedLoading(false);
+        }
+      },
+      [apiFetch, token]
+  );
+
+  // ------- Effects -------
+  useEffect(() => {
+    if (agentId) fetchMyCollections(myPage);
+  }, [agentId, myPage, fetchMyCollections]);
+
+  useEffect(() => {
+    fetchAllowedCollections(allowedPage);
+  }, [allowedPage, fetchAllowedCollections]);
+
+  // ------- Crear colección -------
+    const resetForm = () => {
+      setForm({
+        collectionID: "",
+        collectionCode: "",
+        collectionName: "",
+        description: "",
+        webSite: "",
+        institution_id: null,
+        creator_agent_id: agentId ?? null,
+      });
+      setCsvFile(null);
+
+      if (isRestrictedInstitutionPick) {
+        setSelectedInstitutionId(userInstitutionId);
+        setInstSearchText(
+            userInstitutionName || (userInstitutionId ? `Institución #${userInstitutionId}` : "")
+        );
+      } else {
+        setSelectedInstitutionId(null);
+        setInstSearchText("");
+      }
+    };
+
+  useEffect(() => {
+    // set default creator from user
+    setForm((f) => ({ ...f, creator_agent_id: agentId ?? null }));
+  }, [agentId]);
+
+    useEffect(() => {
+      if (isRestrictedInstitutionPick) {
+        setSelectedInstitutionId(userInstitutionId);
+        setInstSearchText(
+            userInstitutionName || (userInstitutionId ? `Institución #${userInstitutionId}` : "")
+        );
+      }
+    }, [isRestrictedInstitutionPick, userInstitutionId, userInstitutionName, open]);
+
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!csvFile) {
-      toast.error('Por favor selecciona un archivo CSV');
+    if (!token) return;
+
+    if (!form.collectionName?.trim()) {
+      toast.error("Ingresa un nombre de colección");
       return;
     }
-    if (!newCollection.institution) {
-      toast.error('Por favor selecciona una institución');
+    if (!selectedInstitutionId) {
+      toast.error("Selecciona una institución");
+      return;
+    }
+    if (!agentId) {
+      toast.error("No se encontró tu Agent ID");
       return;
     }
 
-    // In a real app, you would parse the CSV here
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const csvContent = event.target?.result as string;
-      // Count lines (excluding header) as a simple approximation
-      const lines = csvContent.split('\n').filter(line => line.trim());
-      const occurrencesCount = Math.max(0, lines.length - 1);
+    const payload: CollectionCreate = {
+      collectionID: form.collectionID?.trim() || null,
+      collectionCode: form.collectionCode?.trim() || null,
+      collectionName: form.collectionName?.trim() || null,
+      description: form.description?.trim() || null,
+      webSite: form.webSite?.trim() || null,
+      institution_id: selectedInstitutionId,
+      creator_agent_id: agentId,
+    };
 
-      const collection: Collection = {
-        id: Date.now().toString(),
-        ...newCollection,
-        occurrencesCount,
-        ownerId: currentUserId
-      };
-      setCollections([collection, ...collections]);
+    try {
+      setCreating(true);
+      const res = await apiFetch(`${API.BASE_URL}/collections`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const txt = await res.text();
+        console.error("POST /api/collections error:", txt);
+        toast.error("No se pudo crear la colección");
+        return;
+      }
+
+      toast.success("Colección creada correctamente");
+      setOpen(false);
       resetForm();
-      toast.success(`Colección creada con ${occurrencesCount} ocurrencias importadas`);
-    };
-    reader.readAsText(csvFile);
-  };
 
-  const resetForm = () => {
-    setNewCollection({ name: '', description: '', location: '', date: '', institution: '' });
-    setCsvFile(null);
-    setOpen(false);
-  };
+      // refrescar ambas listas (por si te aparece en allowed y en mis colecciones)
+      if (agentId) fetchMyCollections(1);
+      fetchAllowedCollections(1);
+      setMyPage(1);
+      setAllowedPage(1);
 
-  const handleCollectionClick = (collection: Collection) => {
-    onNavigate('collection.ts-detail', {
-      collectionId: collection.id,
-      collectionName: collection.name,
-      isOwner: collection.ownerId === currentUserId
-    });
+      // Si subieron CSV, por ahora solo contamos filas; la carga de ocurrencias no está en este endpoint
+      if (csvFile) {
+        const content = await csvFile.text();
+        const lines = content.split(/\r?\n/).filter((l) => l.trim());
+        const approx = Math.max(0, lines.length - 1);
+        toast.info(`CSV detectado (${approx} filas). Importación de ocurrencias se implementará aparte.`);
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error("Error creando la colección");
+    } finally {
+      setCreating(false);
+    }
   };
-
-  const myCollections = collections.filter(c => c.ownerId === currentUserId);
-  const sharedCollections = collections.filter(c => c.ownerId !== currentUserId);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
-        setCsvFile(file);
-        toast.success('Archivo CSV cargado');
-      } else {
-        toast.error('Por favor selecciona un archivo CSV válido');
-      }
+    const f = e.target.files?.[0] ?? null;
+    if (!f) return;
+    if (f.type === "text/csv" || f.name.endsWith(".csv")) {
+      setCsvFile(f);
+      toast.success("Archivo CSV cargado (solo conteo por ahora)");
+    } else {
+      toast.error("Selecciona un archivo CSV válido");
     }
   };
 
+  // ------- Navegación tarjetas -------
+    const goToCollectionDetail = (c: CollectionListItem) => {
+      onNavigate("collection-detail", {
+        collectionId: c.id,
+        collectionName: c.name,
+        collectionInstitutionId: Number(c.institutionId),
+        isOwner: canManageCollection(c),
+      });
+    };
+
+  // ------- Render -------
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-3xl mb-2">Colecciones</h1>
-          <p className="text-muted-foreground">
-            Gestiona tus colecciones de especímenes botánicos
-          </p>
-        </div>
-        
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Nueva Colección
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Crear Nueva Colección</DialogTitle>
-              <DialogDescription>
-                Elige cómo deseas crear tu colección
-              </DialogDescription>
-            </DialogHeader>
-            
-            <Tabs defaultValue="empty" className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="empty">Colección Vacía</TabsTrigger>
-                <TabsTrigger value="csv">Importar CSV</TabsTrigger>
-              </TabsList>
-              
-              <TabsContent value="empty" className="space-y-4">
-                <div className="rounded-lg bg-blue-50 p-4 mb-4">
+      <div className="container mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h1 className="text-3xl mb-2">Colecciones</h1>
+            <p className="text-muted-foreground">Gestiona tus colecciones y las que tienes permiso a ver/editar</p>
+          </div>
+
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="h-4 w-4 mr-2" />
+                Nueva Colección
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Crear Nueva Colección</DialogTitle>
+                <DialogDescription>Completa los metadatos de tu nueva colección.</DialogDescription>
+              </DialogHeader>
+
+              {/*<Tabs defaultValue="empty" className="w-full">*/}
+              {/*  <TabsList className="grid w-full grid-cols-2">*/}
+              {/*    <TabsTrigger value="empty">Colección Vacía</TabsTrigger>*/}
+              {/*    /!*<TabsTrigger value="csv">Importar CSV (metadata + conteo)</TabsTrigger>*!/*/}
+              {/*  </TabsList>*/}
+
+                {/* Form base compartido */}
+                <div className="rounded-lg bg-blue-50 p-4 my-4">
                   <div className="flex items-start gap-3">
                     <Folder className="h-5 w-5 text-blue-600 mt-0.5" />
                     <div>
-                      <h4 className="text-sm text-blue-900 mb-1">Colección Vacía</h4>
-                      <p className="text-sm text-blue-700">
-                        Crea una colección con solo los metadatos. Podrás agregar ocurrencias manualmente después.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                
-                <form onSubmit={handleSubmitEmpty} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="name-empty">Nombre de la Colección</Label>
-                    <Input
-                      id="name-empty"
-                      value={newCollection.name}
-                      onChange={(e) => setNewCollection({...newCollection, name: e.target.value})}
-                      placeholder="Ej: Flora del Amazonas 2024"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="description-empty">Descripción</Label>
-                    <Textarea
-                      id="description-empty"
-                      value={newCollection.description}
-                      onChange={(e) => setNewCollection({...newCollection, description: e.target.value})}
-                      rows={3}
-                      placeholder="Describe el propósito y contenido de esta colección"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="institution-empty">Institución</Label>
-                    <Select
-                      value={newCollection.institution}
-                      onValueChange={(value) => setNewCollection({...newCollection, institution: value})}
-                    >
-                      <SelectTrigger id="institution-empty">
-                        <SelectValue placeholder="Selecciona una institución" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {institutions.map((inst) => (
-                          <SelectItem key={inst} value={inst}>
-                            {inst}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="location-empty">Ubicación</Label>
-                    <Input
-                      id="location-empty"
-                      value={newCollection.location}
-                      onChange={(e) => setNewCollection({...newCollection, location: e.target.value})}
-                      placeholder="Ej: Amazonas, Brasil"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="date-empty">Fecha de Recolección</Label>
-                    <Input
-                      id="date-empty"
-                      type="date"
-                      value={newCollection.date}
-                      onChange={(e) => setNewCollection({...newCollection, date: e.target.value})}
-                      required
-                    />
-                  </div>
-                  <Button type="submit" className="w-full">
-                    <Folder className="h-4 w-4 mr-2" />
-                    Crear Colección Vacía
-                  </Button>
-                </form>
-              </TabsContent>
-              
-              <TabsContent value="csv" className="space-y-4">
-                <div className="rounded-lg bg-green-50 p-4 mb-4">
-                  <div className="flex items-start gap-3">
-                    <FileSpreadsheet className="h-5 w-5 text-green-600 mt-0.5" />
-                    <div>
-                      <h4 className="text-sm text-green-900 mb-1">Importar desde CSV</h4>
-                      <p className="text-sm text-green-700">
-                        Crea una colección e importa múltiples ocurrencias desde un archivo CSV.
-                      </p>
+                      <h4 className="text-sm text-blue-900 mb-1">Metadatos</h4>
                     </div>
                   </div>
                 </div>
 
-                <form onSubmit={handleSubmitWithCSV} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="name-csv">Nombre de la Colección</Label>
-                    <Input
-                      id="name-csv"
-                      value={newCollection.name}
-                      onChange={(e) => setNewCollection({...newCollection, name: e.target.value})}
-                      placeholder="Ej: Flora del Amazonas 2024"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="description-csv">Descripción</Label>
-                    <Textarea
-                      id="description-csv"
-                      value={newCollection.description}
-                      onChange={(e) => setNewCollection({...newCollection, description: e.target.value})}
-                      rows={3}
-                      placeholder="Describe el propósito y contenido de esta colección"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="institution-csv">Institución</Label>
-                    <Select
-                      value={newCollection.institution}
-                      onValueChange={(value) => setNewCollection({...newCollection, institution: value})}
-                    >
-                      <SelectTrigger id="institution-csv">
-                        <SelectValue placeholder="Selecciona una institución" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {institutions.map((inst) => (
-                          <SelectItem key={inst} value={inst}>
-                            {inst}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="location-csv">Ubicación</Label>
-                    <Input
-                      id="location-csv"
-                      value={newCollection.location}
-                      onChange={(e) => setNewCollection({...newCollection, location: e.target.value})}
-                      placeholder="Ej: Amazonas, Brasil"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="date-csv">Fecha de Recolección</Label>
-                    <Input
-                      id="date-csv"
-                      type="date"
-                      value={newCollection.date}
-                      onChange={(e) => setNewCollection({...newCollection, date: e.target.value})}
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="csv-file">Archivo CSV</Label>
-                    <div className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary transition-colors">
-                      <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                      <div className="mb-2">
-                        <label htmlFor="csv-file" className="cursor-pointer text-primary hover:underline">
-                          Seleccionar archivo CSV
-                        </label>
-                        <input
-                          id="csv-file"
-                          type="file"
-                          accept=".csv"
-                          onChange={handleFileChange}
-                          className="hidden"
-                        />
-                      </div>
-                      {csvFile && (
-                        <p className="text-sm text-muted-foreground">
-                          Archivo: <span className="text-foreground">{csvFile.name}</span>
-                        </p>
-                      )}
-                      <p className="text-xs text-muted-foreground mt-2">
-                        El CSV debe incluir columnas para código, nombre científico, ubicación, coordenadas, etc.
-                      </p>
+                <form onSubmit={handleCreate} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="collectionID">collectionID</Label>
+                      <Input
+                          id="collectionID"
+                          value={form.collectionID ?? ""}
+                          onChange={(e) => setForm((f) => ({ ...f, collectionID: e.target.value }))}
+                          placeholder="Opcional, p.ej. UNMSM-BOT-001"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="collectionCode">collectionCode</Label>
+                      <Input
+                          id="collectionCode"
+                          value={form.collectionCode ?? ""}
+                          onChange={(e) => setForm((f) => ({ ...f, collectionCode: e.target.value }))}
+                          placeholder="Opcional, p.ej. UNMSM-BOT"
+                      />
                     </div>
                   </div>
 
-                  <Button type="submit" className="w-full">
-                    <Upload className="h-4 w-4 mr-2" />
-                    Crear e Importar Ocurrencias
-                  </Button>
+                  <div className="space-y-2">
+                    <Label htmlFor="collectionName">Nombre de la colección</Label>
+                    <Input
+                        id="collectionName"
+                        value={form.collectionName ?? ""}
+                        onChange={(e) => setForm((f) => ({ ...f, collectionName: e.target.value }))}
+                        placeholder="Ej: Flora del Amazonas 2024"
+                        required
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="description">Descripción</Label>
+                    <Textarea
+                        id="description"
+                        rows={3}
+                        value={form.description ?? ""}
+                        onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                        placeholder="Describe el propósito y contenido de esta colección"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="webSite">Sitio web</Label>
+                    <Input
+                        id="webSite"
+                        value={form.webSite ?? ""}
+                        onChange={(e) => setForm((f) => ({ ...f, webSite: e.target.value }))}
+                        placeholder="https://..."
+                    />
+                  </div>
+
+                  {/* Autocomplete de institución */}
+                  <div className="space-y-2">
+                    <Label htmlFor="webSite">Institución</Label>
+
+                    <AutocompleteInstitution
+                        token={token}
+                        apiFetch={apiFetch}
+                        placeholder={isRestrictedInstitutionPick ? (userInstitutionName || "Tu institución") : "Buscar institución..."}
+                        disabled={isRestrictedInstitutionPick}
+                        value={instSearchText}
+                        onChange={(t) => {
+                          if (isRestrictedInstitutionPick) return; // bloquear edición
+                          setInstSearchText(t);
+                          setSelectedInstitutionId(null);
+                        }}
+                        onSelect={(item) => {
+                          if (isRestrictedInstitutionPick) return; // bloquear selección
+                          setInstSearchText(item.institutionName);
+                          setSelectedInstitutionId(Number(item.id));
+                        }}
+                        minChars={1}
+                    />
+
+                  </div>
+
+                  {/* Creator */}
+                  <div className="space-y-1">
+                    <Label>Creador</Label>
+                    <div className="text-sm">{creatorDisplayName}</div>
+                  </div>
+
+
+                  <div className="flex gap-2 pt-2">
+                    <Button type="button" variant="outline" onClick={() => setOpen(false)} className="flex-1">
+                      Cancelar
+                    </Button>
+                    <Button type="submit" className="flex-1" disabled={creating}>
+                      {creating ? "Creando..." : "Crear colección"}
+                    </Button>
+                  </div>
                 </form>
-              </TabsContent>
-            </Tabs>
-          </DialogContent>
-        </Dialog>
+              {/*</Tabs>*/}
+            </DialogContent>
+          </Dialog>
+        </div>
+
+        {/* Mis colecciones */}
+        {agentId && (
+            <section className="mb-12">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl">Mis colecciones</h2>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-muted-foreground">{myPage} / {myTotalPages}</span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setMyPage((p) => Math.max(1, p - 1))}
+                        disabled={myPage <= 1 || myLoading}
+                        className="h-9 w-9 rounded-full"
+                    >
+                      <ChevronLeft className="h-5 w-5" />
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setMyPage((p) => Math.min(myTotalPages, p + 1))}
+                        disabled={myPage >= myTotalPages || myLoading}
+                        className="h-9 w-9 rounded-full"
+                    >
+                      <ChevronRight className="h-5 w-5" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {myLoading ? (
+                  <p className="text-sm text-muted-foreground py-4">Cargando…</p>
+              ) : myItems.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-4">No tienes colecciones creadas.</p>
+              ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {myItems.map((c) => (
+                        <Card
+                            key={c.id}
+                            className="hover:shadow-lg transition-all cursor-pointer h-full border-2 hover:border-primary/50"
+                            onClick={() => goToCollectionDetail(c)}
+                        >
+                          <CardHeader>
+                            <div className="flex items-start justify-between">
+                              <Folder className="h-8 w-8 text-primary" />
+                              <span className="text-sm bg-red-50 text-primary px-2 py-1 rounded">
+                                {c.occurrencesCount} ocurrencias
+                              </span>
+                            </div>
+                            <CardTitle className="truncate">{c.name ?? "(sin nombre)"}</CardTitle>
+                            <CardDescription className="flex items-center gap-2">
+                              <Users className="h-4 w-4" />
+                              <span className="truncate">{c.institutionName ?? "Sin institución"}</span>
+                              {/* badge removido de aquí */}
+                            </CardDescription>
+                          </CardHeader>
+
+                          <CardContent>
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Shield className="h-4 w-4" />
+                              <span>Tu rol:</span>
+                              {c.my_role ? roleBadge(c.my_role) : (
+                                  <span className="italic">Sin rol específico</span>
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
+
+                    ))}
+                  </div>
+              )}
+            </section>
+        )}
+
+        {/* Colecciones permitidas */}
+        <section className="mb-12">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl">Colecciones permitidas</h2>
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-muted-foreground">{allowedPage} / {allowedTotalPages}</span>
+              <div className="flex items-center gap-2">
+                <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setAllowedPage((p) => Math.max(1, p - 1))}
+                    disabled={allowedPage <= 1 || allowedLoading}
+                    className="h-9 w-9 rounded-full"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </Button>
+                <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setAllowedPage((p) => Math.min(allowedTotalPages, p + 1))}
+                    disabled={allowedPage >= allowedTotalPages || allowedLoading}
+                    className="h-9 w-9 rounded-full"
+                >
+                  <ChevronRight className="h-5 w-5" />
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {allowedLoading ? (
+              <p className="text-sm text-muted-foreground py-4">Cargando…</p>
+          ) : allowedItems.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4">No hay colecciones para mostrar.</p>
+          ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {allowedItems.map((c) => (
+                    <Card
+                        key={c.id}
+                        className="hover:shadow-lg transition-all cursor-pointer h-full border-2 hover:border-primary/50"
+                        onClick={() => goToCollectionDetail(c)}
+                    >
+                      <CardHeader>
+                        <div className="flex items-start justify-between">
+                          <Folder className="h-8 w-8 text-primary" />
+                          <span className="text-sm bg-red-50 text-primary px-2 py-1 rounded">
+                            {c.occurrencesCount} ocurrencias
+                          </span>
+                        </div>
+                        <CardTitle className="truncate">{c.name ?? "(sin nombre)"}</CardTitle>
+                        <CardDescription className="flex items-center gap-2">
+                          <Users className="h-4 w-4" />
+                          <span className="truncate">{c.institutionName ?? "Sin institución"}</span>
+                          {/* badge quitado de aquí */}
+                        </CardDescription>
+                      </CardHeader>
+
+                      <CardContent>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Users className="h-4 w-4" />
+                          <span className="truncate">
+                            Creador: {c.creatorName ?? "Desconocido"}
+                          </span>
+                        </div>
+
+                        {/* Rol abajo con Shield al costado */}
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground mt-2">
+                          <Shield className="h-4 w-4" />
+                          <span>Tu rol:</span>
+                          {c.my_role ? roleBadge(c.my_role) : <span>Sin rol específico</span>}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+
+                ))}
+              </div>
+          )}
+        </section>
       </div>
-
-      {myCollections.length > 0 && (
-        <div className="mb-8">
-          <h2 className="text-2xl mb-4">Mis Colecciones</h2>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {myCollections.map((collection) => (
-              <Card 
-                key={collection.id} 
-                className="hover:shadow-lg transition-shadow cursor-pointer"
-                onClick={() => handleCollectionClick(collection)}
-              >
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <Folder className="h-8 w-8 text-primary" />
-                    <span className="text-sm bg-red-50 text-primary px-2 py-1 rounded">
-                      {collection.occurrencesCount} ocurrencias
-                    </span>
-                  </div>
-                  <CardTitle>{collection.name}</CardTitle>
-                  <CardDescription>{collection.description}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2 text-sm text-muted-foreground">
-                    <div className="flex items-center gap-2">
-                      <Users className="h-4 w-4" />
-                      {collection.institution}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <MapPin className="h-4 w-4" />
-                      {collection.location}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4" />
-                      {new Date(collection.date).toLocaleDateString('es-ES', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric'
-                      })}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {sharedCollections.length > 0 && (
-        <div>
-          <h2 className="text-2xl mb-4">Colecciones Compartidas</h2>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {sharedCollections.map((collection) => (
-              <Card 
-                key={collection.id} 
-                className="hover:shadow-lg transition-shadow cursor-pointer"
-                onClick={() => handleCollectionClick(collection)}
-              >
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <Folder className="h-8 w-8 text-primary" />
-                    <span className="text-sm bg-red-50 text-primary px-2 py-1 rounded">
-                      {collection.occurrencesCount} ocurrencias
-                    </span>
-                  </div>
-                  <CardTitle>{collection.name}</CardTitle>
-                  <CardDescription>{collection.description}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2 text-sm text-muted-foreground">
-                    <div className="flex items-center gap-2">
-                      <Users className="h-4 w-4" />
-                      {collection.institution}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <MapPin className="h-4 w-4" />
-                      {collection.location}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4" />
-                      {new Date(collection.date).toLocaleDateString('es-ES', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric'
-                      })}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
   );
 }

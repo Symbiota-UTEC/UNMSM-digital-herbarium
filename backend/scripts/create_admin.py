@@ -18,6 +18,19 @@ BASE_DIR = Path(__file__).resolve().parent
 ENV_PATH = BASE_DIR / ".env"
 load_dotenv(ENV_PATH)
 
+
+def increment_users_count(db: Session, institution: Institution, delta: int = 1) -> None:
+    """
+    Incrementa (o decrementa si delta<0) el contador de usuarios de la institución.
+    Se asegura de inicializar en 0 si es None.
+    """
+    current = institution.usersCount or 0  # usersCount puede estar en NULL
+    institution.usersCount = current + delta
+    db.add(institution)
+    db.commit()
+    db.refresh(institution)
+
+
 def upsert_institution(db: Session) -> Institution:
     """
     Crea o devuelve la institución objetivo. Usa variables de entorno con
@@ -76,13 +89,13 @@ def upsert_institution(db: Session) -> Institution:
         email=email,
         phone=phone,
         webSite=website,
-
     )
     db.add(inst)
     db.commit()
     db.refresh(inst)
     print(f"[bootstrap] Created institution '{institution_code}' (id={inst.id}).")
     return inst
+
 
 def upsert_agent(db: Session):
     agent_id = "urn:uuid:dc302821-eb93-4aee-819f-04413f627bc3"
@@ -101,13 +114,13 @@ def upsert_agent(db: Session):
         return agent
 
     agent = Agent(
-        agentID = agent_id,
-        givenName = given_name,
-        familyName = family_name,
-        fullName = full_name,
-        orcid = orcid,
-        phone = phone,
-        address = address,
+        agentID=agent_id,
+        givenName=given_name,
+        familyName=family_name,
+        fullName=full_name,
+        orcid=orcid,
+        phone=phone,
+        address=address,
     )
 
     db.add(agent)
@@ -115,6 +128,7 @@ def upsert_agent(db: Session):
     db.refresh(agent)
     print(f"[bootstrap] Agent '{agent_id}' ready (id={agent.id}).")
     return agent
+
 
 def upsert_admin(db: Session, institution: Institution, agent: Agent) -> User:
     admin_username = os.getenv("ADMIN_USERNAME", "admin")
@@ -124,6 +138,8 @@ def upsert_admin(db: Session, institution: Institution, agent: Agent) -> User:
     user = db.execute(
         select(User).where(User.username == admin_username)
     ).scalar_one_or_none()
+
+    created_user = False
 
     if user:
         changed = False
@@ -142,6 +158,9 @@ def upsert_admin(db: Session, institution: Institution, agent: Agent) -> User:
 
         if not getattr(user, "is_institution_admin", False):
             user.is_institution_admin = True; changed = True
+
+        if not user.agent_id and agent.id:
+            user.agent_id = agent.id; changed = True
 
         if changed:
             db.add(user)
@@ -162,7 +181,13 @@ def upsert_admin(db: Session, institution: Institution, agent: Agent) -> User:
         db.add(user)
         db.commit()
         db.refresh(user)
+        created_user = True  # ← se creó el admin
 
+    # Si se creó un usuario nuevo como admin, suma 1 al contador de la institución
+    if created_user:
+        increment_users_count(db, institution, delta=1)
+
+    # Mantener consistencia del admin asignado en Institution
     prev_inst = db.execute(
         select(Institution).where(
             Institution.institution_admin_user_id == user.id,
@@ -185,6 +210,7 @@ def upsert_admin(db: Session, institution: Institution, agent: Agent) -> User:
     print(f"[bootstrap] Admin user '{admin_username}' ready (id={user.id}).")
     return user
 
+
 def main():
     Base.metadata.create_all(bind=engine)
 
@@ -195,6 +221,7 @@ def main():
         upsert_admin(db, inst, agent)
     finally:
         db.close()
+
 
 if __name__ == "__main__":
     main()

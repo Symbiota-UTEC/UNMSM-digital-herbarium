@@ -11,6 +11,7 @@ import { CollectionDetailPage } from "./components/pages/CollectionDetailPage";
 import { OccurrencesPage } from "./components/pages/OccurrencesPage";
 import { NewOccurrencePage } from "./components/pages/NewOccurrencePage";
 import { OccurrenceDetailPage } from "./components/pages/OccurrenceDetailPage";
+import { CSVImportPage } from "./components/pages/CSVImportPage";
 import { TaxonPage } from "./components/pages/TaxonPage";
 import { ProfilePage } from "./components/pages/ProfilePage";
 import { AdminPage } from "./components/pages/AdminPage";
@@ -18,8 +19,9 @@ import { MapPage } from "./components/pages/MapPage";
 import { Toaster } from "./components/ui/sonner";
 
 interface NavigationParams {
-  collectionId?: string;
+  collectionId?: string | number;
   collectionName?: string;
+  collectionInstitutionId?: number;
   isOwner?: boolean;
   occurrenceId?: string;
   returnTo?: "occurrences" | "collection";
@@ -35,7 +37,8 @@ const routeConfigs: RouteConfig[] = [
   { path: "/login", pageId: "login" },
   { path: "/register", pageId: "register" },
   { path: "/collections", pageId: "collections" },
-  { path: "/collections/:collectionId", pageId: "collection.ts-detail" },
+  { path: "/collections/:collectionId", pageId: "collection-detail" },
+  { path: "/collections/:collectionId/csv-import", pageId: "csv-import" },
   { path: "/occurrences", pageId: "occurrences" },
   { path: "/occurrences/new", pageId: "new-occurrence" },
   { path: "/occurrences/:occurrenceId/edit", pageId: "edit-occurrence" },
@@ -73,22 +76,38 @@ const buildRoute = (page: string, params: NavigationParams = {}) => {
       return { path: "/register" };
     case "collections":
       return { path: "/collections" };
-    case "collection.ts-detail":
-      if (!params.collectionId) return null;
+    case "collection-detail": {
+      const collectionId = params.collectionId?.toString();
+      if (!collectionId) return null;
       return {
-        path: `/collections/${params.collectionId}`,
+        path: `/collections/${collectionId}`,
         state: {
+          collectionId,
+          collectionName: params.collectionName,
+          collectionInstitutionId: params.collectionInstitutionId,
+          isOwner: params.isOwner,
+        },
+      };
+    }
+    case "csv-import": {
+      const collectionId = params.collectionId?.toString();
+      if (!collectionId) return null;
+      return {
+        path: `/collections/${collectionId}/csv-import`,
+        state: {
+          collectionId,
           collectionName: params.collectionName,
           isOwner: params.isOwner,
         },
       };
+    }
     case "occurrences":
       return { path: "/occurrences" };
     case "new-occurrence":
       return {
         path: "/occurrences/new",
         state: {
-          collectionId: params.collectionId,
+          collectionId: params.collectionId?.toString(),
           collectionName: params.collectionName,
           isOwner: params.isOwner,
         },
@@ -99,7 +118,7 @@ const buildRoute = (page: string, params: NavigationParams = {}) => {
         path: `/occurrences/${params.occurrenceId}/edit`,
         state: {
           returnTo: params.returnTo ?? (params.collectionId ? "collection" : undefined),
-          collectionId: params.collectionId,
+          collectionId: params.collectionId?.toString(),
           collectionName: params.collectionName,
           isOwner: params.isOwner,
         },
@@ -110,7 +129,7 @@ const buildRoute = (page: string, params: NavigationParams = {}) => {
         path: `/occurrences/${params.occurrenceId}`,
         state: {
           returnTo: params.returnTo ?? (params.collectionId ? "collection" : undefined),
-          collectionId: params.collectionId,
+          collectionId: params.collectionId?.toString(),
           collectionName: params.collectionName,
           isOwner: params.isOwner,
         },
@@ -171,7 +190,12 @@ function AppContent() {
       <CollectionDetailPage
         collectionId={collectionId}
         collectionName={state.collectionName || ""}
-        isOwner={state.isOwner || false}
+        collectionInstitutionId={
+          typeof state.collectionInstitutionId === "number"
+            ? state.collectionInstitutionId
+            : Number(state.collectionInstitutionId ?? 0)
+        }
+        isOwner={Boolean(state.isOwner)}
         onNavigate={handleNavigation}
       />
     );
@@ -180,13 +204,14 @@ function AppContent() {
   const OccurrenceDetailRoute = () => {
     const { occurrenceId = "" } = useParams();
     const state = (location.state as NavigationParams) || {};
+    const collectionId = state.collectionId ? state.collectionId.toString() : undefined;
 
     return (
       <OccurrenceDetailPage
         occurrenceId={occurrenceId}
         onNavigate={handleNavigation}
-        returnTo={state.returnTo || (state.collectionId ? "collection" : "occurrences")}
-        collectionId={state.collectionId}
+        returnTo={state.returnTo || (collectionId ? "collection" : "occurrences")}
+        collectionId={collectionId}
         collectionName={state.collectionName}
         isOwner={state.isOwner}
       />
@@ -196,16 +221,30 @@ function AppContent() {
   const NewOccurrenceRoute = ({ mode }: { mode: "create" | "edit" }) => {
     const { occurrenceId } = useParams();
     const state = (location.state as NavigationParams) || {};
+    const collectionId = state.collectionId ? state.collectionId.toString() : undefined;
 
     return (
       <NewOccurrencePage
         onNavigate={handleNavigation}
         mode={mode}
         occurrenceId={occurrenceId}
-        returnTo={state.returnTo || (state.collectionId ? "collection" : "occurrences")}
-        collectionId={state.collectionId}
+        returnTo={state.returnTo || (collectionId ? "collection" : "occurrences")}
+        collectionId={collectionId}
         collectionName={state.collectionName}
         isOwner={state.isOwner}
+      />
+    );
+  };
+
+  const CSVImportRoute = () => {
+    const { collectionId = "" } = useParams();
+    const state = (location.state as NavigationParams) || {};
+
+    return (
+      <CSVImportPage
+        collectionId={collectionId}
+        collectionName={state.collectionName || ""}
+        onNavigate={handleNavigation}
       />
     );
   };
@@ -224,6 +263,7 @@ function AppContent() {
         <Route path="/register" element={<RegisterPage onNavigate={handleNavigation} />} />
         <Route path="/collections" element={<CollectionsPage onNavigate={handleNavigation} />} />
         <Route path="/collections/:collectionId" element={<CollectionDetailRoute />} />
+        <Route path="/collections/:collectionId/csv-import" element={<CSVImportRoute />} />
         <Route path="/occurrences" element={<OccurrencesPage onNavigate={handleNavigation} />} />
         <Route path="/occurrences/new" element={<NewOccurrenceRoute mode="create" />} />
         <Route path="/occurrences/:occurrenceId/edit" element={<NewOccurrenceRoute mode="edit" />} />
