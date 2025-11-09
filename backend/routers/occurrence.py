@@ -1,10 +1,11 @@
 # backend/routers/occurrence.py
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Any, Dict
+import json
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy import select, exists,  or_, func
+from sqlalchemy import select, exists, or_, func
 from sqlalchemy.orm import Session, selectinload
 
 from pydantic import BaseModel
@@ -64,6 +65,7 @@ def _fmt_dt(v: Optional[datetime | date | str]) -> Optional[str]:
         return s
     return None
 
+
 class CollectionSummary(BaseModel):
     id: int
     collectionCode: Optional[str] = None
@@ -73,6 +75,7 @@ class CollectionSummary(BaseModel):
     class Config:
         orm_mode = True
         from_attributes = True
+
 
 class EventOut(BaseModel):
     id: int
@@ -90,6 +93,7 @@ class EventOut(BaseModel):
     class Config:
         orm_mode = True
         from_attributes = True
+
 
 class LocationOut(BaseModel):
     id: int
@@ -111,6 +115,7 @@ class LocationOut(BaseModel):
         orm_mode = True
         from_attributes = True
 
+
 class TaxonOut(BaseModel):
     id: int
     scientificName: Optional[str] = None
@@ -125,6 +130,7 @@ class TaxonOut(BaseModel):
     class Config:
         orm_mode = True
         from_attributes = True
+
 
 class OccurrenceOut(BaseModel):
     # identificador
@@ -141,6 +147,10 @@ class OccurrenceOut(BaseModel):
     preparations: Optional[str] = None
     disposition: Optional[str] = None
     occurrenceRemarks: Optional[str] = None
+
+    # nuevo: JSON con propiedades dinámicas
+    dynamicProperties: Optional[Dict[str, Any]] = None
+
     modified: Optional[str] = None
     license: Optional[str] = None
     rightsHolder: Optional[str] = None
@@ -185,6 +195,29 @@ def _user_can_view_collection(db: Session, user: User, collection: Collection) -
 
     return False
 
+
+def _user_can_edit_collection(db: Session, user: User, collection: Collection) -> bool:
+    """Permisos de edición:
+       - superuser
+       - admin de la institución dueña
+       - rol explícito editor/owner
+    """
+    if getattr(user, "is_superuser", False):
+        return True
+
+    if getattr(user, "is_institution_admin", False) and collection.institution_id and user.institution_id:
+        if int(collection.institution_id) == int(user.institution_id):
+            return True
+
+    role = db.scalar(
+        select(CollectionPermission.role).where(
+            (CollectionPermission.collection_id == collection.id)
+            & (CollectionPermission.user_id == user.id)
+        )
+    )
+    return role in ("editor", "owner")
+
+
 # =========================
 # Serializadores (siempre con todas las claves)
 # =========================
@@ -198,6 +231,7 @@ def _to_collection_dict(col: Optional[Collection]) -> Optional[dict]:
         "collectionName": col.collectionName,
         "institution_id": col.institution_id,
     }
+
 
 def _to_event_dict(evt: Optional[Event]) -> Optional[dict]:
     if evt is None:
@@ -215,6 +249,7 @@ def _to_event_dict(evt: Optional[Event]) -> Optional[dict]:
         "habitat": evt.habitat,
         "eventRemarks": evt.eventRemarks,
     }
+
 
 def _to_location_dict(loc: Optional[Location]) -> Optional[dict]:
     if loc is None:
@@ -236,6 +271,7 @@ def _to_location_dict(loc: Optional[Location]) -> Optional[dict]:
         "verbatimElevation": loc.verbatimElevation,
     }
 
+
 def _to_taxon_dict(tx: Optional[Taxon]) -> Optional[dict]:
     if tx is None:
         return None
@@ -250,7 +286,6 @@ def _to_taxon_dict(tx: Optional[Taxon]) -> Optional[dict]:
         "taxonRank": tx.taxonRank,
         "acceptedNameUsage": tx.acceptedNameUsage,
     }
-
 
 
 @router.get(
@@ -297,6 +332,7 @@ def get_occurrence_by_id(
         "preparations": occ.preparations,
         "disposition": occ.disposition,
         "occurrenceRemarks": occ.occurrenceRemarks,
+        "dynamicProperties": occ.dynamicProperties,  # nuevo
         "modified": _fmt_dt(occ.modified),  # formato en dd/mm/aaaa
         "license": occ.license,
         "rightsHolder": occ.rightsHolder,
@@ -309,7 +345,6 @@ def get_occurrence_by_id(
     }
 
     return OccurrenceOut.model_validate(payload, from_attributes=True)
-
 
 
 @router.get("", summary="Lista ocurrencias visibles (vista básica) para el usuario actual")
@@ -433,3 +468,94 @@ def list_occurrences_basic(
         "total_pages": total_pages,
         "remaining_pages": remaining_pages,
     }
+
+
+class DynamicPropsIn(BaseModel):
+    dynamicProperties: Optional[Dict[str, Any] | str] = None
+
+
+@router.patch(
+    "/{occurrence_id}/dynamic-properties",
+    response_model=OccurrenceOut,
+    status_code=status.HTTP_200_OK,
+    summary="Actualiza dynamicProperties (JSON) de una ocurrencia"
+)
+def set_dynamic_properties(
+    occurrence_id: int,
+    payload: DynamicPropsIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    stmt = (
+        select(Occurrence)
+        .options(
+            selectinload(Occurrence.collection),
+            selectinload(Occurrence.event),
+            selectinload(Occurrence.location),
+            selectinload(Occurrence.taxon),
+        )
+        .where(Occurrence.id == occurrence_id)
+    )
+    occ = db.scalar(stmt)
+    if not occ:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Occurrence not found")
+
+    if not occ.collection:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied (no collection)")
+
+    if not _user_can_edit_collection(db, current_user, occ.collection):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough privileges")
+
+    # Normalizar entrada a dict o None
+    dp = payload.dynamicProperties
+    obj: Optional[Dict[str, Any]] = None
+
+    if isinstance(dp, dict):
+        obj = dp
+    elif isinstance(dp, str):
+        s = dp.strip()
+        if s:
+            try:
+                parsed = json.loads(s)
+                if not isinstance(parsed, dict):
+                    raise ValueError("dynamicProperties debe ser un objeto JSON")
+                obj = parsed
+            except json.JSONDecodeError:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="dynamicProperties no es un JSON válido"
+                )
+        else:
+            obj = None
+    else:
+        obj = None
+
+    occ.dynamicProperties = obj
+
+    db.add(occ)
+    db.commit()
+    db.refresh(occ)
+
+    return OccurrenceOut.model_validate({
+        "id": occ.id,
+        "occurrenceID": occ.occurrenceID,
+        "catalogNumber": occ.catalogNumber,
+        "recordNumber": occ.recordNumber,
+        "recordedBy": occ.recordedBy,
+        "recordEnteredBy": occ.recordEnteredBy,
+        "individualCount": occ.individualCount,
+        "occurrenceStatus": occ.occurrenceStatus,
+        "preparations": occ.preparations,
+        "disposition": occ.disposition,
+        "occurrenceRemarks": occ.occurrenceRemarks,
+        "dynamicProperties": occ.dynamicProperties,
+        "modified": _fmt_dt(occ.modified),
+        "license": occ.license,
+        "rightsHolder": occ.rightsHolder,
+        "accessRights": occ.accessRights,
+        "bibliographicCitation": occ.bibliographicCitation,
+        "collection": _to_collection_dict(occ.collection),
+        "event": _to_event_dict(occ.event),
+        "location": _to_location_dict(occ.location),
+        "taxon": _to_taxon_dict(occ.taxon),
+    }, from_attributes=True)

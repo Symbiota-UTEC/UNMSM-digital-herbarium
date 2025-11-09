@@ -72,6 +72,7 @@ export interface OccurrenceItem {
     preparations: string | null;
     disposition: string | null;
     occurrenceRemarks: string | null;
+    dynamicProperties: Record<string, any> | null;
 
     modified: string | null;
 

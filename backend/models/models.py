@@ -17,7 +17,8 @@ Referencias claves (no importadas aquí): DwC Quick Reference Guide.
 """
 from __future__ import annotations
 
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Any, Dict
+
 from sqlalchemy import (
     String,
     Text,
@@ -31,10 +32,11 @@ from sqlalchemy import (
     Index,
     Enum,
 )
+from sqlalchemy.dialects.postgresql import JSONB
+
 from backend.config.database import Base
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime
-
 
 
 class Institution(Base):
@@ -506,6 +508,10 @@ class Occurrence(Base):
     rightsHolder: Mapped[Optional[String]] = mapped_column(String(255))
     accessRights: Mapped[Optional[String]] = mapped_column(String(255))
     bibliographicCitation: Mapped[Optional[Text]] = mapped_column(Text())   # rara vez en el registro; más en Reference/Multimedia
+    dynamicProperties: Mapped[Optional[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=True, default=dict,
+        doc="DwC dynamicProperties: JSON"
+    )
 
     # ---- Normalización con tablas de autoridad ----
     collection_id: Mapped[Optional[int]] = mapped_column(ForeignKey("collection.id"))

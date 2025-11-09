@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import csv
 import io
-from typing import Any, Dict, List, Optional, Tuple, Literal
+import json
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import select, exists
@@ -32,6 +33,11 @@ router = APIRouter(
     prefix="/upload",
     tags=["Files"],
 )
+
+
+AUGMENT_ALLOWED_FIELDS: Dict[str, set[str]] = {
+    "Occurrence": {"dynamicProperties"},
+}
 
 # Claves “natural keys” muy simples para reducir duplicados en una carga
 def _taxon_key(d: Dict[str, Any]) -> Tuple:
@@ -83,13 +89,20 @@ def _strict_parse_headers(headers: List[str]) -> Dict[Tuple[str, str], int]:
         if not m:
             errors.append(f"Header inválido: '{h}' (se requiere 'dwc:Entity:field')")
             continue
+
         entity, field = m.group(1), m.group(2)
-        if entity not in ALLOWED_FIELDS:
+
+        # Conjunto efectivo de campos permitidos = whitelist global + esta extensión local
+        allowed_effective = set(ALLOWED_FIELDS.get(entity, [])) | set(AUGMENT_ALLOWED_FIELDS.get(entity, set()))
+
+        if not allowed_effective:
             errors.append(f"Entity no soportada: '{entity}' en header '{h}'")
             continue
-        if field not in ALLOWED_FIELDS[entity]:
+
+        if field not in allowed_effective:
             errors.append(f"Field no permitido para {entity}: '{field}' (header '{h}')")
             continue
+
         mapping[(entity, field)] = idx
 
     if errors:
@@ -139,6 +152,21 @@ def _to_dt(v: Optional[str]) -> Optional[datetime]:
         except Exception:
             continue
     return None
+
+
+def _to_json_value(v: Optional[str]) -> Any:
+    """
+    Intenta parsear JSON. Si falla, retorna el string original (válido como JSON string en columna JSON).
+    Preferimos objetos/dicts para dynamicProperties, pero aceptamos cualquier JSON válido.
+    """
+    if v is None:
+        return None
+    try:
+        return json.loads(v)
+    except Exception:
+        # Guarda la cadena tal cual; SQLAlchemy JSON la serializa como string JSON.
+        return v
+
 
 # =========================
 # Helpers de autorización
@@ -194,6 +222,7 @@ def upload_dwc_csv(
     - Inserta Location, Event, Taxon deduplicando por claves simples (caches de corrida)
     - Inserta Occurrence y ResourceRelationship (duplicateOf) cuando corresponda
     - Controla permisos de edición sobre la colección
+    - Acepta 'dwc:Occurrence:dynamicProperties' y lo mapea al JSON de Occurrence.dynamicProperties
     """
     # -------- Validaciones básicas de archivo --------
     filename = (file.filename or "").lower()
@@ -276,6 +305,8 @@ def upload_dwc_csv(
                         occ_d[field] = _to_int(val)
                     elif field in {"modified"}:
                         occ_d[field] = _to_dt(val) or None
+                    elif field in {"dynamicProperties"}:
+                        occ_d[field] = _to_json_value(val)
                     else:
                         occ_d[field] = val
 
