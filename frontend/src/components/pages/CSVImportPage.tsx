@@ -47,7 +47,9 @@ interface ColumnMapping {
 
 type DatasetModel = "Occurrence";
 
-// Definición de campos DwC (solo los propios para nuevo dataset de ocurrencias)
+// ==============================
+// Definición de campos DwC
+// ==============================
 const DWC_FIELDS: Record<DatasetModel, DwCFieldOption[]> = {
     Occurrence: [
         // Occurrence
@@ -66,6 +68,9 @@ const DWC_FIELDS: Record<DatasetModel, DwCFieldOption[]> = {
         { entity: "Occurrence", term: "rightsHolder", value: "Occurrence.rightsHolder", label: "dwc:Occurrence:rightsHolder" },
         { entity: "Occurrence", term: "accessRights", value: "Occurrence.accessRights", label: "dwc:Occurrence:accessRights" },
         { entity: "Occurrence", term: "bibliographicCitation", value: "Occurrence.bibliographicCitation", label: "dwc:Occurrence:bibliographicCitation" },
+        // Nuevo campo (UI): dynamicProperties (JSON)
+        { entity: "Occurrence", term: "dynamicProperties", value: "Occurrence.dynamicProperties", label: "dwc:Occurrence:dynamicProperties" },
+
         // Event
         { entity: "Event", term: "eventDate", value: "Event.eventDate", label: "dwc:Event:eventDate", recommended: true },
         { entity: "Event", term: "year", value: "Event.year", label: "dwc:Event:year" },
@@ -77,6 +82,7 @@ const DWC_FIELDS: Record<DatasetModel, DwCFieldOption[]> = {
         { entity: "Event", term: "samplingEffort", value: "Event.samplingEffort", label: "dwc:Event:samplingEffort" },
         { entity: "Event", term: "habitat", value: "Event.habitat", label: "dwc:Event:habitat" },
         { entity: "Event", term: "eventRemarks", value: "Event.eventRemarks", label: "dwc:Event:eventRemarks" },
+
         // Location
         { entity: "Location", term: "stateProvince", value: "Location.stateProvince", label: "dwc:Location:stateProvince" },
         { entity: "Location", term: "county", value: "Location.county", label: "dwc:Location:county" },
@@ -91,6 +97,7 @@ const DWC_FIELDS: Record<DatasetModel, DwCFieldOption[]> = {
         { entity: "Location", term: "minimumElevationInMeters", value: "Location.minimumElevationInMeters", label: "dwc:Location:minimumElevationInMeters" },
         { entity: "Location", term: "maximumElevationInMeters", value: "Location.maximumElevationInMeters", label: "dwc:Location:maximumElevationInMeters" },
         { entity: "Location", term: "verbatimElevation", value: "Location.verbatimElevation", label: "dwc:Location:verbatimElevation" },
+
         // Taxon
         { entity: "Taxon", term: "scientificName", value: "Taxon.scientificName", label: "dwc:Taxon:scientificName", required: true, recommended: true },
         { entity: "Taxon", term: "scientificNameAuthorship", value: "Taxon.scientificNameAuthorship", label: "dwc:Taxon:scientificNameAuthorship" },
@@ -132,6 +139,10 @@ const AUTO_MAP_RULES: Array<{ pattern: RegExp; target: string }> = [
     { pattern: /\b(rights\s*holder|titular\s*de\s*los\s*derechos)\b/i, target: "Occurrence.rightsHolder" },
     { pattern: /\b(access\s*rights|acceso)\b/i, target: "Occurrence.accessRights" },
     { pattern: /\b(bibliographic\s*citation|cita\s*bibliografica)\b/i, target: "Occurrence.bibliographicCitation" },
+
+    // dynamicProperties (sinónimos)
+    { pattern: /\b(dynamic\s*properties?|propiedades?\s*din[aá]micas?)\b/i, target: "Occurrence.dynamicProperties" },
+
     // Event
     { pattern: /\b(event\s*date|fecha(\s*de)?\s*(colecta|colecci(ó|o)n)|fecha\s*evento)\b/i, target: "Event.eventDate" },
     { pattern: /\b(year|a(ñ|n)o)\b/i, target: "Event.year" },
@@ -143,6 +154,7 @@ const AUTO_MAP_RULES: Array<{ pattern: RegExp; target: string }> = [
     { pattern: /\b(sampling\s*effort|esfuerzo)\b/i, target: "Event.samplingEffort" },
     { pattern: /\b(habitat|hábitat)\b/i, target: "Event.habitat" },
     { pattern: /\b(event\s*remarks?)\b/i, target: "Event.eventRemarks" },
+
     // Location
     { pattern: /\b(state\s*province|departamento|regi(ó|o)n)\b/i, target: "Location.stateProvince" },
     { pattern: /\b(county|provincia)\b/i, target: "Location.county" },
@@ -157,6 +169,7 @@ const AUTO_MAP_RULES: Array<{ pattern: RegExp; target: string }> = [
     { pattern: /\b(altitud|elevaci(ó|o)n\s*m((e|é)tros?)?)\b/i, target: "Location.minimumElevationInMeters" },
     { pattern: /\b(elevaci(ó|o)n\s*m(á|a)x(ima)?)\b/i, target: "Location.maximumElevationInMeters" },
     { pattern: /\b(verbatim\s*elev(ation)?|altitud\s*verbatim)\b/i, target: "Location.verbatimElevation" },
+
     // Taxon
     { pattern: /\b(scientific\s*name|nombre\s*cient(í|i)fico)\b/i, target: "Taxon.scientificName" },
     { pattern: /\b(author(ship)?|aut(ó|o)r)\b/i, target: "Taxon.scientificNameAuthorship" },
@@ -167,15 +180,102 @@ const AUTO_MAP_RULES: Array<{ pattern: RegExp; target: string }> = [
     { pattern: /\b(rank|rango|taxon\s*rank)\b/i, target: "Taxon.taxonRank" }
 ];
 
-// ============= Utils CSV =============
-const readCSVText = (file: File): Promise<string> =>
+// ==============================
+// Heurística de decodificación (encoding)
+// ==============================
+type Guess = { text: string; encoding: string; source: "bom" | "heuristic" };
+
+const ENCODING_CANDIDATES = [
+    "utf-8",
+    "windows-1252",
+    "iso-8859-1",
+    "iso-8859-15",
+    "macintosh",
+] as const;
+
+const decodeWith = (bytes: Uint8Array, enc: string): string => {
+    let out = new TextDecoder(enc as any, { fatal: false }).decode(bytes);
+    if (out.charCodeAt(0) === 0xfeff) out = out.slice(1);
+    return out;
+};
+
+const hasManyReplacements = (s: string) => (s.match(/\uFFFD/g) || []).length;
+const countControlWeird = (s: string) => {
+    let bad = 0;
+    for (let i = 0; i < s.length; i++) {
+        const c = s.charCodeAt(i);
+        if (c < 0x20 && c !== 9 && c !== 10 && c !== 13) bad++;
+    }
+    return bad;
+};
+const looksLikeUTF8Misdecoded = (s: string) => /Ã[\x80-\xBFÀ-ÿA-Za-z]/.test(s);
+const countSpanishDiacritics = (s: string) =>
+    (s.match(/[áéíóúÁÉÍÓÚñÑüÜ]/g) || []).length;
+
+const scoreDecoded = (s: string) => {
+    const rep = hasManyReplacements(s);
+    const ctrl = countControlWeird(s);
+    const mis = looksLikeUTF8Misdecoded(s) ? 5 : 0;
+    const diac = countSpanishDiacritics(s);
+    return diac * 3 - rep * 10 - ctrl * 2 - mis * 8;
+};
+
+const detectBOM = (bytes: Uint8Array): { enc?: string; offset: number } => {
+    if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+        return { enc: "utf-8", offset: 3 };
+    }
+    if (bytes.length >= 2) {
+        if (bytes[0] === 0xff && bytes[1] === 0xfe) return { enc: "utf-16le", offset: 2 };
+        if (bytes[0] === 0xfe && bytes[1] === 0xff) return { enc: "utf-16be", offset: 2 };
+    }
+    return { offset: 0 };
+};
+
+export const guessDecode = (bytes: Uint8Array): Guess => {
+    const bom = detectBOM(bytes);
+    if (bom.enc) {
+        try {
+            const txt = decodeWith(bytes.subarray(bom.offset), bom.enc);
+            return { text: txt, encoding: bom.enc, source: "bom" };
+        } catch { /* fall-through */ }
+    }
+
+    try {
+        const utf8 = decodeWith(bytes, "utf-8");
+        const bad = hasManyReplacements(utf8);
+        if (bad === 0 && !looksLikeUTF8Misdecoded(utf8)) {
+            return { text: utf8, encoding: "utf-8", source: "heuristic" };
+        }
+    } catch {}
+
+    let best: { enc: string; text: string; score: number } | null = null;
+    for (const enc of ENCODING_CANDIDATES) {
+        try {
+            const txt = decodeWith(bytes, enc);
+            const sc = scoreDecoded(txt);
+            if (!best || sc > best.score) best = { enc, text: txt, score: sc };
+        } catch { }
+    }
+    if (best) return { text: best.text, encoding: best.enc, source: "heuristic" };
+
+    return { text: new TextDecoder("utf-8").decode(bytes), encoding: "utf-8", source: "heuristic" };
+};
+
+export const readFileBytes = (file: File): Promise<Uint8Array> =>
     new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => resolve((e.target?.result as string) ?? "");
-        reader.onerror = reject;
-        reader.readAsText(file);
+        const fr = new FileReader();
+        fr.onload = (e) => {
+            const buf = e.target?.result as ArrayBuffer | null;
+            if (!buf) return resolve(new Uint8Array());
+            resolve(new Uint8Array(buf));
+        };
+        fr.onerror = reject;
+        fr.readAsArrayBuffer(file);
     });
 
+// ==============================
+// CSV utils
+// ==============================
 const splitCSVLine = (line: string): string[] => {
     const parts = line.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/g);
     return parts.map((c) => {
@@ -203,12 +303,18 @@ const csvEscape = (v: string): string => {
 
 const labelFor = (opt: DwCFieldOption) => opt.label;
 
-
+// ==============================
+// Componente
+// ==============================
 export function CSVImportPage({ collectionId, collectionName, onNavigate }: CSVImportPageProps) {
     const { token } = useAuth();
 
     const [datasetModel, setDatasetModel] = useState<DatasetModel>("Occurrence");
     const [csvFile, setCSVFile] = useState<File | null>(null);
+
+    const [csvBytes, setCsvBytes] = useState<Uint8Array | null>(null);
+    const [encodingUsed, setEncodingUsed] = useState<string>("utf-8");
+    const [encodingAuto, setEncodingAuto] = useState<boolean>(true);
 
     const [rawCSVText, setRawCSVText] = useState<string>("");
     const [csvHeaders, setCSVHeaders] = useState<string[]>([]);
@@ -231,6 +337,9 @@ export function CSVImportPage({ collectionId, collectionName, onNavigate }: CSVI
     }), []);
 
     const headerDupReport = useMemo(() => {
+        // DWC que permiten mapear múltiples columnas
+        const ALLOW_MULTI_MAP = new Set<string>(["Occurrence.dynamicProperties"]);
+
         const byDwc: Record<string, string[]> = {};
         Object.entries(columnMapping).forEach(([csvHeader, dwcPath]) => {
             if (!dwcPath || dwcPath === "ignore") return;
@@ -239,14 +348,14 @@ export function CSVImportPage({ collectionId, collectionName, onNavigate }: CSVI
         });
 
         const duplicates = Object.entries(byDwc)
-            .filter(([, cols]) => cols.length > 1)
+            .filter(([dwcPath, cols]) => cols.length > 1 && !ALLOW_MULTI_MAP.has(dwcPath))
             .map(([dwcPath, cols]) => {
                 const opt = FIELD_OPTIONS.find((o) => o.value === dwcPath);
                 const label = opt ? opt.label : `dwc:${dwcPath.replace(".", ":")}`;
                 return { dwcPath, label, csvColumns: cols };
             });
 
-        return { hasDuplicates: duplicates.length > 0, duplicates };
+        return { hasDuplicates: duplicates.length > 0, duplicates, byDwc, allowMulti: ALLOW_MULTI_MAP };
     }, [columnMapping, FIELD_OPTIONS]);
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -256,39 +365,92 @@ export function CSVImportPage({ collectionId, collectionName, onNavigate }: CSVI
             toast.error("Por favor, selecciona un archivo .csv");
             return;
         }
-        setCSVFile(file);
+        try {
+            setCSVFile(file);
+            setIsProcessing(true);
 
-        const csvText = await readCSVText(file);
-        setRawCSVText(csvText);
+            // 1) bytes crudos
+            const bytes = await readFileBytes(file);
+            setCsvBytes(bytes);
 
-        const { headers, rows } = parseCSVAll(csvText);
-        if (headers.length === 0 || rows.length === 0) {
-            toast.error("El archivo CSV debe tener encabezados y al menos una fila de datos");
-            return;
-        }
-        setCSVHeaders(headers);
-        setCSVRows(rows);
-        setRowCount(rows.length);
+            // 2) decodificación inteligente
+            const { text, encoding } = guessDecode(bytes);
+            setEncodingUsed(encoding);
+            setEncodingAuto(true);
 
-        const first = rows[0] || [];
-        const detected: CSVColumn[] = headers.map((h, idx) => ({
-            name: h.trim(),
-            sample: first[idx] || ""
-        }));
-        setColumns(detected);
-
-        const mapping: ColumnMapping = {};
-        detected.forEach((col) => {
-            const name = col.name;
-            let mapped = "ignore";
-            for (const rule of AUTO_MAP_RULES) {
-                if (rule.pattern.test(name)) { mapped = rule.target; break; }
+            // 3) parse con utilidades existentes
+            const { headers, rows } = parseCSVAll(text);
+            if (headers.length === 0 || rows.length === 0) {
+                toast.error("El archivo CSV debe tener encabezados y al menos una fila de datos");
+                setIsProcessing(false);
+                return;
             }
-            mapping[name] = mapped;
-        });
-        setColumnMapping(mapping);
 
-        toast.success(`Archivo cargado: ${rows.length} filas detectadas`);
+            setRawCSVText(text);
+            setCSVHeaders(headers);
+            setCSVRows(rows);
+            setRowCount(rows.length);
+
+            const first = rows[0] || [];
+            const detected: CSVColumn[] = headers.map((h, idx) => ({
+                name: h.trim(),
+                sample: first[idx] || ""
+            }));
+            setColumns(detected);
+
+            const mapping: ColumnMapping = {};
+            detected.forEach((col) => {
+                const name = col.name;
+                let mapped = "ignore";
+                for (const rule of AUTO_MAP_RULES) {
+                    if (rule.pattern.test(name)) { mapped = rule.target; break; }
+                }
+                mapping[name] = mapped;
+            });
+            setColumnMapping(mapping);
+
+            toast.success(`Archivo cargado (${encoding}). Filas detectadas: ${rows.length}`);
+        } catch (err) {
+            console.error(err);
+            toast.error("No se pudo leer el CSV.");
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const handleEncodingChange = (enc: string) => {
+        if (!csvBytes) return;
+        try {
+            const text = decodeWith(csvBytes, enc);
+            const { headers, rows } = parseCSVAll(text);
+            setRawCSVText(text);
+            setCSVHeaders(headers);
+            setCSVRows(rows);
+            setRowCount(rows.length);
+
+            const first = rows[0] || [];
+            const detected: CSVColumn[] = headers.map((h, idx) => ({
+                name: h.trim(),
+                sample: first[idx] || ""
+            }));
+            setColumns(detected);
+            setColumnMapping((prev) => {
+                const newMap: ColumnMapping = {};
+                const prevKeys = new Set(Object.keys(prev));
+                headers.forEach((h) => {
+                    if (prevKeys.has(h)) newMap[h] = prev[h];
+                    else newMap[h] = "ignore";
+                });
+                return newMap;
+            });
+
+            setEncodingUsed(enc);
+            setEncodingAuto(false);
+            toast.success(`Codificación aplicada: ${enc}`);
+        } catch (err) {
+            console.error(err);
+            toast.error(`No se pudo decodificar como ${enc}`);
+        }
     };
 
     const handleMappingChange = (csvColumn: string, value: string) => {
@@ -297,6 +459,9 @@ export function CSVImportPage({ collectionId, collectionName, onNavigate }: CSVI
 
     const handleRemoveFile = () => {
         setCSVFile(null);
+        setCsvBytes(null);
+        setEncodingUsed("utf-8");
+        setEncodingAuto(true);
         setColumns([]);
         setColumnMapping({});
         setRowCount(0);
@@ -333,38 +498,79 @@ export function CSVImportPage({ collectionId, collectionName, onNavigate }: CSVI
         setShowConfirmDialog(true);
     };
 
-    // ======= construir CSV mapeado con headers dwc:Entidad:termino =======
-    const buildMappedCSV = (): string => {
-        const mappedCols: Array<{ csvIndex: number; csvHeader: string; dwcValue: string; dwcLabel: string; }> = [];
+    // ==============================
+    // CSV mapeado (con override de labels por DWC value)
+    // ==============================
+    const buildMappedCSV = (labelOverride?: Record<string, string>): string => {
+        // 1) Mapa DWC ← columnas CSV
         const dwcByHeader: Record<string, string> = {};
-
         Object.entries(columnMapping).forEach(([h, v]) => {
             if (v && v !== "ignore") dwcByHeader[h] = v;
         });
 
+        const dwcToCols: Record<string, Array<{ csvIndex: number; csvHeader: string }>> = {};
         csvHeaders.forEach((h, idx) => {
             const dwcPath = dwcByHeader[h];
             if (!dwcPath) return;
-            const opt = FIELD_OPTIONS.find((o) => o.value === dwcPath);
-            const dwcLabel = opt ? labelFor(opt) : `dwc:${dwcPath.replace(".", ":")}`;
-            mappedCols.push({ csvIndex: idx, csvHeader: h, dwcValue: dwcPath, dwcLabel });
+            if (!dwcToCols[dwcPath]) dwcToCols[dwcPath] = [];
+            dwcToCols[dwcPath].push({ csvIndex: idx, csvHeader: h });
         });
 
-        if (mappedCols.length === 0) return "";
+        // 2) Columnas de salida
+        type OutCol =
+            | { kind: "normal"; dwcValue: string; dwcLabel: string; csvIndex: number }
+            | { kind: "dynamic"; dwcValue: string; dwcLabel: string; cols: Array<{ csvIndex: number; csvHeader: string }> };
 
-        const headersOut = mappedCols.map((c) => c.dwcLabel);
+        const outCols: OutCol[] = [];
+        const makeLabel = (dwcValue: string) => {
+            if (labelOverride && labelOverride[dwcValue]) return labelOverride[dwcValue];
+            const opt = FIELD_OPTIONS.find((o) => o.value === dwcValue);
+            return opt ? labelFor(opt) : `dwc:${dwcValue.replace(".", ":")}`;
+        };
+
+        const DYNAMIC_KEY = "Occurrence.dynamicProperties";
+
+        Object.entries(dwcToCols).forEach(([dwcValue, cols]) => {
+            if (dwcValue === DYNAMIC_KEY) {
+                outCols.push({ kind: "dynamic", dwcValue, dwcLabel: makeLabel(dwcValue), cols });
+            } else {
+                outCols.push({ kind: "normal", dwcValue, dwcLabel: makeLabel(dwcValue), csvIndex: cols[0].csvIndex });
+            }
+        });
+
+        if (outCols.length === 0) return "";
+
+        // 3) Headers
+        const headersOut = outCols.map((c) => c.dwcLabel);
         const lines: string[] = [];
         lines.push(headersOut.map(csvEscape).join(","));
+
+        // 4) Filas
         for (const r of csvRows) {
-            const projected = mappedCols.map((c) => {
-                const val = r[c.csvIndex] ?? "";
-                return csvEscape(val);
+            const projected = outCols.map((c) => {
+                if (c.kind === "normal") {
+                    const val = r[c.csvIndex] ?? "";
+                    return csvEscape(val);
+                } else {
+                    // dynamicProperties: JSON por fila (omitimos claves vacías)
+                    const obj: Record<string, string> = {};
+                    for (const { csvIndex, csvHeader } of c.cols) {
+                        const raw = (r[csvIndex] ?? "").toString();
+                        if (raw.trim().length > 0) obj[csvHeader] = raw;
+                    }
+                    const json = JSON.stringify(obj);
+                    return csvEscape(json);
+                }
             });
             lines.push(projected.join(","));
         }
+
         return lines.join("\r\n");
     };
 
+    // ==============================
+    // Descarga CSV mapeado
+    // ==============================
     const handleDownloadMappedCSV = () => {
         if (headerDupReport.hasDuplicates) {
             toast.error("No puedes descargar: hay encabezados DWC duplicados. Ajusta el mapeo.");
@@ -386,63 +592,100 @@ export function CSVImportPage({ collectionId, collectionName, onNavigate }: CSVI
         toast.success("CSV mapeado generado.");
     };
 
-    // ======= CONFIRMAR E IMPORTAR: llamar al endpoint /upload/dwc-csv =======
+    // ==============================
+    // Importar con reintentos de encabezado para dynamicProperties
+    // ==============================
+    const DYNAMIC_HEADER_TRY = [
+        "dwc:Occurrence:dynamicProperties",
+        "dwc:dynamicProperties",
+        "dwc:RecordLevel:dynamicProperties",
+    ] as const;
+
+    const submitImportWithDynamicHeader = async (dynamicHeaderLabel: string) => {
+        // Generar CSV mapeado con override de etiqueta SOLO para Occurrence.dynamicProperties
+        const csvOut = buildMappedCSV({ "Occurrence.dynamicProperties": dynamicHeaderLabel });
+
+        if (!csvOut) {
+            toast.error("No hay columnas mapeadas para importar.");
+            return { ok: false, res: null as any };
+        }
+
+        const ts = new Date().toISOString().replace(/[:.]/g, "-");
+        const filename = `occurrences-${collectionId}-${ts}.dwc.csv`;
+        const blob = new Blob([csvOut], { type: "text/csv;charset=utf-8" });
+        const fileToSend = new File([blob], filename, { type: "text/csv" });
+
+        const form = new FormData();
+        form.append("collection_id", String(collectionId));
+        form.append("file", fileToSend);
+
+        const url = `${API.BASE_URL}/upload/dwc-csv`;
+        const res = await fetch(url, {
+            method: "POST",
+            body: form,
+            headers: {
+                ...(token ? { Authorization: `Bearer ${token}` } : {})
+            },
+            credentials: "include"
+        });
+
+        return { ok: res.status === 201, res };
+    };
+
     const handleConfirmImport = async () => {
         try {
             setIsProcessing(true);
             setShowConfirmDialog(false);
 
-            // 1) Generar el CSV mapeado (con headers dwc:Entidad:termino)
-            const csvOut = buildMappedCSV();
-            if (!csvOut) {
-                toast.error("No hay columnas mapeadas para importar.");
-                setIsProcessing(false);
-                return;
+            // Intentos escalonados para dynamicProperties
+            let lastText: string | null = null;
+            for (let i = 0; i < DYNAMIC_HEADER_TRY.length; i++) {
+                const label = DYNAMIC_HEADER_TRY[i];
+                const { ok, res } = await submitImportWithDynamicHeader(label);
+                if (ok) {
+                    // éxito
+                    let stats: any = null;
+                    try { stats = await res.json(); } catch {}
+                    const msg = stats
+                        ? `Importadas ${stats.occurrences_inserted ?? "?"} ocurrencias (eventos: ${stats.events_inserted ?? 0}, ubicaciones: ${stats.locations_inserted ?? 0}, taxones: ${stats.taxa_inserted ?? 0}).`
+                        : "Importación completada.";
+                    toast.success(`${msg} (encabezado usado: ${label})`);
+                    onNavigate("collection-detail", { collectionId, collectionName, isOwner: true });
+                    return;
+                } else if (res.status === 400) {
+                    const txt = await res.text();
+                    lastText = txt;
+                    // si menciona dynamicProperties, probamos el siguiente label
+                    if (txt && /dynamicProperties/i.test(txt)) {
+                        if (i < DYNAMIC_HEADER_TRY.length - 1) {
+                            toast.message(`Reintentando con encabezado alternativo para dynamicProperties…`, { description: DYNAMIC_HEADER_TRY[i + 1] });
+                            continue;
+                        }
+                    }
+                    // si no menciona dynamicProperties o ya no hay más intentos, mostramos error y cortamos
+                    toast.error(txt || "CSV inválido. Revisa los encabezados y el formato.");
+                    return;
+                } else if (res.status === 403) {
+                    toast.error("No tienes permisos para importar en esta colección.");
+                    return;
+                } else if (res.status === 404) {
+                    toast.error("Colección no encontrada.");
+                    return;
+                } else if (res.status === 413) {
+                    toast.error("Archivo demasiado grande.");
+                    return;
+                } else {
+                    const txt = await res.text();
+                    lastText = txt;
+                    toast.error(txt || "Error inesperado al importar.");
+                    return;
+                }
             }
 
-            // 2) Preparar FormData
-            const ts = new Date().toISOString().replace(/[:.]/g, "-");
-            const filename = `occurrences-${collectionId}-${ts}.dwc.csv`;
-            const blob = new Blob([csvOut], { type: "text/csv;charset=utf-8" });
-            const fileToSend = new File([blob], filename, { type: "text/csv" });
-
-            const form = new FormData();
-            form.append("collection_id", String(collectionId));
-            form.append("file", fileToSend);
-
-            // 3) Llamar al endpoint (no seteamos Content-Type manualmente)
-            const url = `${API.BASE_URL}/upload/dwc-csv`;
-            const res = await fetch(url, {
-                method: "POST",
-                body: form,
-                headers: {
-                    ...(token ? { Authorization: `Bearer ${token}` } : {})
-                },
-                credentials: "include"
-            });
-
-            if (res.status === 201) {
-                // éxito — puede retornar stats JSON
-                let stats: any = null;
-                try { stats = await res.json(); } catch {}
-                const msg = stats
-                    ? `Importadas ${stats.occurrences_inserted ?? "?"} ocurrencias (eventos: ${stats.events_inserted ?? 0}, ubicaciones: ${stats.locations_inserted ?? 0}, taxones: ${stats.taxa_inserted ?? 0}).`
-                    : "Importación completada.";
-                toast.success(msg);
-                // 4) Redirigir a la colección
-                onNavigate("collection-detail", { collectionId, collectionName, isOwner: true });
-            } else if (res.status === 400) {
-                const txt = await res.text();
-                toast.error(txt || "CSV inválido. Revisa los encabezados y el formato.");
-            } else if (res.status === 403) {
-                toast.error("No tienes permisos para importar en esta colección.");
-            } else if (res.status === 404) {
-                toast.error("Colección no encontrada.");
-            } else if (res.status === 413) {
-                toast.error("Archivo demasiado grande.");
+            if (lastText) {
+                toast.error(lastText);
             } else {
-                const txt = await res.text();
-                toast.error(txt || "Error inesperado al importar.");
+                toast.error("No se pudo completar la importación.");
             }
         } catch (err) {
             console.error(err);
@@ -552,6 +795,30 @@ export function CSVImportPage({ collectionId, collectionName, onNavigate }: CSVI
                                 </Button>
                             </div>
                         </CardHeader>
+                        <CardContent>
+                            <div className="flex flex-wrap items-center gap-4">
+                                <div className="grid gap-2">
+                                    <Label>Codificación del archivo</Label>
+                                    <Select value={encodingUsed} onValueChange={(v) => handleEncodingChange(v)}>
+                                        <SelectTrigger className="w-[220px]">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="utf-8">UTF-8</SelectItem>
+                                            <SelectItem value="windows-1252">Windows-1252 (ANSI)</SelectItem>
+                                            <SelectItem value="iso-8859-1">ISO-8859-1</SelectItem>
+                                            <SelectItem value="iso-8859-15">ISO-8859-15</SelectItem>
+                                            <SelectItem value="macintosh">Macintosh</SelectItem>
+                                            <SelectItem value="utf-16le">UTF-16 LE</SelectItem>
+                                            <SelectItem value="utf-16be">UTF-16 BE</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <span className="text-xs text-muted-foreground">
+                                        {encodingAuto ? "Detectado automáticamente" : "Forzado manualmente"}
+                                    </span>
+                                </div>
+                            </div>
+                        </CardContent>
                     </Card>
 
                     {/* Paso 2: Mapeo */}
@@ -576,8 +843,8 @@ export function CSVImportPage({ collectionId, collectionName, onNavigate }: CSVI
                                 <Alert className="mb-4">
                                     <Info className="h-4 w-4" />
                                     <AlertDescription>
-                                        <span className="font-medium">Hay encabezados DWC duplicados</span>.
-                                        Ajusta el mapeo para que cada término <code className="px-1 rounded bg-muted">dwc:Entidad:termino</code> se use solo una vez.
+                                        <span className="font-medium">Hay encabezados DWC duplicados</span> (excepto <code>dwc:Occurrence:dynamicProperties</code>, que sí permite varios).
+                                        Ajusta el mapeo para que cada término <code className="px-1 rounded bg-muted">dwc:Entidad:termino</code> se use una sola vez.
                                         <br />
                                         {headerDupReport.duplicates.map((d) => (
                                             <div key={d.dwcPath} className="mt-1">
@@ -593,6 +860,8 @@ export function CSVImportPage({ collectionId, collectionName, onNavigate }: CSVI
                                 <span className="font-medium">Occurrence.catalogNumber</span>,{" "}
                                 <span className="font-medium">Event.eventDate</span>,{" "}
                                 <span className="font-medium">Location.locality</span> y/o coordenadas.
+                                <br />
+                                Puedes mapear varias columnas a <code>Occurrence.dynamicProperties</code>; se combinarán en un solo campo JSON por fila.
                             </div>
 
                             <Table>

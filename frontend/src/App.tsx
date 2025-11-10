@@ -1,137 +1,289 @@
-import { useState, useEffect } from 'react';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { PublicNavbar } from './components/PublicNavbar';
-import { PrivateNavbar } from './components/PrivateNavbar';
-import { HomePage } from './components/pages/HomePage';
-import { LoginPage } from './components/pages/LoginPage';
-import { RegisterPage } from './components/pages/RegisterPage';
-import { CollectionsPage } from './components/pages/CollectionsPage';
-import { CollectionDetailPage } from './components/pages/CollectionDetailPage';
-import { OccurrencesPage } from './components/pages/OccurrencesPage';
-import { NewOccurrencePage } from './components/pages/NewOccurrencePage';
-import { OccurrenceDetailPage } from './components/pages/OccurrenceDetailPage';
-import { TaxonPage } from './components/pages/TaxonPage';
-import { ProfilePage } from './components/pages/ProfilePage';
-import { AdminPage } from './components/pages/AdminPage';
-import { MapPage } from './components/pages/MapPage';
+import { useCallback, useEffect } from "react";
+import { Routes, Route, useLocation, useNavigate, useParams } from "react-router-dom";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { PublicNavbar } from "./components/PublicNavbar";
+import { PrivateNavbar } from "./components/PrivateNavbar";
+import { HomePage } from "./components/pages/HomePage";
+import { LoginPage } from "./components/pages/LoginPage";
+import { RegisterPage } from "./components/pages/RegisterPage";
+import { CollectionsPage } from "./components/pages/CollectionsPage";
+import { CollectionDetailPage } from "./components/pages/CollectionDetailPage";
+import { OccurrencesPage } from "./components/pages/OccurrencesPage";
+import { NewOccurrencePage } from "./components/pages/NewOccurrencePage";
+import { OccurrenceDetailPage } from "./components/pages/OccurrenceDetailPage";
 import { CSVImportPage } from "./components/pages/CSVImportPage";
-import { Toaster } from './components/ui/sonner';
+import { TaxonPage } from "./components/pages/TaxonPage";
+import { ProfilePage } from "./components/pages/ProfilePage";
+import { AdminPage } from "./components/pages/AdminPage";
+import { MapPage } from "./components/pages/MapPage";
+import { Toaster } from "./components/ui/sonner";
 
 interface NavigationParams {
-  collectionId?: number;
+  collectionId?: string | number;
   collectionName?: string;
   collectionInstitutionId?: number;
   isOwner?: boolean;
   occurrenceId?: string;
+  returnTo?: "occurrences" | "collection";
 }
 
+interface RouteConfig {
+  path: string;
+  pageId: string;
+}
+
+const routeConfigs: RouteConfig[] = [
+  { path: "/", pageId: "home" },
+  { path: "/login", pageId: "login" },
+  { path: "/register", pageId: "register" },
+  { path: "/collections", pageId: "collections" },
+  { path: "/collections/:collectionId", pageId: "collection-detail" },
+  { path: "/collections/:collectionId/csv-import", pageId: "csv-import" },
+  { path: "/occurrences", pageId: "occurrences" },
+  { path: "/occurrences/new", pageId: "new-occurrence" },
+  { path: "/occurrences/:occurrenceId/edit", pageId: "edit-occurrence" },
+  { path: "/occurrences/:occurrenceId", pageId: "occurrence-detail" },
+  { path: "/taxon", pageId: "taxon" },
+  { path: "/profile", pageId: "profile" },
+  { path: "/admin", pageId: "admin" },
+  { path: "/map", pageId: "map" },
+];
+
+const resolveCurrentPage = (pathname: string) => {
+  for (const config of routeConfigs) {
+    const pattern = new RegExp(
+      "^" +
+        config.path
+          .replace(/\//g, "\\/")
+          .replace(/:\w+\?/g, "(?:[^/]+)?")
+          .replace(/:\w+/g, "[^/]+") +
+        "$"
+    );
+    if (pattern.test(pathname)) {
+      return config.pageId;
+    }
+  }
+  return "home";
+};
+
+const buildRoute = (page: string, params: NavigationParams = {}) => {
+  switch (page) {
+    case "home":
+      return { path: "/" };
+    case "login":
+      return { path: "/login" };
+    case "register":
+      return { path: "/register" };
+    case "collections":
+      return { path: "/collections" };
+    case "collection-detail": {
+      const collectionId = params.collectionId?.toString();
+      if (!collectionId) return null;
+      return {
+        path: `/collections/${collectionId}`,
+        state: {
+          collectionId,
+          collectionName: params.collectionName,
+          collectionInstitutionId: params.collectionInstitutionId,
+          isOwner: params.isOwner,
+        },
+      };
+    }
+    case "csv-import": {
+      const collectionId = params.collectionId?.toString();
+      if (!collectionId) return null;
+      return {
+        path: `/collections/${collectionId}/csv-import`,
+        state: {
+          collectionId,
+          collectionName: params.collectionName,
+          isOwner: params.isOwner,
+        },
+      };
+    }
+    case "occurrences":
+      return { path: "/occurrences" };
+    case "new-occurrence":
+      return {
+        path: "/occurrences/new",
+        state: {
+          collectionId: params.collectionId?.toString(),
+          collectionName: params.collectionName,
+          isOwner: params.isOwner,
+        },
+      };
+    case "edit-occurrence":
+      if (!params.occurrenceId) return null;
+      return {
+        path: `/occurrences/${params.occurrenceId}/edit`,
+        state: {
+          returnTo: params.returnTo ?? (params.collectionId ? "collection" : undefined),
+          collectionId: params.collectionId?.toString(),
+          collectionName: params.collectionName,
+          isOwner: params.isOwner,
+        },
+      };
+    case "occurrence-detail":
+      if (!params.occurrenceId) return null;
+      return {
+        path: `/occurrences/${params.occurrenceId}`,
+        state: {
+          returnTo: params.returnTo ?? (params.collectionId ? "collection" : undefined),
+          collectionId: params.collectionId?.toString(),
+          collectionName: params.collectionName,
+          isOwner: params.isOwner,
+        },
+      };
+    case "taxon":
+      return { path: "/taxon" };
+    case "profile":
+      return { path: "/profile" };
+    case "admin":
+      return { path: "/admin" };
+    case "map":
+      return { path: "/map" };
+    default:
+      return { path: "/" };
+  }
+};
+
 function AppContent() {
-  const [currentPage, setCurrentPage] = useState('home');
-  const [navParams, setNavParams] = useState<NavigationParams>({});
   const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  // Si está autenticado, va a "collections"
+  const handleNavigation = useCallback(
+    (page: string, params?: NavigationParams) => {
+      const target = buildRoute(page, params);
+      if (!target) {
+        console.warn(`Missing navigation params for page "${page}"`, params);
+        return;
+      }
+      navigate(target.path, { state: target.state, replace: target.replace });
+    },
+    [navigate]
+  );
+
   useEffect(() => {
-    if (isAuthenticated) setCurrentPage('collections');
-  }, [isAuthenticated]);
+    const redirectToLogin = () => handleNavigation("login");
+    window.addEventListener("auth:logged-out", redirectToLogin);
+    return () => window.removeEventListener("auth:logged-out", redirectToLogin);
+  }, [handleNavigation]);
 
-  // Si se cierra la sesion, va a "login"
   useEffect(() => {
-    const toLogin = () => setCurrentPage('login');
-    window.addEventListener('auth:logged-out', toLogin);
-    return () => window.removeEventListener('auth:logged-out', toLogin);
-  }, []);
+    if (!isAuthenticated) {
+      return;
+    }
 
-  const handleNavigation = (page: string, params?: NavigationParams) => {
-    setCurrentPage(page);
-    if (params) setNavParams(params);
+    if (["/", "/login", "/register"].includes(location.pathname)) {
+      handleNavigation("collections");
+    }
+  }, [isAuthenticated, location.pathname, handleNavigation]);
+
+  const currentPage = resolveCurrentPage(location.pathname);
+
+  const CollectionDetailRoute = () => {
+    const { collectionId = "" } = useParams();
+    const state = (location.state as NavigationParams) || {};
+
+    return (
+      <CollectionDetailPage
+        collectionId={collectionId}
+        collectionName={state.collectionName || ""}
+        collectionInstitutionId={
+          typeof state.collectionInstitutionId === "number"
+            ? state.collectionInstitutionId
+            : Number(state.collectionInstitutionId ?? 0)
+        }
+        isOwner={Boolean(state.isOwner)}
+        onNavigate={handleNavigation}
+      />
+    );
   };
 
-  const renderPage = () => {
-    switch (currentPage) {
-      case 'home':
-        return <HomePage onNavigate={handleNavigation} />;
-      case 'login':
-        return <LoginPage onNavigate={handleNavigation} />;
-      case 'register':
-        return <RegisterPage onNavigate={handleNavigation} />;
-      case 'collections':
-        return <CollectionsPage onNavigate={handleNavigation} />;
-      case 'collection-detail':
-        return (
-            <CollectionDetailPage
-                collectionId={navParams.collectionId || ''}
-                collectionName={navParams.collectionName || ''}
-                collectionInstitutionId={navParams.collectionInstitutionId}
-                isOwner={navParams.isOwner || false}
-                onNavigate={handleNavigation}
-            />
-        );
-      case 'occurrences':
-        return <OccurrencesPage onNavigate={handleNavigation} />;
-      case 'new-occurrence':
-        return <NewOccurrencePage onNavigate={handleNavigation} mode="create" />;
-      case 'edit-occurrence':
-        return (
-            <NewOccurrencePage
-                onNavigate={handleNavigation}
-                mode="edit"
-                occurrenceId={navParams.occurrenceId}
-                returnTo="collection"
-                collectionId={navParams.collectionId}
-                collectionName={navParams.collectionName}
-                isOwner={navParams.isOwner}
-            />
-        );
-      case 'occurrence-detail':
-        return (
-            <OccurrenceDetailPage
-                occurrenceId={navParams.occurrenceId || ''}
-                onNavigate={handleNavigation}
-                returnTo={navParams.collectionId ? 'collection' : 'occurrences'}
-                collectionId={navParams.collectionId}
-                collectionName={navParams.collectionName}
-                isOwner={navParams.isOwner}
-            />
-        );
-      case 'taxon':
-        return <TaxonPage />;
-      case 'profile':
-        return <ProfilePage />;
-      case 'admin':
-        return <AdminPage onNavigate={handleNavigation} />;
-      case 'map':
-        return <MapPage />;
-      case 'csv-import':
-        return (
-            <CSVImportPage
-                collectionId={navParams.collectionId || ''}
-                collectionName={navParams.collectionName || ''}
-                onNavigate={handleNavigation}
-            />
-        );
-      default:
-        return <HomePage onNavigate={handleNavigation} />;
-    }
+  const OccurrenceDetailRoute = () => {
+    const { occurrenceId = "" } = useParams();
+    const state = (location.state as NavigationParams) || {};
+    const collectionId = state.collectionId ? state.collectionId.toString() : undefined;
+
+    return (
+      <OccurrenceDetailPage
+        occurrenceId={occurrenceId}
+        onNavigate={handleNavigation}
+        returnTo={state.returnTo || (collectionId ? "collection" : "occurrences")}
+        collectionId={collectionId}
+        collectionName={state.collectionName}
+        isOwner={state.isOwner}
+      />
+    );
+  };
+
+  const NewOccurrenceRoute = ({ mode }: { mode: "create" | "edit" }) => {
+    const { occurrenceId } = useParams();
+    const state = (location.state as NavigationParams) || {};
+    const collectionId = state.collectionId ? state.collectionId.toString() : undefined;
+
+    return (
+      <NewOccurrencePage
+        onNavigate={handleNavigation}
+        mode={mode}
+        occurrenceId={occurrenceId}
+        returnTo={state.returnTo || (collectionId ? "collection" : "occurrences")}
+        collectionId={collectionId}
+        collectionName={state.collectionName}
+        isOwner={state.isOwner}
+      />
+    );
+  };
+
+  const CSVImportRoute = () => {
+    const { collectionId = "" } = useParams();
+    const state = (location.state as NavigationParams) || {};
+
+    return (
+      <CSVImportPage
+        collectionId={collectionId}
+        collectionName={state.collectionName || ""}
+        onNavigate={handleNavigation}
+      />
+    );
   };
 
   return (
-      <div className="min-h-screen bg-gray-50">
-        {isAuthenticated ? (
-            <PrivateNavbar onNavigate={handleNavigation} currentPage={currentPage} />
-        ) : (
-            <PublicNavbar onNavigate={handleNavigation} />
-        )}
-        {renderPage()}
-        <Toaster />
-      </div>
+    <div className="min-h-screen bg-gray-50">
+      {isAuthenticated ? (
+        <PrivateNavbar onNavigate={handleNavigation} currentPage={currentPage} />
+      ) : (
+        <PublicNavbar onNavigate={handleNavigation} />
+      )}
+
+      <Routes>
+        <Route path="/" element={<HomePage onNavigate={handleNavigation} />} />
+        <Route path="/login" element={<LoginPage onNavigate={handleNavigation} />} />
+        <Route path="/register" element={<RegisterPage onNavigate={handleNavigation} />} />
+        <Route path="/collections" element={<CollectionsPage onNavigate={handleNavigation} />} />
+        <Route path="/collections/:collectionId" element={<CollectionDetailRoute />} />
+        <Route path="/collections/:collectionId/csv-import" element={<CSVImportRoute />} />
+        <Route path="/occurrences" element={<OccurrencesPage onNavigate={handleNavigation} />} />
+        <Route path="/occurrences/new" element={<NewOccurrenceRoute mode="create" />} />
+        <Route path="/occurrences/:occurrenceId/edit" element={<NewOccurrenceRoute mode="edit" />} />
+        <Route path="/occurrences/:occurrenceId" element={<OccurrenceDetailRoute />} />
+        <Route path="/taxon" element={<TaxonPage />} />
+        <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/admin" element={<AdminPage onNavigate={handleNavigation} />} />
+        <Route path="/map" element={<MapPage />} />
+        <Route path="*" element={<HomePage onNavigate={handleNavigation} />} />
+      </Routes>
+
+      <Toaster />
+    </div>
   );
 }
 
 export default function App() {
   return (
-      <AuthProvider>
-        <AppContent />
-      </AuthProvider>
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }

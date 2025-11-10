@@ -31,6 +31,36 @@ export function OccurrenceDetailPage({
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  const RenderDynValue = ({ value }: { value: any }) => {
+    if (value === null || value === undefined) return <span>—</span>;
+
+    switch (typeof value) {
+      case "boolean":
+        return (
+            <Badge variant="secondary" className="uppercase">
+              {value ? "Sí" : "No"}
+            </Badge>
+        );
+      case "number":
+        return <span className="font-mono">{value}</span>;
+      case "string":
+        return <span className="break-words">{value}</span>;
+      default: {
+        // objetos / arrays: visor expandible
+        return (
+            <details className="rounded-md bg-muted/40 p-3">
+              <summary className="cursor-pointer text-sm text-muted-foreground select-none">
+                Ver detalle
+              </summary>
+              <pre className="mt-2 text-xs bg-muted rounded p-2 overflow-auto max-h-64">
+            {JSON.stringify(value, null, 2)}
+          </pre>
+            </details>
+        );
+      }
+    }
+  };
+
   const show = (v: unknown) => (v === null || v === undefined || v === "" ? "—" : String(v));
 
   useEffect(() => {
@@ -351,6 +381,27 @@ export function OccurrenceDetailPage({
                 <p>{show(data.occurrenceRemarks)}</p>
               </CardContent>
             </Card>
+
+            {/* 6. Datos dinámicos (si existen) */}
+            {data.dynamicProperties && Object.keys(data.dynamicProperties).length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Datos dinámicos</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="grid md:grid-cols-2 gap-4">
+                      {Object.entries(data.dynamicProperties)
+                          .sort(([a], [b]) => a.localeCompare(b))
+                          .map(([k, v]) => (
+                              <div key={k}>
+                                <p className="text-sm text-muted-foreground">{k}</p>
+                                <RenderDynValue value={v} />
+                              </div>
+                          ))}
+                    </div>
+                  </CardContent>
+                </Card>
+            )}
 
             {/* 6. Derechos */}
             <Card>

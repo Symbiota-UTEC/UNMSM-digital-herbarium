@@ -502,18 +502,32 @@ type CollectionsPageProps = {
                             className="hover:shadow-lg transition-all cursor-pointer h-full border-2 hover:border-primary/50"
                             onClick={() => goToCollectionDetail(c)}
                         >
+
                           <CardHeader>
-                            <div className="flex items-start justify-between">
-                              <Folder className="h-8 w-8 text-primary" />
-                              <span className="text-sm bg-red-50 text-primary px-2 py-1 rounded">
-                                {c.occurrencesCount} ocurrencias
+                            {/* fila superior: icono izquierda, contador derecha */}
+                            <div className="flex items-center justify-between gap-2 min-w-0 w-full">
+                              <Folder className="h-8 w-8 text-primary shrink-0" />
+
+                              <span className="
+                                inline-flex items-center justify-center rounded-full
+                                bg-red-50 text-primary tabular-nums
+                                px-2 py-0.5 leading-none
+                                text-[11px] sm:text-xs
+                                max-w-[55%] sm:max-w-[60%]
+                                overflow-hidden text-ellipsis whitespace-nowrap text-right
+                                font-normal
+                              " title={`${c.occurrencesCount} ocurrencias`}>
+                                <span>{c.occurrencesCount}</span>
+                                <span className="ml-1 hidden sm:inline">ocurrencias</span>
+                                <span className="ml-1 sm:hidden">ocurrencias</span>
                               </span>
                             </div>
+
                             <CardTitle className="truncate">{c.name ?? "(sin nombre)"}</CardTitle>
-                            <CardDescription className="flex items-center gap-2">
-                              <Users className="h-4 w-4" />
+
+                            <CardDescription className="flex items-center gap-2 min-w-0">
+                              <Users className="h-4 w-4 shrink-0" />
                               <span className="truncate">{c.institutionName ?? "Sin institución"}</span>
-                              {/* badge removido de aquí */}
                             </CardDescription>
                           </CardHeader>
 
@@ -576,19 +590,33 @@ type CollectionsPageProps = {
                         onClick={() => goToCollectionDetail(c)}
                     >
                       <CardHeader>
-                        <div className="flex items-start justify-between">
-                          <Folder className="h-8 w-8 text-primary" />
-                          <span className="text-sm bg-red-50 text-primary px-2 py-1 rounded">
-                            {c.occurrencesCount} ocurrencias
-                          </span>
+                        {/* fila superior: icono izquierda, contador derecha */}
+                        <div className="flex items-center justify-between gap-2 min-w-0 w-full">
+                          <Folder className="h-8 w-8 text-primary shrink-0" />
+
+                          <span className="
+                                inline-flex items-center justify-center rounded-full
+                                bg-red-50 text-primary tabular-nums
+                                px-2 py-0.5 leading-none
+                                text-[11px] sm:text-xs
+                                max-w-[55%] sm:max-w-[60%]
+                                overflow-hidden text-ellipsis whitespace-nowrap text-right
+                                font-normal
+                              " title={`${c.occurrencesCount} ocurrencias`}>
+                                <span>{c.occurrencesCount}</span>
+                                <span className="ml-1 hidden sm:inline">ocurrencias</span>
+                                <span className="ml-1 sm:hidden">ocurrencias</span>
+                              </span>
                         </div>
+
                         <CardTitle className="truncate">{c.name ?? "(sin nombre)"}</CardTitle>
-                        <CardDescription className="flex items-center gap-2">
-                          <Users className="h-4 w-4" />
+
+                        <CardDescription className="flex items-center gap-2 min-w-0">
+                          <Users className="h-4 w-4 shrink-0" />
                           <span className="truncate">{c.institutionName ?? "Sin institución"}</span>
-                          {/* badge quitado de aquí */}
                         </CardDescription>
                       </CardHeader>
+
 
                       <CardContent>
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
