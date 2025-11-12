@@ -19,6 +19,7 @@ import { ArrowLeft, Upload, FileSpreadsheet, CheckCircle, X, Info, Download } fr
 import { toast } from "sonner@2.0.3";
 import { useAuth } from "@contexts/AuthContext";
 import { API } from "@constants/api";
+import { DWC_FIELDS, DwCFieldOption, DwCEntity } from "@constants/dwc";
 
 interface CSVImportPageProps {
     collectionId: string;
@@ -31,84 +32,9 @@ interface CSVColumn {
     sample: string;
 }
 
-type DwCEntity = "Occurrence" | "Event" | "Location" | "Taxon";
-interface DwCFieldOption {
-    value: string;
-    label: string;
-    entity: DwCEntity;
-    term: string;
-    recommended?: boolean;
-    required?: boolean;
-}
-
 interface ColumnMapping {
     [csvColumn: string]: string;
 }
-
-type DatasetModel = "Occurrence";
-
-// ==============================
-// Definición de campos DwC
-// ==============================
-const DWC_FIELDS: Record<DatasetModel, DwCFieldOption[]> = {
-    Occurrence: [
-        // Occurrence
-        { entity: "Occurrence", term: "occurrenceID", value: "Occurrence.occurrenceID", label: "dwc:Occurrence:occurrenceID" },
-        { entity: "Occurrence", term: "catalogNumber", value: "Occurrence.catalogNumber", label: "dwc:Occurrence:catalogNumber", required: true, recommended: true },
-        { entity: "Occurrence", term: "recordNumber", value: "Occurrence.recordNumber", label: "dwc:Occurrence:recordNumber" },
-        { entity: "Occurrence", term: "recordedBy", value: "Occurrence.recordedBy", label: "dwc:Occurrence:recordedBy", recommended: true },
-        { entity: "Occurrence", term: "recordEnteredBy", value: "Occurrence.recordEnteredBy", label: "dwc:Occurrence:recordEnteredBy" },
-        { entity: "Occurrence", term: "individualCount", value: "Occurrence.individualCount", label: "dwc:Occurrence:individualCount" },
-        { entity: "Occurrence", term: "occurrenceStatus", value: "Occurrence.occurrenceStatus", label: "dwc:Occurrence:occurrenceStatus" },
-        { entity: "Occurrence", term: "preparations", value: "Occurrence.preparations", label: "dwc:Occurrence:preparations" },
-        { entity: "Occurrence", term: "disposition", value: "Occurrence.disposition", label: "dwc:Occurrence:disposition" },
-        { entity: "Occurrence", term: "occurrenceRemarks", value: "Occurrence.occurrenceRemarks", label: "dwc:Occurrence:occurrenceRemarks" },
-        { entity: "Occurrence", term: "modified", value: "Occurrence.modified", label: "dwc:Occurrence:modified" },
-        { entity: "Occurrence", term: "license", value: "Occurrence.license", label: "dwc:Occurrence:license" },
-        { entity: "Occurrence", term: "rightsHolder", value: "Occurrence.rightsHolder", label: "dwc:Occurrence:rightsHolder" },
-        { entity: "Occurrence", term: "accessRights", value: "Occurrence.accessRights", label: "dwc:Occurrence:accessRights" },
-        { entity: "Occurrence", term: "bibliographicCitation", value: "Occurrence.bibliographicCitation", label: "dwc:Occurrence:bibliographicCitation" },
-        // Nuevo campo (UI): dynamicProperties (JSON)
-        { entity: "Occurrence", term: "dynamicProperties", value: "Occurrence.dynamicProperties", label: "dwc:Occurrence:dynamicProperties" },
-
-        // Event
-        { entity: "Event", term: "eventDate", value: "Event.eventDate", label: "dwc:Event:eventDate", recommended: true },
-        { entity: "Event", term: "year", value: "Event.year", label: "dwc:Event:year" },
-        { entity: "Event", term: "month", value: "Event.month", label: "dwc:Event:month" },
-        { entity: "Event", term: "day", value: "Event.day", label: "dwc:Event:day" },
-        { entity: "Event", term: "verbatimEventDate", value: "Event.verbatimEventDate", label: "dwc:Event:verbatimEventDate" },
-        { entity: "Event", term: "fieldNumber", value: "Event.fieldNumber", label: "dwc:Event:fieldNumber" },
-        { entity: "Event", term: "samplingProtocol", value: "Event.samplingProtocol", label: "dwc:Event:samplingProtocol" },
-        { entity: "Event", term: "samplingEffort", value: "Event.samplingEffort", label: "dwc:Event:samplingEffort" },
-        { entity: "Event", term: "habitat", value: "Event.habitat", label: "dwc:Event:habitat" },
-        { entity: "Event", term: "eventRemarks", value: "Event.eventRemarks", label: "dwc:Event:eventRemarks" },
-
-        // Location
-        { entity: "Location", term: "stateProvince", value: "Location.stateProvince", label: "dwc:Location:stateProvince" },
-        { entity: "Location", term: "county", value: "Location.county", label: "dwc:Location:county" },
-        { entity: "Location", term: "municipality", value: "Location.municipality", label: "dwc:Location:municipality" },
-        { entity: "Location", term: "locality", value: "Location.locality", label: "dwc:Location:locality", recommended: true },
-        { entity: "Location", term: "verbatimLocality", value: "Location.verbatimLocality", label: "dwc:Location:verbatimLocality" },
-        { entity: "Location", term: "decimalLatitude", value: "Location.decimalLatitude", label: "dwc:Location:decimalLatitude" },
-        { entity: "Location", term: "decimalLongitude", value: "Location.decimalLongitude", label: "dwc:Location:decimalLongitude" },
-        { entity: "Location", term: "geodeticDatum", value: "Location.geodeticDatum", label: "dwc:Location:geodeticDatum" },
-        { entity: "Location", term: "coordinateUncertaintyInMeters", value: "Location.coordinateUncertaintyInMeters", label: "dwc:Location:coordinateUncertaintyInMeters" },
-        { entity: "Location", term: "coordinatePrecision", value: "Location.coordinatePrecision", label: "dwc:Location:coordinatePrecision" },
-        { entity: "Location", term: "minimumElevationInMeters", value: "Location.minimumElevationInMeters", label: "dwc:Location:minimumElevationInMeters" },
-        { entity: "Location", term: "maximumElevationInMeters", value: "Location.maximumElevationInMeters", label: "dwc:Location:maximumElevationInMeters" },
-        { entity: "Location", term: "verbatimElevation", value: "Location.verbatimElevation", label: "dwc:Location:verbatimElevation" },
-
-        // Taxon
-        { entity: "Taxon", term: "scientificName", value: "Taxon.scientificName", label: "dwc:Taxon:scientificName", required: true, recommended: true },
-        { entity: "Taxon", term: "scientificNameAuthorship", value: "Taxon.scientificNameAuthorship", label: "dwc:Taxon:scientificNameAuthorship" },
-        { entity: "Taxon", term: "family", value: "Taxon.family", label: "dwc:Taxon:family", recommended: true },
-        { entity: "Taxon", term: "genus", value: "Taxon.genus", label: "dwc:Taxon:genus", recommended: true },
-        { entity: "Taxon", term: "specificEpithet", value: "Taxon.specificEpithet", label: "dwc:Taxon:specificEpithet" },
-        { entity: "Taxon", term: "infraspecificEpithet", value: "Taxon.infraspecificEpithet", label: "dwc:Taxon:infraspecificEpithet" },
-        { entity: "Taxon", term: "taxonRank", value: "Taxon.taxonRank", label: "dwc:Taxon:taxonRank" },
-        { entity: "Taxon", term: "acceptedNameUsage", value: "Taxon.acceptedNameUsage", label: "dwc:Taxon:acceptedNameUsage" }
-    ]
-};
 
 const IGNORE_OPTION: DwCFieldOption = {
     entity: "Occurrence",
@@ -121,15 +47,11 @@ const IGNORE_OPTION: DwCFieldOption = {
 // Sinónimos y heurísticas de auto-mapeo
 // ==============================
 const AUTO_MAP_RULES: Array<{ pattern: RegExp; target: string }> = [
-    // Occurrence
     { pattern: /\b(occurrence[_\s-]?id|id\s*dwc)\b/i, target: "Occurrence.occurrenceID" },
     { pattern: /\b(c(ó|o)digo|codigo|code|catalog(ue)?\s*number|catalogo|catalog-number|cat\s*#|cat\s*no\.?)\b/i, target: "Occurrence.catalogNumber" },
     { pattern: /\b(record\s*number|n[°º]?\s*colecta|nro\s*colecta|num\s*colecta)\b/i, target: "Occurrence.recordNumber" },
     { pattern: /\b(recorded\s*by|colector|collector|col\.)\b/i, target: "Occurrence.recordedBy" },
-    {
-        pattern: /\b(?:record\s*(?:entered|creator|author)\s*by|entered\s*by|data[-\s]*entry(?:\s*by)?|dcterms[:\s]*creator|registrador(?:a)?|registrad[oa]\s*por|ingresad[oa]\s*por|capturad[oa]\s*por|cread[oa]\s*por|transcrit[oa]\s*por|creador\s*del\s*registro|editor\s*del\s*registro|responsable\s*del\s*registro|qui[eé]n\s*registr[óo])\b/i,
-        target: "Occurrence.recordEnteredBy"
-    },
+    { pattern: /\b(?:record\s*(?:entered|creator|author)\s*by|entered\s*by|data[-\s]*entry(?:\s*by)?|dcterms[:\s]*creator|registrador(?:a)?|registrad[oa]\s*por|ingresad[oa]\s*por|capturad[oa]\s*por|cread[oa]\s*por|transcrit[oa]\s*por|creador\s*del\s*registro|editor\s*del\s*registro|responsable\s*del\s*registro|qui[eé]n\s*registr[óo])\b/i, target: "Occurrence.recordEnteredBy" },
     { pattern: /\b(remarks?|observaciones?|notes?)\b/i, target: "Occurrence.occurrenceRemarks" },
     { pattern: /\b(preparations?)\b/i, target: "Occurrence.preparations" },
     { pattern: /\b(disposition)\b/i, target: "Occurrence.disposition" },
@@ -139,11 +61,8 @@ const AUTO_MAP_RULES: Array<{ pattern: RegExp; target: string }> = [
     { pattern: /\b(rights\s*holder|titular\s*de\s*los\s*derechos)\b/i, target: "Occurrence.rightsHolder" },
     { pattern: /\b(access\s*rights|acceso)\b/i, target: "Occurrence.accessRights" },
     { pattern: /\b(bibliographic\s*citation|cita\s*bibliografica)\b/i, target: "Occurrence.bibliographicCitation" },
-
-    // dynamicProperties (sinónimos)
     { pattern: /\b(dynamic\s*properties?|propiedades?\s*din[aá]micas?)\b/i, target: "Occurrence.dynamicProperties" },
 
-    // Event
     { pattern: /\b(event\s*date|fecha(\s*de)?\s*(colecta|colecci(ó|o)n)|fecha\s*evento)\b/i, target: "Event.eventDate" },
     { pattern: /\b(year|a(ñ|n)o)\b/i, target: "Event.year" },
     { pattern: /\b(month|mes)\b/i, target: "Event.month" },
@@ -155,7 +74,6 @@ const AUTO_MAP_RULES: Array<{ pattern: RegExp; target: string }> = [
     { pattern: /\b(habitat|hábitat)\b/i, target: "Event.habitat" },
     { pattern: /\b(event\s*remarks?)\b/i, target: "Event.eventRemarks" },
 
-    // Location
     { pattern: /\b(state\s*province|departamento|regi(ó|o)n)\b/i, target: "Location.stateProvince" },
     { pattern: /\b(county|provincia)\b/i, target: "Location.county" },
     { pattern: /\b(municipality|distrito|municipalidad)\b/i, target: "Location.municipality" },
@@ -170,7 +88,6 @@ const AUTO_MAP_RULES: Array<{ pattern: RegExp; target: string }> = [
     { pattern: /\b(elevaci(ó|o)n\s*m(á|a)x(ima)?)\b/i, target: "Location.maximumElevationInMeters" },
     { pattern: /\b(verbatim\s*elev(ation)?|altitud\s*verbatim)\b/i, target: "Location.verbatimElevation" },
 
-    // Taxon
     { pattern: /\b(scientific\s*name|nombre\s*cient(í|i)fico)\b/i, target: "Taxon.scientificName" },
     { pattern: /\b(author(ship)?|aut(ó|o)r)\b/i, target: "Taxon.scientificNameAuthorship" },
     { pattern: /\b(family|familia)\b/i, target: "Taxon.family" },
@@ -309,7 +226,8 @@ const labelFor = (opt: DwCFieldOption) => opt.label;
 export function CSVImportPage({ collectionId, collectionName, onNavigate }: CSVImportPageProps) {
     const { token } = useAuth();
 
-    const [datasetModel, setDatasetModel] = useState<DatasetModel>("Occurrence");
+    // ahora tipado con DwCEntity
+    const [datasetModel, setDatasetModel] = useState<DwCEntity>("Occurrence");
     const [csvFile, setCSVFile] = useState<File | null>(null);
 
     const [csvBytes, setCsvBytes] = useState<Uint8Array | null>(null);
@@ -326,10 +244,15 @@ export function CSVImportPage({ collectionId, collectionName, onNavigate }: CSVI
     const [showConfirmDialog, setShowConfirmDialog] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
 
+    // APLANA todas las entidades de DWC_FIELDS
+    const ALL_FIELDS: DwCFieldOption[] = useMemo(
+        () => Object.values(DWC_FIELDS).flat(),
+        []
+    );
+
     const FIELD_OPTIONS: DwCFieldOption[] = useMemo(() => {
-        const base = DWC_FIELDS[datasetModel];
-        return [IGNORE_OPTION, ...base];
-    }, [datasetModel]);
+        return [IGNORE_OPTION, ...ALL_FIELDS];
+    }, [ALL_FIELDS]);
 
     const REQUIRED_VALUES = useMemo(() => ({
         alternatives: [["Occurrence.catalogNumber", "Occurrence.occurrenceID"]],
@@ -704,12 +627,13 @@ export function CSVImportPage({ collectionId, collectionName, onNavigate }: CSVI
         [columnMapping]
     );
 
+    // contado contra todos los términos recomendados (todas las entidades)
     const recommendedCount = useMemo(() => {
         const recommendedSet = new Set(
-            DWC_FIELDS[datasetModel].filter((f) => f.recommended).map((f) => f.value)
+            ALL_FIELDS.filter((f) => f.recommended).map((f) => f.value)
         );
         return Object.values(columnMapping).filter((v) => recommendedSet.has(v)).length;
-    }, [columnMapping, datasetModel]);
+    }, [columnMapping, ALL_FIELDS]);
 
     const requiredSummary = useMemo(() => {
         const alt = REQUIRED_VALUES.alternatives
@@ -744,7 +668,7 @@ export function CSVImportPage({ collectionId, collectionName, onNavigate }: CSVI
                 <CardContent className="flex items-center gap-4">
                     <div className="grid gap-2">
                         <Label>Modelo</Label>
-                        <Select value={datasetModel} onValueChange={(v) => setDatasetModel(v as DatasetModel)}>
+                        <Select value={datasetModel} onValueChange={(v) => setDatasetModel(v as DwCEntity)}>
                             <SelectTrigger className="w-[260px]">
                                 <SelectValue placeholder="Selecciona un modelo" />
                             </SelectTrigger>

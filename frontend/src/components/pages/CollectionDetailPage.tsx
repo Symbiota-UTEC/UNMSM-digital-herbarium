@@ -537,6 +537,16 @@ export function CollectionDetailPage({
                 </Button>
 
                 {isOwner && (
+                    <Button
+                        onClick={() => onNavigate("new-occurrence", { collectionId, collectionName, isOwner })}
+                        variant="outline"
+                    >
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Nueva Ocurrencia
+                    </Button>
+                )}
+
+                {isOwner && (
                     <Button onClick={() => onNavigate("csv-import", { collectionId, collectionName })}>
                       <Upload className="h-4 w-4 mr-2" />
                       Importar CSV
