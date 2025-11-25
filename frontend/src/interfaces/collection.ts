@@ -14,25 +14,21 @@ export interface AgentOut {
 
 export interface CollectionOut {
     id: number;
-    collectionID?: string | null;
     collectionCode?: string | null;
     collectionName?: string | null;
     description?: string | null;
-    webSite?: string | null;
     institution?: InstitutionOut | null;
     creator?: AgentOut | null;
-    my_role?: CollectionRole | null;
+    myRole?: CollectionRole | null;
     occurrencesCount?: number;
 }
 
 export interface CollectionCreate {
-    collectionID?: string | null;
     collectionCode?: string | null;
     collectionName?: string | null;
     description?: string | null;
-    webSite?: string | null;
-    institution_id?: number | null;
-    creator_agent_id?: number | null;
+    institutionId?: number | null;
+    creatorUserId?: number | null;
 }
 
 export interface CollectionListItem {
@@ -57,7 +53,7 @@ export function toCollectionListItem(c: CollectionOut): CollectionListItem {
         id: c.id,
         name: c.collectionName ?? null,
         occurrencesCount: c.occurrencesCount ?? 0,
-        my_role: c.my_role ?? null,
+        my_role: c.myRole ?? null,
         institutionId: c.institution?.id ?? null,
         institutionName: c.institution?.institutionName ?? null,
         creatorName: c.creator?.fullName ?? null,

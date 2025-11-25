@@ -1,13 +1,10 @@
-# routers/collections.py
+# backend/routers/collections.py
 from typing import List, Optional, Literal
 
-from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy import select, and_, or_, func, exists, case
+from sqlalchemy import select, and_, or_, func, case
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.exc import IntegrityError
-
-from pydantic import BaseModel, EmailStr
 
 from backend.config.database import get_db
 from backend.auth.jwt import get_current_user
@@ -15,123 +12,23 @@ from backend.models.models import (
     Collection,
     CollectionPermission,
     Institution,
-    Agent,
     User,
     Occurrence,
     Taxon,
-    Location,
-    Event
+    Identification,
 )
-
-
-
-try:
-    # Pydantic v2
-    from pydantic import ConfigDict
-    _HAS_V2 = True
-except Exception:
-    _HAS_V2 = False
+from backend.schemas.common.pages import Page
+from backend.schemas.collections import (
+    CollectionOut,
+    CollectionCreate,
+    CollectionAccessUser,
+    AddUserToCollectionBody,
+    CollectionPermissionOut,
+)
+from backend.schemas.occurrence import OccurrenceBriefItem
 
 
 router = APIRouter(prefix="/collections", tags=["Collections"])
-
-
-# ------------------- Schemas -------------------
-
-class InstitutionOut(BaseModel):
-    id: int
-    institutionCode: Optional[str] = None
-    institutionName: Optional[str] = None
-
-    if _HAS_V2:
-        model_config = ConfigDict(from_attributes=True)
-    else:
-        class Config:
-            orm_mode = True
-
-
-class AgentOut(BaseModel):
-    id: int
-    fullName: Optional[str] = None
-    orcid: Optional[str] = None
-
-    if _HAS_V2:
-        model_config = ConfigDict(from_attributes=True)
-    else:
-        class Config:
-            orm_mode = True
-
-
-class CollectionOut(BaseModel):
-    id: int
-    collectionID: Optional[str] = None
-    collectionCode: Optional[str] = None
-    collectionName: Optional[str] = None
-    description: Optional[str] = None
-    webSite: Optional[str] = None
-    institution: Optional[InstitutionOut] = None
-    creator: AgentOut
-    my_role: Optional[str] = None
-    occurrencesCount: int = 0
-
-    if _HAS_V2:
-        model_config = ConfigDict(from_attributes=True)
-    else:
-        class Config:
-            orm_mode = True
-
-
-class CollectionsPage(BaseModel):
-    items: List[CollectionOut]
-    total: int
-    total_pages: int
-    limit: int
-    offset: int
-    remaining_pages: int
-
-
-class CollectionCreate(BaseModel):
-    collectionID: Optional[str] = None
-    collectionCode: Optional[str] = None
-    collectionName: Optional[str] = None
-    description: Optional[str] = None
-    webSite: Optional[str] = None
-    # Opcionales: por defecto se toman del usuario actual
-    institution_id: Optional[int] = None
-    creator_agent_id: Optional[int] = None
-
-    if _HAS_V2:
-        model_config = ConfigDict(extra="forbid")
-
-
-# ------------------- Helpers de autorización y paginación -------------------
-
-def build_access_filter(current_user: User):
-    """
-    Filtro OR que define los accesos implícitos/explicitos:
-    - Permiso explícito para el current_user (EXISTS)
-    - Si es admin de institución: colecciones de su institución
-    - Si tiene agent_id: colecciones creadas por su propio agent
-    """
-    # permiso explícito: existe un CP para este user y esta colección
-    perm_exists = exists(
-        select(1).where(
-            and_(
-                CollectionPermission.collection_id == Collection.id,
-                CollectionPermission.user_id == current_user.id,
-            )
-        )
-    )
-
-    clauses = [perm_exists]
-
-    if current_user.is_institution_admin and current_user.institution_id is not None:
-        clauses.append(Collection.institution_id == current_user.institution_id)
-
-    if current_user.agent_id is not None:
-        clauses.append(Collection.creator_agent_id == current_user.agent_id)
-
-    return or_(*clauses)
 
 
 def _paginate_total(db: Session, ids_query):
@@ -153,7 +50,6 @@ def _bounds(limit: int, offset: int):
 def _page_metrics(total: int, limit: int, offset: int):
     if total == 0:
         total_pages = 0
-        current_page = 0
         remaining_pages = 0
     else:
         total_pages = (total + limit - 1) // limit
@@ -164,125 +60,14 @@ def _page_metrics(total: int, limit: int, offset: int):
 
 # ------------------- Endpoints -------------------
 
-@router.get(
-    "/by-agent/{agent_id}",
-    response_model=CollectionsPage,
-    summary="Listar colecciones creadas por un Agent (respetando permisos del usuario actual), paginadas",
-)
-def get_collections_by_agent(
-    agent_id: int,
-    limit: int = Query(20, ge=1, le=200, description="Límite de ítems por página"),
-    offset: int = Query(0, ge=0, description="Desplazamiento (items a saltar)"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Siempre lista SOLO colecciones cuyo creator_agent_id == agent_id.
-    - Superuser: ve todas las de ese agent_id.
-    - Institution admin / usuario normal: solo las que tiene acceso (permiso explícito, implícito por institución o por ser el creador).
-    """
-    limit, offset = _bounds(limit, offset)
-
-    # Subquery de conteos de ocurrencias
-    occ_counts = (
-        select(
-            Occurrence.collection_id.label("collection_id"),
-            func.count(Occurrence.id).label("occ_count"),
-        )
-        .group_by(Occurrence.collection_id)
-        .subquery()
-    )
-
-    # --- IDs base para conteo/paginación ---
-    if current_user.is_superuser:
-        ids_q = select(Collection.id).where(Collection.creator_agent_id == agent_id)
-    else:
-        access_filter = build_access_filter(current_user)
-        ids_q = (
-            select(Collection.id)
-            .where(
-                and_(
-                    Collection.creator_agent_id == agent_id,
-                    access_filter,
-                )
-            )
-        )
-
-    total = _paginate_total(db, ids_q)
-    ids_subq = ids_q.subquery()
-
-    # Subquery: rol explícito deduplicado por colección para el current_user
-    cp_role_sq = (
-        select(
-            CollectionPermission.collection_id.label("cid"),
-            func.max(CollectionPermission.role).label("role"),
-        )
-        .where(CollectionPermission.user_id == current_user.id)
-        .group_by(CollectionPermission.collection_id)
-        .subquery()
-    )
-
-    # --- Items paginados ---
-    q = (
-        select(
-            Collection,
-            cp_role_sq.c.role,         # rol explícito si existe (dedupe)
-            occ_counts.c.occ_count,
-        )
-        .join(ids_subq, ids_subq.c.id == Collection.id)
-        .join(occ_counts, occ_counts.c.collection_id == Collection.id, isouter=True)
-        .join(cp_role_sq, cp_role_sq.c.cid == Collection.id, isouter=True)
-        .options(
-            selectinload(Collection.institution),
-            selectinload(Collection.creator),
-        )
-        .order_by(Collection.collectionName.nulls_last())
-        .offset(offset)
-        .limit(limit)
-    )
-
-    rows = db.execute(q).all()
-    items: List[CollectionOut] = []
-    for col, role, occ_count in rows:
-        if current_user.is_superuser:
-            my_role = "superuser"
-        elif role:
-            my_role = role
-        elif current_user.is_institution_admin and current_user.institution_id == col.institution_id:
-            my_role = "institution_admin"
-        else:
-            my_role = None
-
-        items.append(
-            CollectionOut(
-                id=col.id,
-                collectionID=col.collectionID,
-                collectionCode=col.collectionCode,
-                collectionName=col.collectionName,
-                description=col.description,
-                webSite=col.webSite,
-                institution=col.institution,
-                creator=col.creator,
-                my_role=my_role,
-                occurrencesCount=occ_count or 0,
-            )
-        )
-
-    total_pages, remaining_pages = _page_metrics(total, limit, offset)
-    return CollectionsPage(
-        items=items,
-        total=total,
-        total_pages=total_pages,
-        limit=limit,
-        offset=offset,
-        remaining_pages=remaining_pages,
-    )
-
 
 @router.get(
     "/allowed",
-    response_model=CollectionsPage,
-    summary="Listar colecciones permitidas para el usuario actual (superuser: todas; institution admin: todas de su institución; usuario: permisos explícitos), paginadas",
+    response_model=Page[CollectionOut],
+    summary=(
+        "Listar colecciones permitidas para el usuario actual "
+        "(superuser: todas; institution admin: todas de su institución; usuario: permisos explícitos), paginadas"
+    ),
 )
 def get_collections_allowed(
     limit: int = Query(20, ge=1, le=200, description="Límite de ítems por página"),
@@ -292,35 +77,38 @@ def get_collections_allowed(
 ):
     """
     Devuelve colecciones 'permitidas':
-    - Superuser: TODAS (my_role = 'superuser').
-    - Institution admin: TODAS las de su institución (my_role = 'institution_admin' si no hay permiso explícito).
-    - Usuario normal: solo colecciones con permiso explícito (my_role = rol explícito).
+    - Superuser: TODAS (myRole = 'superuser').
+    - Institution admin: TODAS las de su institución (myRole = 'institution_admin' si no hay permiso explícito).
+    - Usuario normal: solo colecciones con permiso explícito (myRole = rol explícito).
     """
     limit, offset = _bounds(limit, offset)
 
     # Subquery de conteos de ocurrencias
     occ_counts = (
         select(
-            Occurrence.collection_id.label("collection_id"),
+            Occurrence.collectionId.label("collection_id"),
             func.count(Occurrence.id).label("occ_count"),
         )
-        .group_by(Occurrence.collection_id)
+        .group_by(Occurrence.collectionId)
         .subquery()
     )
 
     # --- IDs base según tipo de usuario ---
-    if current_user.is_superuser:
+    if current_user.isSuperuser:
         ids_q = select(Collection.id)
-    elif current_user.is_institution_admin and current_user.institution_id is not None:
+    elif current_user.isInstitutionAdmin and current_user.institutionId is not None:
         ids_q = select(Collection.id).where(
-            Collection.institution_id == current_user.institution_id
+            Collection.institutionId == current_user.institutionId
         )
     else:
         # Usuario normal: requiere permiso explícito
         ids_q = (
             select(Collection.id)
-            .join(CollectionPermission, CollectionPermission.collection_id == Collection.id)
-            .where(CollectionPermission.user_id == current_user.id)
+            .join(
+                CollectionPermission,
+                CollectionPermission.collectionId == Collection.id,
+            )
+            .where(CollectionPermission.userId == current_user.id)
             .group_by(Collection.id)
         )
 
@@ -330,11 +118,11 @@ def get_collections_allowed(
     # Subquery: rol explícito deduplicado por colección para el current_user
     cp_role_sq = (
         select(
-            CollectionPermission.collection_id.label("cid"),
+            CollectionPermission.collectionId.label("cid"),
             func.max(CollectionPermission.role).label("role"),
         )
-        .where(CollectionPermission.user_id == current_user.id)
-        .group_by(CollectionPermission.collection_id)
+        .where(CollectionPermission.userId == current_user.id)
+        .group_by(CollectionPermission.collectionId)
         .subquery()
     )
 
@@ -342,7 +130,7 @@ def get_collections_allowed(
     q = (
         select(
             Collection,
-            cp_role_sq.c.role,         # rol explícito si existe (dedupe)
+            cp_role_sq.c.role,  # rol explícito si existe (dedupe)
             occ_counts.c.occ_count,
         )
         .join(ids_subq, ids_subq.c.id == Collection.id)
@@ -360,11 +148,14 @@ def get_collections_allowed(
     rows = db.execute(q).all()
     items: List[CollectionOut] = []
     for col, role, occ_count in rows:
-        if current_user.is_superuser:
+        if current_user.isSuperuser:
             my_role = "superuser"
         elif role:
             my_role = role
-        elif current_user.is_institution_admin and current_user.institution_id == col.institution_id:
+        elif (
+            current_user.isInstitutionAdmin
+            and current_user.institutionId == col.institutionId
+        ):
             my_role = "institution_admin"
         else:
             my_role = None
@@ -372,26 +163,144 @@ def get_collections_allowed(
         items.append(
             CollectionOut(
                 id=col.id,
-                collectionID=col.collectionID,
                 collectionCode=col.collectionCode,
                 collectionName=col.collectionName,
                 description=col.description,
-                webSite=col.webSite,
                 institution=col.institution,
                 creator=col.creator,
-                my_role=my_role,
+                myRole=my_role,
                 occurrencesCount=occ_count or 0,
             )
         )
 
     total_pages, remaining_pages = _page_metrics(total, limit, offset)
-    return CollectionsPage(
+    current_page = (offset // limit) + 1 if limit > 0 else 1
+
+    return Page[CollectionOut](
         items=items,
         total=total,
-        total_pages=total_pages,
         limit=limit,
         offset=offset,
-        remaining_pages=remaining_pages,
+        currentPage=current_page,
+        totalPages=total_pages,
+        remainingPages=remaining_pages,
+    )
+
+
+@router.get(
+    "/by-user/{user_id}",
+    response_model=Page[CollectionOut],
+    summary=(
+        "Listar colecciones creadas por un usuario (paginado). "
+        "Los usuarios normales solo pueden ver sus propias colecciones; "
+        "el superuser puede ver las de cualquier usuario."
+    ),
+)
+def get_collections_by_user(
+    user_id: int,
+    limit: int = Query(20, ge=1, le=200, description="Límite de ítems por página"),
+    offset: int = Query(0, ge=0, description="Desplazamiento (items a saltar)"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Colecciones donde creatorUserId == user_id.
+
+    - current_user superuser: puede consultar cualquier user_id.
+    - resto de usuarios: solo pueden consultar su propio user_id.
+    """
+    limit, offset = _bounds(limit, offset)
+
+    # Autorización básica
+    if not current_user.isSuperuser and current_user.id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo puedes listar las colecciones que tú mismo has creado.",
+        )
+
+    # Subquery de conteos de ocurrencias
+    occ_counts = (
+        select(
+            Occurrence.collectionId.label("collection_id"),
+            func.count(Occurrence.id).label("occ_count"),
+        )
+        .group_by(Occurrence.collectionId)
+        .subquery()
+    )
+
+    # IDs: colecciones cuyo creador es user_id
+    ids_q = select(Collection.id).where(Collection.creatorUserId == user_id)
+    total = _paginate_total(db, ids_q)
+    ids_subq = ids_q.subquery()
+
+    # Subquery: rol explícito del current_user en esas colecciones
+    cp_role_sq = (
+        select(
+            CollectionPermission.collectionId.label("cid"),
+            func.max(CollectionPermission.role).label("role"),
+        )
+        .where(CollectionPermission.userId == current_user.id)
+        .group_by(CollectionPermission.collectionId)
+        .subquery()
+    )
+
+    q = (
+        select(
+            Collection,
+            cp_role_sq.c.role,
+            occ_counts.c.occ_count,
+        )
+        .join(ids_subq, ids_subq.c.id == Collection.id)
+        .join(occ_counts, occ_counts.c.collection_id == Collection.id, isouter=True)
+        .join(cp_role_sq, cp_role_sq.c.cid == Collection.id, isouter=True)
+        .options(
+            selectinload(Collection.institution),
+            selectinload(Collection.creator),
+        )
+        .order_by(Collection.collectionName.nulls_last())
+        .offset(offset)
+        .limit(limit)
+    )
+
+    rows = db.execute(q).all()
+    items: List[CollectionOut] = []
+    for col, role, occ_count in rows:
+        if current_user.isSuperuser:
+            my_role = "superuser"
+        elif role:
+            my_role = role
+        elif (
+            current_user.isInstitutionAdmin
+            and current_user.institutionId == col.institutionId
+        ):
+            my_role = "institution_admin"
+        else:
+            my_role = None
+
+        items.append(
+            CollectionOut(
+                id=col.id,
+                collectionCode=col.collectionCode,
+                collectionName=col.collectionName,
+                description=col.description,
+                institution=col.institution,
+                creator=col.creator,
+                myRole=my_role,
+                occurrencesCount=occ_count or 0,
+            )
+        )
+
+    total_pages, remaining_pages = _page_metrics(total, limit, offset)
+    current_page = (offset // limit) + 1 if limit > 0 else 1
+
+    return Page[CollectionOut](
+        items=items,
+        total=total,
+        limit=limit,
+        offset=offset,
+        currentPage=current_page,
+        totalPages=total_pages,
+        remainingPages=remaining_pages,
     )
 
 
@@ -399,7 +308,7 @@ def get_collections_allowed(
     "",
     response_model=CollectionOut,
     status_code=status.HTTP_201_CREATED,
-    summary="Crear una colección (requiere usuario activo)"
+    summary="Crear una colección (requiere usuario activo)",
 )
 def create_collection(
     payload: CollectionCreate,
@@ -407,114 +316,86 @@ def create_collection(
     current_user: User = Depends(get_current_user),
 ):
     # Verificar usuario activo
-    if not current_user.is_active:
+    if not current_user.isActive:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Usuario inactivo: no puede crear colecciones."
+            detail="Usuario inactivo: no puede crear colecciones.",
         )
 
-    # Resolver institución y agente creador por defecto
-    institution_id = payload.institution_id or current_user.institution_id
-    creator_agent_id = payload.creator_agent_id or current_user.agent_id
-
-    if creator_agent_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No hay Agent asociado al usuario. Asigna un Agent al usuario o proporciona 'creator_agent_id'."
-        )
+    # Resolver institución por defecto desde el usuario
+    institution_id = payload.institutionId or current_user.institutionId
 
     # Reglas de seguridad para no-superusers
-    if not current_user.is_superuser:
-        if payload.institution_id and payload.institution_id != current_user.institution_id:
+    if not current_user.isSuperuser:
+        if payload.institutionId and payload.institutionId != current_user.institutionId:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="No puedes crear colecciones en otra institución."
-            )
-        if payload.creator_agent_id and payload.creator_agent_id != current_user.agent_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="No puedes establecer otro Agent como creador."
+                detail="No puedes crear colecciones en otra institución.",
             )
 
-    # collectionID único
-    if payload.collectionID:
-        dup = db.execute(
-            select(Collection).where(Collection.collectionID == payload.collectionID)
-        ).scalar_one_or_none()
-        if dup:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Ya existe una colección con ese 'collectionID'."
-            )
-
-    # Crear la colección
+    # Crear la colección (creador = current_user)
     col = Collection(
-        collectionID=payload.collectionID,
         collectionCode=payload.collectionCode,
         collectionName=payload.collectionName,
         description=payload.description,
-        webSite=payload.webSite,
-        institution_id=institution_id,
-        creator_agent_id=creator_agent_id,
+        institutionId=institution_id,
+        creatorUserId=current_user.id,
     )
     db.add(col)
     db.flush()  # para obtener col.id
 
     # Conceder permiso 'owner' al creador (usuario actual)
-    db.add(CollectionPermission(
-        collection_id=col.id,
-        user_id=current_user.id,
-        role="owner",
-        granted_by_user_id=current_user.id,
-    ))
+    db.add(
+        CollectionPermission(
+            collectionId=col.id,
+            userId=current_user.id,
+            role="owner",
+            grantedByUserId=current_user.id,
+        )
+    )
 
     db.commit()
 
     # Recargar con relaciones
-    col = db.execute(
-        select(Collection)
-        .where(Collection.id == col.id)
-        .options(
-            selectinload(Collection.institution),
-            selectinload(Collection.creator),
+    col = (
+        db.execute(
+            select(Collection)
+            .where(Collection.id == col.id)
+            .options(
+                selectinload(Collection.institution),
+                selectinload(Collection.creator),
+            )
         )
-    ).scalar_one()
+        .scalar_one()
+    )
 
     # Recién creada: sin ocurrencias
     return CollectionOut(
         id=col.id,
-        collectionID=col.collectionID,
         collectionCode=col.collectionCode,
         collectionName=col.collectionName,
         description=col.description,
-        webSite=col.webSite,
         institution=col.institution,
         creator=col.creator,
-        my_role="owner",
+        myRole="owner",
         occurrencesCount=0,
     )
 
 
-class CollectionAccessUser(BaseModel):
-    full_name: str
-    email: EmailStr
-    institution: Optional[str] = None
-    role: Literal["viewer", "editor", "owner"]
-
-
-class CollectionAccessPaginatedResponse(BaseModel):
-    items: List[CollectionAccessUser]
-    total: int
-    limit: int
-    offset: int
-    current_page: int
-    total_pages: int
-    remaining_pages: int
+def _current_user_role_in_collection(
+    db: Session, collection_id: int, user_id: int
+) -> Optional[str]:
+    return db.execute(
+        select(CollectionPermission.role).where(
+            CollectionPermission.collectionId == collection_id,
+            CollectionPermission.userId == user_id,
+        )
+    ).scalar_one_or_none()
 
 
 @router.get(
     "/{collection_id}/access-users",
-    response_model=CollectionAccessPaginatedResponse,
+    response_model=Page[CollectionAccessUser],
     summary="Usuarios con acceso a una colección (paginado)",
 )
 def list_collection_access_users(
@@ -536,10 +417,10 @@ def list_collection_access_users(
         raise HTTPException(status_code=404, detail="Colección no encontrada")
 
     # 2) Autorización
-    if current_user.is_superuser:
+    if current_user.isSuperuser:
         pass
-    elif current_user.is_institution_admin:
-        if collection.institution_id != current_user.institution_id:
+    elif current_user.isInstitutionAdmin:
+        if collection.institutionId != current_user.institutionId:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No tienes permisos para ver accesos de esta colección",
@@ -547,8 +428,8 @@ def list_collection_access_users(
     else:
         has_permission = db.execute(
             select(CollectionPermission.id).where(
-                CollectionPermission.collection_id == collection_id,
-                CollectionPermission.user_id == current_user.id,
+                CollectionPermission.collectionId == collection_id,
+                CollectionPermission.userId == current_user.id,
             )
         ).scalar_one_or_none()
         if not has_permission:
@@ -557,7 +438,7 @@ def list_collection_access_users(
                 detail="No tienes permisos para ver accesos de esta colección",
             )
 
-    name_expr = func.coalesce(Agent.fullName, User.username)
+    name_expr = func.coalesce(User.fullName, User.username)
 
     role_order = case(
         (CollectionPermission.role == "owner", 0),
@@ -565,7 +446,7 @@ def list_collection_access_users(
         else_=2,
     )
 
-    base_where = [CollectionPermission.collection_id == collection_id]
+    base_where = [CollectionPermission.collectionId == collection_id]
     if role:
         base_where.append(CollectionPermission.role == role)
     if q:
@@ -579,8 +460,8 @@ def list_collection_access_users(
 
     total_subq = (
         select(User.id)
-        .join(CollectionPermission, CollectionPermission.user_id == User.id)
-        .outerjoin(Agent, Agent.id == User.agent_id)
+        .join(CollectionPermission, CollectionPermission.userId == User.id)
+        .outerjoin(Institution, Institution.id == User.institutionId)
         .where(*base_where)
         .subquery()
     )
@@ -593,9 +474,8 @@ def list_collection_access_users(
             Institution.institutionName.label("institution_name"),
             CollectionPermission.role.label("role"),
         )
-        .join(CollectionPermission, CollectionPermission.user_id == User.id)
-        .outerjoin(Agent, Agent.id == User.agent_id)
-        .outerjoin(Institution, Institution.id == User.institution_id)
+        .join(CollectionPermission, CollectionPermission.userId == User.id)
+        .outerjoin(Institution, Institution.id == User.institutionId)
         .where(*base_where)
         .order_by(role_order, func.lower(name_expr))
         .limit(limit)
@@ -605,7 +485,7 @@ def list_collection_access_users(
     rows = db.execute(items_stmt).all()
     items = [
         CollectionAccessUser(
-            full_name=row.full_name,
+            fullName=row.full_name,
             email=row.email,
             institution=row.institution_name,
             role=row.role,
@@ -613,63 +493,50 @@ def list_collection_access_users(
         for row in rows
     ]
 
-    current_page = (offset // limit) + 1 if limit else 1
-    total_pages = (total + limit - 1) // limit if limit else 1
-    remaining_pages = max(total_pages - current_page, 0)
+    total_pages, remaining_pages = _page_metrics(total, limit, offset)
+    current_page = (offset // limit) + 1 if limit > 0 else 1
 
-    return CollectionAccessPaginatedResponse(
+    return Page[CollectionAccessUser](
         items=items,
         total=total,
         limit=limit,
         offset=offset,
-        current_page=current_page,
-        total_pages=total_pages,
-        remaining_pages=remaining_pages,
+        currentPage=current_page,
+        totalPages=total_pages,
+        remainingPages=remaining_pages,
     )
-
-class OccurrenceBriefItem(BaseModel):
-    id: int
-    code: Optional[str] = None
-    scientific_name: Optional[str] = None
-    family: Optional[str] = None
-    location: Optional[str] = None
-    collector: Optional[str] = None
-    date: Optional[datetime] = None
-    model_config = ConfigDict(from_attributes=True)
-
-class PaginatedResponse(BaseModel):
-    items: List[OccurrenceBriefItem]
-    total: int
-    limit: int
-    offset: int
-    current_page: int
-    total_pages: int
-    remaining_pages: int
 
 
 @router.get(
     "/{collection_id}/occurrences/brief",
-    response_model=PaginatedResponse,
+    response_model=Page[OccurrenceBriefItem],
     summary="Ocurrencias por ID de colección (breve, paginado)",
 )
 def list_occurrences_brief_by_collection_id(
     collection_id: int,
-    q: Optional[str] = Query(None, description="Buscar en código, nombre científico, familia, ubicación o recolector"),
+    q: Optional[str] = Query(
+        None,
+        description=(
+            "Buscar en código, nombre científico, familia, ubicación o recolector"
+        ),
+    ),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # 1) Colección
     collection = db.execute(
         select(Collection).where(Collection.id == collection_id)
     ).scalar_one_or_none()
     if not collection:
         raise HTTPException(status_code=404, detail="Colección no encontrada")
 
-    if current_user.is_superuser:
+    # 2) Autorización
+    if current_user.isSuperuser:
         pass
-    elif current_user.is_institution_admin:
-        if collection.institution_id != current_user.institution_id:
+    elif current_user.isInstitutionAdmin:
+        if collection.institutionId != current_user.institutionId:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No tienes permisos para ver ocurrencias de esta colección",
@@ -677,8 +544,8 @@ def list_occurrences_brief_by_collection_id(
     else:
         has_perm = db.execute(
             select(CollectionPermission.id).where(
-                CollectionPermission.collection_id == collection_id,
-                CollectionPermission.user_id == current_user.id,
+                CollectionPermission.collectionId == collection_id,
+                CollectionPermission.userId == current_user.id,
             )
         ).scalar_one_or_none()
         if not has_perm:
@@ -688,19 +555,19 @@ def list_occurrences_brief_by_collection_id(
             )
 
     # 3) Expresiones para campos
-    code_expr = func.coalesce(Occurrence.catalogNumber, Occurrence.occurrenceID)
+    code_expr = func.coalesce(Occurrence.catalogNumber, Occurrence.recordNumber)
     sci_name_expr = Taxon.scientificName
     family_expr = Taxon.family
     location_expr = func.coalesce(
-        Location.locality,
-        Location.municipality,
-        Location.stateProvince,
-        Location.country,
+        Occurrence.locality,
+        Occurrence.municipality,
+        Occurrence.stateProvince,
+        Occurrence.country,
     )
     collector_expr = Occurrence.recordedBy
-    date_expr = Event.eventDate
+    date_expr = Occurrence.eventDate
 
-    filters = [Occurrence.collection_id == collection_id]
+    filters = [Occurrence.collectionId == collection_id]
 
     if q:
         like = f"%{q.strip().lower()}%"
@@ -714,16 +581,23 @@ def list_occurrences_brief_by_collection_id(
             )
         )
 
+    # 4) Total (join con Identification isCurrent=True y Taxon)
     total_subq = (
         select(Occurrence.id)
-        .outerjoin(Taxon, Taxon.id == Occurrence.taxon_id)
-        .outerjoin(Location, Location.id == Occurrence.location_id)
-        .outerjoin(Event, Event.id == Occurrence.event_id)
+        .outerjoin(
+            Identification,
+            and_(
+                Identification.occurrenceId == Occurrence.id,
+                Identification.isCurrent.is_(True),
+            ),
+        )
+        .outerjoin(Taxon, Taxon.id == Identification.taxonId)
         .where(*filters)
         .subquery()
     )
     total = db.execute(select(func.count()).select_from(total_subq)).scalar_one()
 
+    # 5) Items paginados
     items_stmt = (
         select(
             Occurrence.id.label("id"),
@@ -734,11 +608,21 @@ def list_occurrences_brief_by_collection_id(
             collector_expr.label("collector"),
             date_expr.label("date"),
         )
-        .outerjoin(Taxon, Taxon.id == Occurrence.taxon_id)
-        .outerjoin(Location, Location.id == Occurrence.location_id)
-        .outerjoin(Event, Event.id == Occurrence.event_id)
+        .outerjoin(
+            Identification,
+            and_(
+                Identification.occurrenceId == Occurrence.id,
+                Identification.isCurrent.is_(True),
+            ),
+        )
+        .outerjoin(Taxon, Taxon.id == Identification.taxonId)
         .where(*filters)
-        .order_by(date_expr.desc().nulls_last(), code_expr.asc().nulls_last())
+        .order_by(
+            Occurrence.year.desc().nulls_last(),
+            Occurrence.month.desc().nulls_last(),
+            Occurrence.day.desc().nulls_last(),
+            code_expr.asc().nulls_last(),
+        )
         .limit(limit)
         .offset(offset)
     )
@@ -748,7 +632,7 @@ def list_occurrences_brief_by_collection_id(
         OccurrenceBriefItem(
             id=r.id,
             code=r.code,
-            scientific_name=r.scientific_name,
+            scientificName=r.scientific_name,
             family=r.family,
             location=r.location,
             collector=r.collector,
@@ -757,94 +641,76 @@ def list_occurrences_brief_by_collection_id(
         for r in rows
     ]
 
-    current_page = (offset // limit) + 1 if limit else 1
-    total_pages = (total + limit - 1) // limit if limit else 1
-    remaining_pages = max(total_pages - current_page, 0)
+    total_pages, remaining_pages = _page_metrics(total, limit, offset)
+    current_page = (offset // limit) + 1 if limit > 0 else 1
 
-    return PaginatedResponse(
+    return Page[OccurrenceBriefItem](
         items=items,
         total=total,
         limit=limit,
         offset=offset,
-        current_page=current_page,
-        total_pages=total_pages,
-        remaining_pages=remaining_pages,
+        currentPage=current_page,
+        totalPages=total_pages,
+        remainingPages=remaining_pages,
     )
 
 
-
-class AddUserToCollectionBody(BaseModel):
-    email: EmailStr
+# ------------------- Gestión de permisos en colecciones -------------------
 
 
-class CollectionPermissionOut(BaseModel):
-    collection_id: int
-    user_id: int
-    email: EmailStr
-    role: str
-    model_config = ConfigDict(from_attributes=True)
+@router.post(
+    "/{collection_id}/permissions/add-user",
+    response_model=CollectionPermissionOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Agregar usuario (por email) a una colección con rol viewer/editor",
+)
+def add_user_to_collection(
+    collection_id: int,
+    payload: AddUserToCollectionBody,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # 1) Colección
+    collection = db.execute(
+        select(Collection).where(Collection.id == collection_id)
+    ).scalar_one_or_none()
+    if not collection:
+        raise HTTPException(status_code=404, detail="Colección no encontrada")
 
+    # 2) Autorización (SOLO superuser, admin de su institución o owner)
+    if current_user.isSuperuser:
+        pass
+    elif current_user.isInstitutionAdmin:
+        if collection.institutionId != current_user.institutionId:
+            raise HTTPException(
+                status_code=403,
+                detail="No puedes gestionar permisos de una colección de otra institución",
+            )
+    else:
+        my_role = _current_user_role_in_collection(db, collection_id, current_user.id)
+        if my_role != "owner":
+            raise HTTPException(
+                status_code=403,
+                detail="Se requiere rol 'owner' en la colección para agregar usuarios",
+            )
 
-def _current_user_role_in_collection(db: Session, collection_id: int, user_id: int) -> str | None:
-    return db.execute(
-        select(CollectionPermission.role).where(
-            CollectionPermission.collection_id == collection_id,
-            CollectionPermission.user_id == user_id,
+    # 3) Usuario objetivo por email (case-insensitive)
+    target = db.execute(
+        select(User).where(User.email.ilike(payload.email))
+    ).scalar_one_or_none()
+    if not target:
+        raise HTTPException(status_code=404, detail="Usuario (email) no encontrado")
+    if not target.isActive:
+        raise HTTPException(
+            status_code=400, detail="Usuario inactivo: no puede ser agregado"
         )
-    ).scalar_one_or_none()
 
-
-@router.post(
-    "/{collection_id}/permissions/add-user",
-    response_model=CollectionPermissionOut,
-    status_code=status.HTTP_201_CREATED,
-    summary="Agregar usuario (por email) como viewer a una colección",
-)
-def add_user_as_viewer_to_collection(
-    collection_id: int,
-    payload: AddUserToCollectionBody,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    # 1) Colección
-    collection = db.execute(
-        select(Collection).where(Collection.id == collection_id)
-    ).scalar_one_or_none()
-    if not collection:
-        raise HTTPException(status_code=404, detail="Colección no encontrada")
-
-    # 2) Autorización (SOLO superuser, admin de su institución o owner)
-    if current_user.is_superuser:
-        pass
-    elif current_user.is_institution_admin:
-        if collection.institution_id != current_user.institution_id:
-            raise HTTPException(
-                status_code=403,
-                detail="No puedes gestionar permisos de una colección de otra institución",
-            )
-    else:
-        my_role = _current_user_role_in_collection(db, collection_id, current_user.id)
-        if my_role != "owner":
-            raise HTTPException(
-                status_code=403,
-                detail="Se requiere rol 'owner' en la colección para agregar usuarios",
-            )
-
-    # 3) Usuario objetivo por email (case-insensitive)
-    target = db.execute(
-        select(User).where(User.email.ilike(payload.email))
-    ).scalar_one_or_none()
-    if not target:
-        raise HTTPException(status_code=404, detail="Usuario (email) no encontrado")
-    if not target.is_active:
-        raise HTTPException(status_code=400, detail="Usuario inactivo: no puede ser agregado")
-
-    # 4) Insertar permiso como viewer (409 si ya existe cualquier rol)
+    # 4) Insertar permiso con rol viewer/editor (409 si ya existe cualquier rol)
     perm = CollectionPermission(
-        collection_id=collection_id,
-        user_id=target.id,
-        role="viewer",
-        granted_by_user_id=current_user.id,
+        collectionId=collection_id,
+        userId=target.id,
+        role=payload.role,
+        grantedByUserId=current_user.id,
     )
     try:
         db.add(perm)
@@ -853,98 +719,23 @@ def add_user_as_viewer_to_collection(
         db.rollback()
         existing_role = db.execute(
             select(CollectionPermission.role).where(
-                CollectionPermission.collection_id == collection_id,
-                CollectionPermission.user_id == target.id,
+                CollectionPermission.collectionId == collection_id,
+                CollectionPermission.userId == target.id,
             )
         ).scalar_one_or_none()
         if existing_role:
             raise HTTPException(
                 status_code=409,
-                detail=f"El usuario ya tiene acceso a esta colección con rol '{existing_role}'",
+                detail=(
+                    "El usuario ya tiene acceso a esta colección "
+                    f"con rol '{existing_role}'"
+                ),
             )
         raise
 
     return CollectionPermissionOut(
-        collection_id=collection_id,
-        user_id=target.id,
+        collectionId=collection_id,
+        userId=target.id,
         email=target.email,
-        role="viewer",
-    )
-
-
-@router.post(
-    "/{collection_id}/permissions/add-user",
-    response_model=CollectionPermissionOut,
-    status_code=status.HTTP_201_CREATED,
-    summary="Agregar usuario (por email) como viewer a una colección",
-)
-def add_user_as_viewer_to_collection(
-    collection_id: int,
-    payload: AddUserToCollectionBody,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    # 1) Colección
-    collection = db.execute(
-        select(Collection).where(Collection.id == collection_id)
-    ).scalar_one_or_none()
-    if not collection:
-        raise HTTPException(status_code=404, detail="Colección no encontrada")
-
-    # 2) Autorización (SOLO superuser, admin de su institución o owner)
-    if current_user.is_superuser:
-        pass
-    elif current_user.is_institution_admin:
-        if collection.institution_id != current_user.institution_id:
-            raise HTTPException(
-                status_code=403,
-                detail="No puedes gestionar permisos de una colección de otra institución",
-            )
-    else:
-        my_role = _current_user_role_in_collection(db, collection_id, current_user.id)
-        if my_role != "owner":
-            raise HTTPException(
-                status_code=403,
-                detail="Se requiere rol 'owner' en la colección para agregar usuarios",
-            )
-
-    # 3) Usuario objetivo por email (case-insensitive)
-    target = db.execute(
-        select(User).where(User.email.ilike(payload.email))
-    ).scalar_one_or_none()
-    if not target:
-        raise HTTPException(status_code=404, detail="Usuario (email) no encontrado")
-    if not target.is_active:
-        raise HTTPException(status_code=400, detail="Usuario inactivo: no puede ser agregado")
-
-    # 4) Insertar permiso como viewer (409 si ya existe cualquier rol)
-    perm = CollectionPermission(
-        collection_id=collection_id,
-        user_id=target.id,
-        role="viewer",
-        granted_by_user_id=current_user.id,
-    )
-    try:
-        db.add(perm)
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        existing_role = db.execute(
-            select(CollectionPermission.role).where(
-                CollectionPermission.collection_id == collection_id,
-                CollectionPermission.user_id == target.id,
-            )
-        ).scalar_one_or_none()
-        if existing_role:
-            raise HTTPException(
-                status_code=409,
-                detail=f"El usuario ya tiene acceso a esta colección con rol '{existing_role}'",
-            )
-        raise
-
-    return CollectionPermissionOut(
-        collection_id=collection_id,
-        user_id=target.id,
-        email=target.email,
-        role="viewer",
+        role=payload.role,
     )

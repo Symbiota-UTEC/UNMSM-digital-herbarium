@@ -36,16 +36,16 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from backend.config.database import Base
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from datetime import datetime
+from datetime import datetime, date
 
 
 class Institution(Base):
     __tablename__ = "institution"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    institutionID: Mapped[Optional[str]] = mapped_column(
-        "institution_id", String(255), unique=True
-    )
+    # institutionID: Mapped[Optional[str]] = mapped_column(
+    #     "institution_id", String(255), unique=True
+    # )
     institutionCode: Mapped[Optional[str]] = mapped_column(
         "institution_code", String(100), index=True
     )
@@ -95,9 +95,9 @@ class Collection(Base):
     __tablename__ = "collection"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    collectionID: Mapped[Optional[String]] = mapped_column(
-        "collection_id", String(255), unique=True
-    )
+    # collectionID: Mapped[Optional[String]] = mapped_column(
+    #     "collection_id", String(255), unique=True
+    # )
     # Identificador estable (URI/UUID) de la colección
     collectionCode: Mapped[Optional[String]] = mapped_column(
         "collection_code", String(100), index=True
@@ -107,7 +107,7 @@ class Collection(Base):
         "collection_name", String(255)
     )
     description: Mapped[Optional[Text]] = mapped_column("description", Text())
-    webSite: Mapped[Optional[String]] = mapped_column("web_site", String(255))
+    # webSite: Mapped[Optional[String]] = mapped_column("web_site", String(255))
 
     institutionId: Mapped[Optional[int]] = mapped_column(
         "institution_id", ForeignKey("institution.id")
@@ -149,13 +149,12 @@ class Agent(Base):
     __tablename__ = "agent"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    agentID: Mapped[Optional[String]] = mapped_column(
-        "agent_id", String(255), unique=True
-    )
 
     # Campos básicos de identidad del colector
     fullName: Mapped[Optional[String]] = mapped_column("full_name", String(255))
-    orcid: Mapped[Optional[String]] = mapped_column("orcid", String(50))
+    orcID: Mapped[Optional[String]] = mapped_column(
+        "agent_id", String(255), unique=True
+    )  # p.ej. ORCID u otro identificador estable
 
     # Ocurrencias en las que esta persona fue colectora (muchos-a-muchos)
     occurrences: Mapped[List["Occurrence"]] = relationship(
@@ -387,9 +386,7 @@ class Taxon(Base):
         server_default="true",
     )
 
-    # -----------------------------
-    # Relaciones
-    # -----------------------------
+    # Relación inversa con Identification
     identifications: Mapped[List["Identification"]] = relationship(
         "Identification",
         back_populates="taxon",
@@ -456,11 +453,6 @@ class Occurrence(Base):
         Text(),
         doc="DwC verbatimLocality: descripción textual tal como en la etiqueta (más informal/dinámico).",
     )
-    verbatimElevation: Mapped[Optional[String]] = mapped_column(
-        "verbatim_elevation",
-        String(100),
-        doc="DwC verbatimElevation: elevación tal como en la etiqueta (con unidades, rangos, etc.).",
-    )
 
     # ------------------------------------------------------------------
     # DESEABLES (nice to have)
@@ -521,7 +513,12 @@ class Occurrence(Base):
         doc="Día del mes del evento de colecta.",
     )
 
-    # ---- Location deseable ----
+    # Location: deseable
+    verbatimElevation: Mapped[Optional[String]] = mapped_column(
+        "verbatim_elevation",
+        String(100),
+        doc="DwC verbatimElevation: elevación tal como en la etiqueta (con unidades, rangos, etc.).",
+    )
     county: Mapped[Optional[String]] = mapped_column(
         "county",
         String(100),
@@ -565,10 +562,9 @@ class Occurrence(Base):
         doc="DwC georeferenceRemarks: notas sobre cómo se obtuvo la georreferenciación (nice to have).",
     )
 
-    # ------------------------------------------------------------------
     # OPCIONALES
-    # ------------------------------------------------------------------
 
+    # ---- Occurrence opcionales ----
     occurrenceRemarks: Mapped[Optional[Text]] = mapped_column(
         "occurrence_remarks",
         Text(),
@@ -602,6 +598,7 @@ class Occurrence(Base):
         doc="DwC dynamicProperties: JSON con propiedades adicionales.",
     )
 
+    # ---- Event opcionales ----
     projectTitle: Mapped[Optional[String]] = mapped_column(
         "project_title",
         String(255),
@@ -638,6 +635,7 @@ class Occurrence(Base):
         doc="ID o código del registro de financiamiento (contrato, grant ID, etc.).",
     )
 
+    # ---- Location opcionales ----
     countryCode: Mapped[Optional[String]] = mapped_column(
         "country_code",
         String(10),
@@ -728,6 +726,14 @@ class Occurrence(Base):
         passive_deletes=True,
     )
 
+    # Imágenes asociadas a la ocurrencia
+    images: Mapped[List["OccurrenceImage"]] = relationship(
+        "OccurrenceImage",
+        back_populates="occurrence",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
     __table_args__ = (
         UniqueConstraint(
             "collection_id",
@@ -786,16 +792,14 @@ class Identifier(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
 
-    identifierID: Mapped[Optional[String]] = mapped_column(
+    fullName: Mapped[Optional[String]] = mapped_column("full_name", String(255))
+    orcID: Mapped[Optional[String]] = mapped_column(
         "identifier_id",
         String(255),
         unique=True,
         nullable=True,
         doc="Identificador estable del identificador (URI/UUID interno/externo).",
-    )
-
-    fullName: Mapped[Optional[String]] = mapped_column("full_name", String(255))
-    orcid: Mapped[Optional[String]] = mapped_column("orcid", String(50))
+    )  # p.ej. ORCID
 
     # Identificaciones en las que participa esta persona (muchos-a-muchos)
     identifications: Mapped[List["Identification"]] = relationship(
@@ -949,6 +953,78 @@ class IdentificationIdentifier(Base):
             "identifier_id",
             name="uq_identification_identifier",
         ),
+    )
+
+
+class OccurrenceImage(Base):
+    """
+    Imagen asociada a una ocurrencia.
+    Guarda solo lo esencial:
+    - path al archivo en disco/S3/etc.
+    - tamaño del archivo
+    - nombre de la persona que tomó la foto
+    - orden dentro de la ocurrencia
+    - trazabilidad mínima (created_at, updated_at)
+    """
+
+    __tablename__ = "occurrence_image"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+
+    # ------------------------------
+    # Vínculo a Occurrence
+    # ------------------------------
+    occurrenceId: Mapped[int] = mapped_column(
+        "occurrence_id",
+        ForeignKey("occurrence.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+        doc="FK a Occurrence: registro al que pertenece esta imagen.",
+    )
+
+    occurrence: Mapped["Occurrence"] = relationship(
+        "Occurrence",
+        back_populates="images",
+    )
+
+    # ------------------------------
+    # Datos básicos de la imagen
+    # ------------------------------
+    imagePath: Mapped[str] = mapped_column(
+        "image_path",
+        String(1024),
+        nullable=False,
+        doc="Ruta o path al archivo de imagen.",
+    )
+
+    fileSize: Mapped[Optional[int]] = mapped_column(
+        "file_size",
+        Integer,
+        doc="Tamaño del archivo en bytes (opcional).",
+    )
+
+    photographer: Mapped[Optional[str]] = mapped_column(
+        "photographer",
+        String(255),
+        doc="Nombre de la persona que tomó la foto (opcional).",
+    )
+
+    # ------------------------------
+    # Trazabilidad
+    # ------------------------------
+    createdAt: Mapped[datetime] = mapped_column(
+        "created_at",
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+    )
+
+    updatedAt: Mapped[datetime] = mapped_column(
+        "updated_at",
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
     )
 
 

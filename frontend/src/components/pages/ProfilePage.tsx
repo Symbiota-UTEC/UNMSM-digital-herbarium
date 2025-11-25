@@ -94,6 +94,7 @@ const formatDateLong = (value?: string | null) => {
 
 export function ProfilePage() {
   const { user, apiFetch } = useAuth();
+  console.log("ProfilePage user:", user);
   const [profileDetails, setProfileDetails] = useState<UserProfileResponse | null>(null);
   const [statBuckets, setStatBuckets] = useState<StatBuckets>({
     collections: null,
@@ -105,6 +106,7 @@ export function ProfilePage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    console.log("Fetching profile data for user:", user);
     if (!user) return;
     let isMounted = true;
 
@@ -126,8 +128,8 @@ export function ProfilePage() {
           }
         );
 
-        const ownedPromise = user.agentId
-          ? apiFetch(`${API.BASE_URL}/collections/by-agent/${user.agentId}?limit=1&offset=0`).then(
+        const ownedPromise = user.id
+          ? apiFetch(`${API.BASE_URL}/collections/by-user/${user.id}?limit=1&offset=0`).then(
               async (res) => {
                 const data = await parseJson<CollectionsResponse>(
                   res,
@@ -206,7 +208,7 @@ export function ProfilePage() {
   const displayName = user.username || user.email || "Usuario sin nombre";
   const initials = initialsFrom(user.username, user.email);
   const institutionName = user.institution || "Sin institución asignada";
-  const memberSince = formatDateLong(profileDetails?.created_at);
+  const memberSince = formatDateLong(profileDetails?.createdAt);
 
   const stats = useMemo(
     () => [
@@ -302,14 +304,14 @@ export function ProfilePage() {
                   <p>{institutionName}</p>
                 </div>
               </div>
-              <Separator />
+              {/* <Separator />
               <div className="flex items-center gap-3">
                 <Award className="h-5 w-5 text-muted-foreground" />
                 <div>
                   <p className="text-sm text-muted-foreground">Especialización</p>
                   <p>Taxonomía de Plantas Tropicales</p>
                 </div>
-              </div>
+              </div> */}
               <Separator />
               <div className="flex items-center gap-3">
                 <Calendar className="h-5 w-5 text-muted-foreground" />

@@ -52,7 +52,7 @@ export function AutocompleteInstitution({
         try {
             setLoading(true);
 
-            const params = new URLSearchParams({ name_prefix: q, limit: String(PAGE_SIZE.INSTITUTIONS) });
+            const params = new URLSearchParams({ namePrefix: q, limit: String(PAGE_SIZE.INSTITUTIONS) });
 
             const res = await apiFetch(
                 `${API.BASE_URL}${API.PATHS.INSTITUTIONS}?${params.toString()}`,

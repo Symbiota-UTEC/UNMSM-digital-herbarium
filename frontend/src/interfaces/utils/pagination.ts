@@ -3,7 +3,7 @@ export interface PaginatedResponse<T> {
     total: number;
     limit: number;
     offset: number;
-    current_page: number;
-    total_pages: number;
-    remaining_pages: number;
+    currentPage: number;
+    totalPages: number;
+    remainingPages: number;
 }

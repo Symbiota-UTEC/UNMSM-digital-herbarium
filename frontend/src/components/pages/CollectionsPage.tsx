@@ -25,13 +25,14 @@ type CollectionsPageProps = {
   onNavigate: (page: string, params?: any) => void;
 };
 
-  export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
+export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
   const { user, apiFetch, token } = useAuth() as any;
   console.log(user);
 
   const isSuper = user?.role === Role.Admin;
   const isInstAdmin = user?.role === Role.InstitutionAdmin;
-    // Solo los super pueden elegir institución libremente
+
+  // Solo los super pueden elegir institución libremente
   const isRestrictedInstitutionPick = !isSuper; // true = user normal o InstitutionAdmin
   const userInstitutionId = user?.institutionId != null ? Number(user.institutionId) : null;
   const userInstitutionName = user?.institution || "";
@@ -39,7 +40,10 @@ type CollectionsPageProps = {
 
   const collectionsPerPage = PAGE_SIZE.COLLECTIONS;
 
-    // ------- Estado: colecciones por agente (mis colecciones) -------
+  // Usamos siempre el id de usuario (agentId ya no viene del backend)
+  const userId = user?.id ?? null;
+
+  // ------- Estado: colecciones por agente (mis colecciones) -------
   const [myItems, setMyItems] = useState<CollectionListItem[]>([]);
   const [myLoading, setMyLoading] = useState(false);
   const [myPage, setMyPage] = useState(1);
@@ -60,22 +64,20 @@ type CollectionsPageProps = {
   const [selectedInstitutionId, setSelectedInstitutionId] = useState<number | null>(null);
 
   // Form de creación (solo campos que POST acepta)
+  // collectionID ya no se manda: lo genera el ORM
   const [form, setForm] = useState<CollectionCreate>({
-    collectionID: "",
     collectionCode: "",
     collectionName: "",
     description: "",
-    webSite: "",
     institution_id: null,
     creator_agent_id: null,
   });
 
   const canManageCollection = (c: CollectionListItem) => {
-    // Si usas enum:
     const isSuper = user?.role === Role.Admin;
     const isInstAdminSameInst =
-        user?.role === Role.InstitutionAdmin &&
-        Number(user?.institutionId) === Number(c.institutionId); // <-- aquí el fix
+      user?.role === Role.InstitutionAdmin &&
+      Number(user?.institutionId) === Number(c.institutionId);
 
     const isOwnerRole = c.my_role === "owner";
     return isSuper || isInstAdminSameInst || isOwnerRole;
@@ -83,8 +85,6 @@ type CollectionsPageProps = {
 
   // CSV (opcional: por ahora solo contamos filas; la carga real de ocurrencias no está en este endpoint)
   const [csvFile, setCsvFile] = useState<File | null>(null);
-
-  const agentId = user?.agentId ?? null; // <- crítico para /by-agent/{agent_id}
 
   // Helpers UI
   const roleBadge = (role?: string | null) => {
@@ -105,7 +105,7 @@ type CollectionsPageProps = {
       viewer: "Lector",
     };
     return (
-        <span className={`text-xs px-2 py-1 rounded ${cls}`} title="Tu rol en esta colección">
+      <span className={`text-xs px-2 py-1 rounded ${cls}`} title="Tu rol en esta colección">
         {label[role] ?? role}
       </span>
     );
@@ -113,125 +113,123 @@ type CollectionsPageProps = {
 
   // ------- Fetchers -------
   const fetchMyCollections = useCallback(
-      async (page: number) => {
-        if (!token || !agentId) return;
-        try {
-          setMyLoading(true);
-          const limit = collectionsPerPage;
-          const offset = (page - 1) * limit;
-          const url = `${API.BASE_URL}/collections/by-agent/${agentId}?limit=${limit}&offset=${offset}`;
+    async (page: number) => {
+      if (!token || !userId) return;
+      try {
+        setMyLoading(true);
+        const limit = collectionsPerPage;
+        const offset = (page - 1) * limit;
+        const url = `${API.BASE_URL}/collections/by-user/${userId}?limit=${limit}&offset=${offset}`;
 
-          const res = await apiFetch(url, {
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          });
-          if (!res.ok) {
-            const txt = await res.text();
-            console.error("by-agent error:", txt);
-            throw new Error("No se pudieron cargar tus colecciones");
-          }
-
-          const data = (await res.json()) as PaginatedResponse<CollectionOut> | CollectionOut[];
-          const items = Array.isArray(data) ? data : data.items ?? [];
-          const list = items.map(toCollectionListItem);
-          console.log("list, ", list);
-
-          setMyItems(list);
-          setMyTotalPages(Array.isArray(data) ? 1 : data.total_pages ?? 1);
-        } catch (e) {
-          console.error(e);
-          toast.error("No se pudieron cargar tus colecciones");
-          setMyItems([]);
-          setMyTotalPages(1);
-        } finally {
-          setMyLoading(false);
+        const res = await apiFetch(url, {
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) {
+          const txt = await res.text();
+          console.error("by-user error:", txt);
+          throw new Error("No se pudieron cargar tus colecciones");
         }
-      },
-      [apiFetch, token, agentId]
+
+        const data = (await res.json()) as PaginatedResponse<CollectionOut> | CollectionOut[];
+        const items = Array.isArray(data) ? data : data.items ?? [];
+        const list = items.map(toCollectionListItem);
+        console.log("list, ", list);
+
+        setMyItems(list);
+        setMyTotalPages(Array.isArray(data) ? 1 : data.total_pages ?? 1);
+      } catch (e) {
+        console.error(e);
+        toast.error("No se pudieron cargar tus colecciones");
+        setMyItems([]);
+        setMyTotalPages(1);
+      } finally {
+        setMyLoading(false);
+      }
+    },
+    [apiFetch, token, userId]
   );
 
   const fetchAllowedCollections = useCallback(
-      async (page: number) => {
-        if (!token) return;
-        try {
-          setAllowedLoading(true);
-          const limit = collectionsPerPage;
-          const offset = (page - 1) * limit;
-          const url = `${API.BASE_URL}/collections/allowed?limit=${limit}&offset=${offset}`;
+    async (page: number) => {
+      if (!token) return;
+      try {
+        setAllowedLoading(true);
+        const limit = collectionsPerPage;
+        const offset = (page - 1) * limit;
+        const url = `${API.BASE_URL}/collections/allowed?limit=${limit}&offset=${offset}`;
 
-          const res = await apiFetch(url, {
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          });
-          if (!res.ok) {
-            const txt = await res.text();
-            console.error("allowed error:", txt);
-            throw new Error("No se pudieron cargar las colecciones permitidas");
-          }
-
-          const data = (await res.json()) as PaginatedResponse<CollectionOut> | CollectionOut[];
-          const items = Array.isArray(data) ? data : data.items ?? [];
-          const list = items.map(toCollectionListItem);
-          console.log("list, ", list);
-
-          setAllowedItems(list);
-          setAllowedTotalPages(Array.isArray(data) ? 1 : data.total_pages ?? 1);
-        } catch (e) {
-          console.error(e);
-          toast.error("No se pudieron cargar las colecciones permitidas");
-          setAllowedItems([]);
-          setAllowedTotalPages(1);
-        } finally {
-          setAllowedLoading(false);
+        const res = await apiFetch(url, {
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) {
+          const txt = await res.text();
+          console.error("allowed error:", txt);
+          throw new Error("No se pudieron cargar las colecciones permitidas");
         }
-      },
-      [apiFetch, token]
+
+        const data = (await res.json()) as PaginatedResponse<CollectionOut> | CollectionOut[];
+        const items = Array.isArray(data) ? data : data.items ?? [];
+        const list = items.map(toCollectionListItem);
+        console.log("list, ", list);
+
+        setAllowedItems(list);
+        setAllowedTotalPages(Array.isArray(data) ? 1 : data.total_pages ?? 1);
+      } catch (e) {
+        console.error(e);
+        toast.error("No se pudieron cargar las colecciones permitidas");
+        setAllowedItems([]);
+        setAllowedTotalPages(1);
+      } finally {
+        setAllowedLoading(false);
+      }
+    },
+    [apiFetch, token]
   );
+
+  // ------- Crear colección -------
+  const resetForm = () => {
+    setForm({
+      collectionCode: "",
+      collectionName: "",
+      description: "",
+      institution_id: null,
+      creator_agent_id: userId ?? null,
+    });
+    setCsvFile(null);
+
+    if (isRestrictedInstitutionPick) {
+      setSelectedInstitutionId(userInstitutionId);
+      setInstSearchText(
+        userInstitutionName || (userInstitutionId ? `Institución #${userInstitutionId}` : "")
+      );
+    } else {
+      setSelectedInstitutionId(null);
+      setInstSearchText("");
+    }
+  };
+
+  useEffect(() => {
+    // set default creator from user (usando user.id)
+    setForm((f) => ({ ...f, creator_agent_id: userId ?? null }));
+  }, [userId]);
+
+  useEffect(() => {
+    if (isRestrictedInstitutionPick) {
+      setSelectedInstitutionId(userInstitutionId);
+      setInstSearchText(
+        userInstitutionName || (userInstitutionId ? `Institución #${userInstitutionId}` : "")
+      );
+    }
+  }, [isRestrictedInstitutionPick, userInstitutionId, userInstitutionName, open]);
 
   // ------- Effects -------
   useEffect(() => {
-    if (agentId) fetchMyCollections(myPage);
-  }, [agentId, myPage, fetchMyCollections]);
+    if (userId) fetchMyCollections(myPage);
+  }, [userId, myPage, fetchMyCollections]);
 
   useEffect(() => {
     fetchAllowedCollections(allowedPage);
   }, [allowedPage, fetchAllowedCollections]);
-
-  // ------- Crear colección -------
-    const resetForm = () => {
-      setForm({
-        collectionID: "",
-        collectionCode: "",
-        collectionName: "",
-        description: "",
-        webSite: "",
-        institution_id: null,
-        creator_agent_id: agentId ?? null,
-      });
-      setCsvFile(null);
-
-      if (isRestrictedInstitutionPick) {
-        setSelectedInstitutionId(userInstitutionId);
-        setInstSearchText(
-            userInstitutionName || (userInstitutionId ? `Institución #${userInstitutionId}` : "")
-        );
-      } else {
-        setSelectedInstitutionId(null);
-        setInstSearchText("");
-      }
-    };
-
-  useEffect(() => {
-    // set default creator from user
-    setForm((f) => ({ ...f, creator_agent_id: agentId ?? null }));
-  }, [agentId]);
-
-    useEffect(() => {
-      if (isRestrictedInstitutionPick) {
-        setSelectedInstitutionId(userInstitutionId);
-        setInstSearchText(
-            userInstitutionName || (userInstitutionId ? `Institución #${userInstitutionId}` : "")
-        );
-      }
-    }, [isRestrictedInstitutionPick, userInstitutionId, userInstitutionName, open]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -245,19 +243,18 @@ type CollectionsPageProps = {
       toast.error("Selecciona una institución");
       return;
     }
-    if (!agentId) {
-      toast.error("No se encontró tu Agent ID");
+    if (!userId) {
+      toast.error("No se encontró tu ID de usuario");
       return;
     }
 
     const payload: CollectionCreate = {
-      collectionID: form.collectionID?.trim() || null,
+      // collectionID ya no se envía; lo genera el ORM
       collectionCode: form.collectionCode?.trim() || null,
       collectionName: form.collectionName?.trim() || null,
       description: form.description?.trim() || null,
-      webSite: form.webSite?.trim() || null,
-      institution_id: selectedInstitutionId,
-      creator_agent_id: agentId,
+      institutionId: selectedInstitutionId,
+      creatorUserId: userId,
     };
 
     try {
@@ -279,13 +276,12 @@ type CollectionsPageProps = {
       setOpen(false);
       resetForm();
 
-      // refrescar ambas listas (por si te aparece en allowed y en mis colecciones)
-      if (agentId) fetchMyCollections(1);
+      // refrescar ambas listas
+      if (userId) fetchMyCollections(1);
       fetchAllowedCollections(1);
       setMyPage(1);
       setAllowedPage(1);
 
-      // Si subieron CSV, por ahora solo contamos filas; la carga de ocurrencias no está en este endpoint
       if (csvFile) {
         const content = await csvFile.text();
         const lines = content.split(/\r?\n/).filter((l) => l.trim());
@@ -312,264 +308,163 @@ type CollectionsPageProps = {
   };
 
   // ------- Navegación tarjetas -------
-    const goToCollectionDetail = (c: CollectionListItem) => {
-      onNavigate("collection-detail", {
-        collectionId: c.id,
-        collectionName: c.name,
-        collectionInstitutionId: Number(c.institutionId),
-        isOwner: canManageCollection(c),
-      });
-    };
+  const goToCollectionDetail = (c: CollectionListItem) => {
+    onNavigate("collection-detail", {
+      collectionId: c.id,
+      collectionName: c.name,
+      collectionInstitutionId: Number(c.institutionId),
+      isOwner: canManageCollection(c),
+    });
+  };
 
   // ------- Render -------
   return (
-      <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <h1 className="text-3xl mb-2">Colecciones</h1>
-            <p className="text-muted-foreground">Gestiona tus colecciones y las que tienes permiso a ver/editar</p>
-          </div>
-
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Nueva Colección
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Crear Nueva Colección</DialogTitle>
-                <DialogDescription>Completa los metadatos de tu nueva colección.</DialogDescription>
-              </DialogHeader>
-
-              {/*<Tabs defaultValue="empty" className="w-full">*/}
-              {/*  <TabsList className="grid w-full grid-cols-2">*/}
-              {/*    <TabsTrigger value="empty">Colección Vacía</TabsTrigger>*/}
-              {/*    /!*<TabsTrigger value="csv">Importar CSV (metadata + conteo)</TabsTrigger>*!/*/}
-              {/*  </TabsList>*/}
-
-                {/* Form base compartido */}
-                <div className="rounded-lg bg-blue-50 p-4 my-4">
-                  <div className="flex items-start gap-3">
-                    <Folder className="h-5 w-5 text-blue-600 mt-0.5" />
-                    <div>
-                      <h4 className="text-sm text-blue-900 mb-1">Metadatos</h4>
-                    </div>
-                  </div>
-                </div>
-
-                <form onSubmit={handleCreate} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="collectionID">collectionID</Label>
-                      <Input
-                          id="collectionID"
-                          value={form.collectionID ?? ""}
-                          onChange={(e) => setForm((f) => ({ ...f, collectionID: e.target.value }))}
-                          placeholder="Opcional, p.ej. UNMSM-BOT-001"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="collectionCode">collectionCode</Label>
-                      <Input
-                          id="collectionCode"
-                          value={form.collectionCode ?? ""}
-                          onChange={(e) => setForm((f) => ({ ...f, collectionCode: e.target.value }))}
-                          placeholder="Opcional, p.ej. UNMSM-BOT"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="collectionName">Nombre de la colección</Label>
-                    <Input
-                        id="collectionName"
-                        value={form.collectionName ?? ""}
-                        onChange={(e) => setForm((f) => ({ ...f, collectionName: e.target.value }))}
-                        placeholder="Ej: Flora del Amazonas 2024"
-                        required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="description">Descripción</Label>
-                    <Textarea
-                        id="description"
-                        rows={3}
-                        value={form.description ?? ""}
-                        onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                        placeholder="Describe el propósito y contenido de esta colección"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="webSite">Sitio web</Label>
-                    <Input
-                        id="webSite"
-                        value={form.webSite ?? ""}
-                        onChange={(e) => setForm((f) => ({ ...f, webSite: e.target.value }))}
-                        placeholder="https://..."
-                    />
-                  </div>
-
-                  {/* Autocomplete de institución */}
-                  <div className="space-y-2">
-                    <Label htmlFor="webSite">Institución</Label>
-
-                    <AutocompleteInstitution
-                        token={token}
-                        apiFetch={apiFetch}
-                        placeholder={isRestrictedInstitutionPick ? (userInstitutionName || "Tu institución") : "Buscar institución..."}
-                        disabled={isRestrictedInstitutionPick}
-                        value={instSearchText}
-                        onChange={(t) => {
-                          if (isRestrictedInstitutionPick) return; // bloquear edición
-                          setInstSearchText(t);
-                          setSelectedInstitutionId(null);
-                        }}
-                        onSelect={(item) => {
-                          if (isRestrictedInstitutionPick) return; // bloquear selección
-                          setInstSearchText(item.institutionName);
-                          setSelectedInstitutionId(Number(item.id));
-                        }}
-                        minChars={1}
-                    />
-
-                  </div>
-
-                  {/* Creator */}
-                  <div className="space-y-1">
-                    <Label>Creador</Label>
-                    <div className="text-sm">{creatorDisplayName}</div>
-                  </div>
-
-
-                  <div className="flex gap-2 pt-2">
-                    <Button type="button" variant="outline" onClick={() => setOpen(false)} className="flex-1">
-                      Cancelar
-                    </Button>
-                    <Button type="submit" className="flex-1" disabled={creating}>
-                      {creating ? "Creando..." : "Crear colección"}
-                    </Button>
-                  </div>
-                </form>
-              {/*</Tabs>*/}
-            </DialogContent>
-          </Dialog>
+    <div className="container mx-auto px-4 py-8">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="text-3xl mb-2">Colecciones</h1>
+          <p className="text-muted-foreground">
+            Gestiona tus colecciones y las que tienes permiso a ver/editar
+          </p>
         </div>
 
-        {/* Mis colecciones */}
-        {agentId && (
-            <section className="mb-12">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl">Mis colecciones</h2>
-                <div className="flex items-center gap-3">
-                  <span className="text-sm text-muted-foreground">{myPage} / {myTotalPages}</span>
-                  <div className="flex items-center gap-2">
-                    <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => setMyPage((p) => Math.max(1, p - 1))}
-                        disabled={myPage <= 1 || myLoading}
-                        className="h-9 w-9 rounded-full"
-                    >
-                      <ChevronLeft className="h-5 w-5" />
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => setMyPage((p) => Math.min(myTotalPages, p + 1))}
-                        disabled={myPage >= myTotalPages || myLoading}
-                        className="h-9 w-9 rounded-full"
-                    >
-                      <ChevronRight className="h-5 w-5" />
-                    </Button>
-                  </div>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild>
+            <Button>
+              <Plus className="h-4 w-4 mr-2" />
+              Nueva Colección
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Crear Nueva Colección</DialogTitle>
+              <DialogDescription>Completa los metadatos de tu nueva colección.</DialogDescription>
+            </DialogHeader>
+
+            {/* Form base compartido */}
+            <div className="rounded-lg bg-blue-50 p-4 my-4">
+              <div className="flex items-start gap-3">
+                <Folder className="h-5 w-5 text-blue-600 mt-0.5" />
+                <div>
+                  <h4 className="text-sm text-blue-900 mb-1">Metadatos</h4>
+                </div>
+              </div>
+            </div>
+
+            <form onSubmit={handleCreate} className="space-y-4">
+              {/* Creator */}
+              <div className="space-y-1">
+                <Label>Creador</Label>
+                <div className="text-sm">{creatorDisplayName}</div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                {/* collectionID eliminado: lo genera el ORM */}
+                <div className="space-y-2">
+                  <Label htmlFor="collectionCode">Código de la colección</Label>
+                  <Input
+                    id="collectionCode"
+                    value={form.collectionCode ?? ""}
+                    onChange={(e) => setForm((f) => ({ ...f, collectionCode: e.target.value }))}
+                    placeholder="Opcional, p.ej. UNMSM-BOT"
+                  />
                 </div>
               </div>
 
-              {myLoading ? (
-                  <p className="text-sm text-muted-foreground py-4">Cargando…</p>
-              ) : myItems.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-4">No tienes colecciones creadas.</p>
-              ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {myItems.map((c) => (
-                        <Card
-                            key={c.id}
-                            className="hover:shadow-lg transition-all cursor-pointer h-full border-2 hover:border-primary/50"
-                            onClick={() => goToCollectionDetail(c)}
-                        >
+              <div className="space-y-2">
+                <Label htmlFor="collectionName">Nombre de la colección</Label>
+                <Input
+                  id="collectionName"
+                  value={form.collectionName ?? ""}
+                  onChange={(e) => setForm((f) => ({ ...f, collectionName: e.target.value }))}
+                  placeholder="Ej: Flora del Amazonas 2024"
+                  required
+                />
+              </div>
 
-                          <CardHeader>
-                            {/* fila superior: icono izquierda, contador derecha */}
-                            <div className="flex items-center justify-between gap-2 min-w-0 w-full">
-                              <Folder className="h-8 w-8 text-primary shrink-0" />
+              <div className="space-y-2">
+                <Label htmlFor="description">Descripción</Label>
+                <Textarea
+                  id="description"
+                  rows={3}
+                  value={form.description ?? ""}
+                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                  placeholder="Describe el propósito y contenido de esta colección"
+                />
+              </div>
 
-                              <span className="
-                                inline-flex items-center justify-center rounded-full
-                                bg-red-50 text-primary tabular-nums
-                                px-2 py-0.5 leading-none
-                                text-[11px] sm:text-xs
-                                max-w-[55%] sm:max-w-[60%]
-                                overflow-hidden text-ellipsis whitespace-nowrap text-right
-                                font-normal
-                              " title={`${c.occurrencesCount} ocurrencias`}>
-                                <span>{c.occurrencesCount}</span>
-                                <span className="ml-1 hidden sm:inline">ocurrencias</span>
-                                <span className="ml-1 sm:hidden">ocurrencias</span>
-                              </span>
-                            </div>
+              {/* Autocomplete de institución */}
+              <div className="space-y-2">
+                <Label htmlFor="institution">Institución</Label>
 
-                            <CardTitle className="truncate">{c.name ?? "(sin nombre)"}</CardTitle>
+                <AutocompleteInstitution
+                  token={token}
+                  apiFetch={apiFetch}
+                  placeholder={
+                    isRestrictedInstitutionPick
+                      ? userInstitutionName || "Tu institución"
+                      : "Buscar institución..."
+                  }
+                  disabled={isRestrictedInstitutionPick}
+                  value={instSearchText}
+                  onChange={(t) => {
+                    if (isRestrictedInstitutionPick) return; // bloquear edición
+                    setInstSearchText(t);
+                    setSelectedInstitutionId(null);
+                  }}
+                  onSelect={(item) => {
+                    if (isRestrictedInstitutionPick) return; // bloquear selección
+                    setInstSearchText(item.institutionName);
+                    setSelectedInstitutionId(Number(item.id));
+                  }}
+                  minChars={1}
+                />
+              </div>
 
-                            <CardDescription className="flex items-center gap-2 min-w-0">
-                              <Users className="h-4 w-4 shrink-0" />
-                              <span className="truncate">{c.institutionName ?? "Sin institución"}</span>
-                            </CardDescription>
-                          </CardHeader>
+              <div className="flex gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setOpen(false)}
+                  className="flex-1"
+                >
+                  Cancelar
+                </Button>
+                <Button type="submit" className="flex-1" disabled={creating}>
+                  {creating ? "Creando..." : "Crear colección"}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </div>
 
-                          <CardContent>
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <Shield className="h-4 w-4" />
-                              <span>Tu rol:</span>
-                              {c.my_role ? roleBadge(c.my_role) : (
-                                  <span className="italic">Sin rol específico</span>
-                              )}
-                            </div>
-                          </CardContent>
-                        </Card>
-
-                    ))}
-                  </div>
-              )}
-            </section>
-        )}
-
-        {/* Colecciones permitidas */}
+      {/* Mis colecciones */}
+      {userId && (
         <section className="mb-12">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl">Colecciones permitidas</h2>
+            <h2 className="text-2xl">Mis colecciones</h2>
             <div className="flex items-center gap-3">
-              <span className="text-sm text-muted-foreground">{allowedPage} / {allowedTotalPages}</span>
+              <span className="text-sm text-muted-foreground">
+                {myPage} / {myTotalPages}
+              </span>
               <div className="flex items-center gap-2">
                 <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setAllowedPage((p) => Math.max(1, p - 1))}
-                    disabled={allowedPage <= 1 || allowedLoading}
-                    className="h-9 w-9 rounded-full"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setMyPage((p) => Math.max(1, p - 1))}
+                  disabled={myPage <= 1 || myLoading}
+                  className="h-9 w-9 rounded-full"
                 >
                   <ChevronLeft className="h-5 w-5" />
                 </Button>
                 <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setAllowedPage((p) => Math.min(allowedTotalPages, p + 1))}
-                    disabled={allowedPage >= allowedTotalPages || allowedLoading}
-                    className="h-9 w-9 rounded-full"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setMyPage((p) => Math.min(myTotalPages, p + 1))}
+                  disabled={myPage >= myTotalPages || myLoading}
+                  className="h-9 w-9 rounded-full"
                 >
                   <ChevronRight className="h-5 w-5" />
                 </Button>
@@ -577,24 +472,27 @@ type CollectionsPageProps = {
             </div>
           </div>
 
-          {allowedLoading ? (
-              <p className="text-sm text-muted-foreground py-4">Cargando…</p>
-          ) : allowedItems.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4">No hay colecciones para mostrar.</p>
+          {myLoading ? (
+            <p className="text-sm text-muted-foreground py-4">Cargando…</p>
+          ) : myItems.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4">
+              No tienes colecciones creadas.
+            </p>
           ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {allowedItems.map((c) => (
-                    <Card
-                        key={c.id}
-                        className="hover:shadow-lg transition-all cursor-pointer h-full border-2 hover:border-primary/50"
-                        onClick={() => goToCollectionDetail(c)}
-                    >
-                      <CardHeader>
-                        {/* fila superior: icono izquierda, contador derecha */}
-                        <div className="flex items-center justify-between gap-2 min-w-0 w-full">
-                          <Folder className="h-8 w-8 text-primary shrink-0" />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {myItems.map((c) => (
+                <Card
+                  key={c.id}
+                  className="hover:shadow-lg transition-all cursor-pointer h-full border-2 hover:border-primary/50"
+                  onClick={() => goToCollectionDetail(c)}
+                >
+                  <CardHeader>
+                    {/* fila superior: icono izquierda, contador derecha */}
+                    <div className="flex items-center justify-between gap-2 min-w-0 w-full">
+                      <Folder className="h-8 w-8 text-primary shrink-0" />
 
-                          <span className="
+                      <span
+                        className="
                                 inline-flex items-center justify-center rounded-full
                                 bg-red-50 text-primary tabular-nums
                                 px-2 py-0.5 leading-none
@@ -602,44 +500,139 @@ type CollectionsPageProps = {
                                 max-w-[55%] sm:max-w-[60%]
                                 overflow-hidden text-ellipsis whitespace-nowrap text-right
                                 font-normal
-                              " title={`${c.occurrencesCount} ocurrencias`}>
-                                <span>{c.occurrencesCount}</span>
-                                <span className="ml-1 hidden sm:inline">ocurrencias</span>
-                                <span className="ml-1 sm:hidden">ocurrencias</span>
-                              </span>
-                        </div>
+                              "
+                        title={`${c.occurrencesCount} ocurrencias`}
+                      >
+                        <span>{c.occurrencesCount}</span>
+                        <span className="ml-1 hidden sm:inline">ocurrencias</span>
+                        <span className="ml-1 sm:hidden">ocurrencias</span>
+                      </span>
+                    </div>
 
-                        <CardTitle className="truncate">{c.name ?? "(sin nombre)"}</CardTitle>
+                    <CardTitle className="truncate">{c.name ?? "(sin nombre)"}</CardTitle>
 
-                        <CardDescription className="flex items-center gap-2 min-w-0">
-                          <Users className="h-4 w-4 shrink-0" />
-                          <span className="truncate">{c.institutionName ?? "Sin institución"}</span>
-                        </CardDescription>
-                      </CardHeader>
+                    <CardDescription className="flex items-center gap-2 min-w-0">
+                      <Users className="h-4 w-4 shrink-0" />
+                      <span className="truncate">
+                        {c.institutionName ?? "Sin institución"}
+                      </span>
+                    </CardDescription>
+                  </CardHeader>
 
-
-                      <CardContent>
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Users className="h-4 w-4" />
-                          <span className="truncate">
-                            Creador: {c.creatorName ?? "Desconocido"}
-                          </span>
-                        </div>
-
-                        {/* Rol abajo con Shield al costado */}
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground mt-2">
-                          <Shield className="h-4 w-4" />
-                          <span>Tu rol:</span>
-                          {c.my_role ? roleBadge(c.my_role) : <span>Sin rol específico</span>}
-                        </div>
-                      </CardContent>
-                    </Card>
-
-
-                ))}
-              </div>
+                  <CardContent>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Shield className="h-4 w-4" />
+                      <span>Tu rol:</span>
+                      {c.my_role ? (
+                        roleBadge(c.my_role)
+                      ) : (
+                        <span className="italic">Sin rol específico</span>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           )}
         </section>
-      </div>
+      )}
+
+      {/* Colecciones permitidas */}
+      <section className="mb-12">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl">Colecciones permitidas</h2>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-muted-foreground">
+              {allowedPage} / {allowedTotalPages}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setAllowedPage((p) => Math.max(1, p - 1))}
+                disabled={allowedPage <= 1 || allowedLoading}
+                className="h-9 w-9 rounded-full"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setAllowedPage((p) => Math.min(allowedTotalPages, p + 1))}
+                disabled={allowedPage >= allowedTotalPages || allowedLoading}
+                className="h-9 w-9 rounded-full"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {allowedLoading ? (
+          <p className="text-sm text-muted-foreground py-4">Cargando…</p>
+        ) : allowedItems.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-4">No hay colecciones para mostrar.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {allowedItems.map((c) => (
+              <Card
+                key={c.id}
+                className="hover:shadow-lg transition-all cursor-pointer h-full border-2 hover:border-primary/50"
+                onClick={() => goToCollectionDetail(c)}
+              >
+                <CardHeader>
+                  {/* fila superior: icono izquierda, contador derecha */}
+                  <div className="flex items-center justify-between gap-2 min-w-0 w-full">
+                    <Folder className="h-8 w-8 text-primary shrink-0" />
+
+                    <span
+                      className="
+                                inline-flex items-center justify-center rounded-full
+                                bg-red-50 text-primary tabular-nums
+                                px-2 py-0.5 leading-none
+                                text-[11px] sm:text-xs
+                                max-w-[55%] sm:max-w-[60%]
+                                overflow-hidden text-ellipsis whitespace-nowrap text-right
+                                font-normal
+                              "
+                      title={`${c.occurrencesCount} ocurrencias`}
+                    >
+                      <span>{c.occurrencesCount}</span>
+                      <span className="ml-1 hidden sm:inline">ocurrencias</span>
+                      <span className="ml-1 sm:hidden">ocurrencias</span>
+                    </span>
+                  </div>
+
+                  <CardTitle className="truncate">{c.name ?? "(sin nombre)"}</CardTitle>
+
+                  <CardDescription className="flex items-center gap-2 min-w-0">
+                    <Users className="h-4 w-4 shrink-0" />
+                    <span className="truncate">
+                      {c.institutionName ?? "Sin institución"}
+                    </span>
+                  </CardDescription>
+                </CardHeader>
+
+                <CardContent>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Users className="h-4 w-4" />
+                    <span className="truncate">
+                      Creador: {c.creatorName ?? "Desconocido"}
+                    </span>
+                  </div>
+
+                  {/* Rol abajo con Shield al costado */}
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground mt-2">
+                    <Shield className="h-4 w-4" />
+                    <span>Tu rol:</span>
+                    {c.my_role ? roleBadge(c.my_role) : <span>Sin rol específico</span>}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
   );
 }
