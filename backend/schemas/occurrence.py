@@ -173,6 +173,7 @@ class OccurrenceBriefItem(ORMBaseModel):
     collector: Optional[str] = None
     # eventDate en Occurrence es String (ISO8601 / etiqueta)
     date: Optional[str] = None
+    institutionName: Optional[str] = None
 
 
 # -----------------------------

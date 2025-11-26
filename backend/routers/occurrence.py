@@ -260,6 +260,7 @@ def list_occurrences_basic(
             Occurrence.eventDate.label("date"),
             Collection.id.label("collection_id"),
             Collection.institutionId.label("collection_institution_id"),
+            Institution.institutionName.label("institution_name"),
         )
         .join(Collection, Occurrence.collectionId == Collection.id)
         .outerjoin(
@@ -270,6 +271,10 @@ def list_occurrences_basic(
             ),
         )
         .outerjoin(Taxon, Taxon.id == Identification.taxonId)
+        .outerjoin(
+            Institution,
+            Collection.institutionId == Institution.id,
+        )
     )
 
     count_select = (
@@ -345,6 +350,7 @@ def list_occurrences_basic(
                 location=row.location,
                 collector=row.collector,
                 date=_fmt_dt(row.date),
+                institutionName=row.institution_name,
             )
         )
 

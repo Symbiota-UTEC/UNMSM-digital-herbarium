@@ -20,21 +20,15 @@ import { MapPin, Calendar, Leaf, Eye, Users, University } from "lucide-react";
 import { API } from "@constants/api";
 import { useAuth } from "@contexts/AuthContext";
 
-export interface InstitutionOut {
-  id: number;
-  institutionCode?: string | null;
-  institutionName?: string | null;
-}
-
 export interface OccurrenceListItem {
   id: number;
-  catalogNumber?: string | null;
+  code?: string | null;
   scientificName?: string | null;
-  collectionName?: string | null;
-  institution?: InstitutionOut | null;
-  locality?: string | null;
-  modified?: string | null; // ISO string
-  recordedBy?: string | null;
+  family?: string | null;
+  institutionName?: string | null;
+  location?: string | null;
+  collector?: string | null;
+  date?: string | null; // ISO string
 }
 
 export interface PaginatedResponse<T> {
@@ -69,8 +63,7 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
   );
 
   const fetchOccurrences = async () => {
-    // Si aún no hay token, no dispares la llamada
-    if (!token) return;
+    if (!token) return; // aún no hay sesión
 
     setLoading(true);
     try {
@@ -86,7 +79,7 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
           credentials: "include",
           headers: {
             "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            Authorization: `Bearer ${token}`,
           },
         },
       );
@@ -106,7 +99,6 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
   };
 
   useEffect(() => {
-    // Espera a que el token exista antes de hacer la primera llamada
     if (!token) return;
     fetchOccurrences();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -117,26 +109,29 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
   };
 
   const formatDate = (iso?: string | null) => {
-    if (!iso) return "-";
+    if (!iso) return "—";
     const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return "-";
-    return d.toLocaleDateString("es-ES");
+    if (Number.isNaN(d.getTime())) return "—";
+    return d.toLocaleDateString("es-PE", { dateStyle: "medium" });
   };
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="mb-6 flex items-center justify-between gap-3">
+      {/* Encabezado */}
+      <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl mb-2">Ocurrencias</h1>
-          <p className="text-muted-foreground">
-            Registro de ocurrencias a las que tienes acceso
+          <h1 className="text-2xl md:text-3xl font-semibold tracking-tight mb-1">
+            Ocurrencias
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Registro de ocurrencias a las que tienes acceso.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex w-full md:w-auto items-center gap-2">
           <input
-            className="border rounded-md px-3 py-2 text-sm"
-            placeholder="Buscar por catálogo, científico, colección, universidad, localidad…"
+            className="flex-1 md:w-80 border border-input bg-background rounded-md px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+            placeholder="Buscar por código, nombre científico, familia, institución, localidad, colector…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
@@ -145,6 +140,7 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
               setPage(1);
               fetchOccurrences();
             }}
+            disabled={loading}
           >
             Buscar
           </Button>
@@ -153,12 +149,16 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
 
       <Card>
         <CardHeader>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <Users className="h-5 w-5 text-primary" />
             <div>
-              <CardTitle>Ocurrencias Compartidas</CardTitle>
-              <CardDescription>
-                {loading ? "Cargando…" : `${total} ocurrencias disponibles`}
+              <CardTitle className="text-base md:text-lg font-semibold">
+                Ocurrencias compartidas
+              </CardTitle>
+              <CardDescription className="text-xs md:text-sm">
+                {loading
+                  ? "Cargando ocurrencias…"
+                  : `${total} ocurrencias encontradas`}
               </CardDescription>
             </div>
           </div>
@@ -169,16 +169,33 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Código</TableHead>
-                  <TableHead>Nombre Científico</TableHead>
-                  <TableHead>Universidad</TableHead>
-                  <TableHead>Colección</TableHead>
-                  <TableHead>Ubicación</TableHead>
-                  <TableHead>Fecha</TableHead>
-                  <TableHead>Recolector</TableHead>
-                  <TableHead>Acciones</TableHead>
+                  <TableHead className="whitespace-nowrap text-xs md:text-sm">
+                    Código
+                  </TableHead>
+                  <TableHead className="whitespace-nowrap text-xs md:text-sm">
+                    Nombre científico
+                  </TableHead>
+                  <TableHead className="whitespace-nowrap text-xs md:text-sm">
+                    Familia
+                  </TableHead>
+                  <TableHead className="whitespace-nowrap text-xs md:text-sm">
+                    Institución
+                  </TableHead>
+                  <TableHead className="whitespace-nowrap text-xs md:text-sm">
+                    Localidad
+                  </TableHead>
+                  <TableHead className="whitespace-nowrap text-xs md:text-sm">
+                    Colector
+                  </TableHead>
+                  <TableHead className="whitespace-nowrap text-xs md:text-sm">
+                    Fecha
+                  </TableHead>
+                  <TableHead className="whitespace-nowrap text-xs md:text-sm">
+                    Acciones
+                  </TableHead>
                 </TableRow>
               </TableHeader>
+
               <TableBody>
                 {!loading && items.length === 0 && (
                   <TableRow>
@@ -186,83 +203,104 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
                       colSpan={8}
                       className="text-center text-sm text-muted-foreground py-8"
                     >
-                      Sin resultados
+                      No se encontraron ocurrencias.
                     </TableCell>
                   </TableRow>
                 )}
 
                 {items.map((occ) => (
                   <TableRow key={occ.id}>
-                    <TableCell>
-                      <Badge variant="outline">
-                        {occ.catalogNumber ?? "-"}
+                    {/* Código */}
+                    <TableCell className="align-middle">
+                      <Badge
+                        variant="outline"
+                        className="text-xs font-mono px-2 py-0.5 rounded-full"
+                      >
+                        {occ.code ?? "—"}
                       </Badge>
                     </TableCell>
 
-                    <TableCell>
+                    {/* Nombre científico */}
+                    <TableCell className="align-middle">
                       <div className="flex items-center gap-2">
                         <Leaf className="h-4 w-4 text-primary" />
-                        <span className="italic">
-                          {occ.scientificName ?? "-"}
+                        <span className="italic text-sm">
+                          {occ.scientificName ?? "—"}
                         </span>
                       </div>
                     </TableCell>
 
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <University className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm">
-                          {occ.institution?.institutionName ?? "-"}
-                        </span>
+                    {/* Familia */}
+                    <TableCell className="align-middle text-sm">
+                      {occ.family ?? "—"}
+                    </TableCell>
+
+                    {/* Institución */}
+                    <TableCell className="align-middle">
+                      <div className="flex items-center gap-1 text-sm">
+                        <University className="h-3 w-3 text-muted-foreground" />
+                        <span>{occ.institutionName ?? "—"}</span>
                       </div>
                     </TableCell>
 
-                    <TableCell>{occ.collectionName ?? "-"}</TableCell>
-
-                    <TableCell>
-                      <div className="flex items-center gap-1">
+                    {/* Localidad */}
+                    <TableCell className="align-middle">
+                      <div className="flex items-center gap-1 text-sm">
                         <MapPin className="h-3 w-3 text-muted-foreground" />
-                        <span className="text-sm">{occ.locality ?? "-"}</span>
+                        <span>{occ.location ?? "—"}</span>
                       </div>
                     </TableCell>
 
-                    <TableCell>
-                      <div className="flex items-center gap-1">
+                    {/* Colector */}
+                    <TableCell className="align-middle text-sm">
+                      {occ.collector ?? "—"}
+                    </TableCell>
+
+                    {/* Fecha */}
+                    <TableCell className="align-middle">
+                      <div className="flex items-center gap-1 text-sm">
                         <Calendar className="h-3 w-3 text-muted-foreground" />
-                        <span className="text-sm">
-                          {formatDate(occ.modified)}
-                        </span>
+                        <span>{formatDate(occ.date)}</span>
                       </div>
                     </TableCell>
 
-                    <TableCell className="text-sm">
-                      {occ.recordedBy ?? "-"}
-                    </TableCell>
-
-                    <TableCell>
+                    {/* Acciones */}
+                    <TableCell className="align-middle">
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => handleViewClick(occ.id)}
-                        title="Ver detalles"
+                        title="Ver detalles de la ocurrencia"
                       >
                         <Eye className="h-4 w-4" />
                       </Button>
                     </TableCell>
                   </TableRow>
                 ))}
+
+                {loading && (
+                  <TableRow>
+                    <TableCell
+                      colSpan={8}
+                      className="py-6 text-center text-sm text-muted-foreground"
+                    >
+                      Cargando…
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </div>
 
-          {/* Paginación simple */}
-          <div className="flex items-center justify-between mt-4">
-            <span className="text-sm text-muted-foreground">
+          {/* Paginación */}
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mt-4">
+            <span className="text-xs md:text-sm text-muted-foreground">
               Página {page} de {totalPages}
             </span>
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
+                size="sm"
                 disabled={page <= 1 || loading}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
               >
@@ -270,6 +308,7 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
               </Button>
               <Button
                 variant="default"
+                size="sm"
                 disabled={page >= totalPages || loading}
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               >
