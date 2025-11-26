@@ -1,8 +1,21 @@
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "../ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "../ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../ui/table";
 import {
   Dialog,
   DialogContent,
@@ -24,7 +37,13 @@ import {
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Badge } from "../ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 import {
   ArrowLeft,
   UserPlus,
@@ -45,7 +64,11 @@ import { Role } from "@constants/roles";
 import { OccurrenceBriefItem } from "@interfaces/occurrence";
 import { PaginatedResponse } from "@interfaces/utils/pagination";
 import { CollectionUserAccessItem } from "@interfaces/collection";
-import { ApiUserLookupResponse, mapApiLookupToResult, VISIBILITY } from "@interfaces/auth";
+import {
+  ApiUserLookupResponse,
+  mapApiLookupToResult,
+  VISIBILITY,
+} from "@interfaces/auth";
 
 interface CollectionDetailPageProps {
   collectionId: string;
@@ -68,6 +91,14 @@ async function apiFetch(input: RequestInfo, init?: RequestInit) {
   return res;
 }
 
+// Formateo seguro de fecha del brief (puede no ser ISO perfecto)
+function formatBriefDate(raw: string | null): string {
+  if (!raw) return "—";
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  return d.toLocaleDateString("es-ES");
+}
+
 export function CollectionDetailPage({
   collectionId,
   collectionName,
@@ -80,7 +111,7 @@ export function CollectionDetailPage({
   // ================== Estado: usuarios ==================
   const [usersResp, setUsersResp] =
     useState<PaginatedResponse<CollectionUserAccessItem> | null>(null);
-  const [usersLimit] = useState(3); // Admin-style
+  const [usersLimit] = useState(3);
   const [usersOffset, setUsersOffset] = useState(0);
 
   // ================== Estado: ocurrencias ==================
@@ -129,7 +160,7 @@ export function CollectionDetailPage({
   // ================== Cargas ==================
   const fetchUsers = useCallback(
     async (opts?: { limit?: number; offset?: number }) => {
-      if (!token) return; // evita llamar sin token
+      if (!token) return;
 
       try {
         const limit = opts?.limit ?? usersLimit;
@@ -156,7 +187,7 @@ export function CollectionDetailPage({
   );
 
   const fetchOccurrences = useCallback(async () => {
-    if (!token) return; // evita llamar sin token
+    if (!token) return;
 
     try {
       const url = `${API.BASE_URL}${API.PATHS.COLLECTIONS_OCCURRENCES_BRIEF(
@@ -435,9 +466,7 @@ export function CollectionDetailPage({
                   <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0" />
                 )}
                 <div className="flex-1">
-                  <CardTitle className="mb-1">
-                    Usuarios con Acceso
-                  </CardTitle>
+                  <CardTitle className="mb-1">Usuarios con Acceso</CardTitle>
                   <CardDescription>
                     Usuarios que pueden acceder a esta colección (
                     {usersCount} total)
@@ -445,10 +474,10 @@ export function CollectionDetailPage({
                 </div>
               </button>
 
-              {/* Controles de paginación + botón, igual estilo que Ocurrencias */}
+              {/* Controles de paginación + botón */}
               {isUsersExpanded && (
                 <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
-                  {/* Prev/Next estilo AdminPage */}
+                  {/* Prev/Next */}
                   <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                     <Button
                       variant="outline"
@@ -501,9 +530,7 @@ export function CollectionDetailPage({
                     </DialogTrigger>
                     <DialogContent>
                       <DialogHeader>
-                        <DialogTitle>
-                          Agregar Usuario a la Colección
-                        </DialogTitle>
+                        <DialogTitle>Agregar Usuario a la Colección</DialogTitle>
                         <DialogDescription>
                           Invita a otros usuarios como visualizadores
                         </DialogDescription>
@@ -511,9 +538,7 @@ export function CollectionDetailPage({
 
                       <form onSubmit={handleAddUser} className="space-y-4">
                         <div className="space-y-2">
-                          <Label htmlFor="userEmail">
-                            Correo Electrónico
-                          </Label>
+                          <Label htmlFor="userEmail">Correo Electrónico</Label>
                           <div className="relative">
                             <Input
                               id="userEmail"
@@ -629,108 +654,108 @@ export function CollectionDetailPage({
             </div>
           </CardHeader>
 
-{isUsersExpanded && (
-  <CardContent>
-    {!usersResp ? (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-        <RefreshCw className="h-4 w-4 animate-spin" /> Cargando usuarios…
-      </div>
-    ) : (
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Usuario</TableHead>
-            <TableHead className="text-center">Rol</TableHead>
-            <TableHead className="text-center">Acciones</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {usersResp.items.length === 0 ? (
-            <TableRow>
-              <TableCell
-                colSpan={3}
-                className="text-center text-sm text-muted-foreground"
-              >
-                No hay usuarios aún.
-              </TableCell>
-            </TableRow>
-          ) : (
-            usersResp.items.map((u) => (
-              <TableRow key={u.email}>
-                {/* Columna usuario */}
-                <TableCell>
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                      {u.role === "viewer" ? (
-                        <Eye className="h-5 w-5 text-primary" />
-                      ) : (
-                        <Pencil className="h-5 w-5 text-primary" />
-                      )}
-                    </div>
-                    <div>
-                      <p className="font-medium">
-                        {u.fullName || u.email.split("@")[0]}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {u.email}
-                      </p>
-                      {u.institution && (
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {u.institution}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </TableCell>
+          {isUsersExpanded && (
+            <CardContent>
+              {!usersResp ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+                  <RefreshCw className="h-4 w-4 animate-spin" /> Cargando
+                  usuarios…
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Usuario</TableHead>
+                      <TableHead className="text-center">Rol</TableHead>
+                      <TableHead className="text-center">Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {usersResp.items.length === 0 ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={3}
+                          className="text-center text-sm text-muted-foreground"
+                        >
+                          No hay usuarios aún.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      usersResp.items.map((u) => (
+                        <TableRow key={u.email}>
+                          {/* Columna usuario */}
+                          <TableCell>
+                            <div className="flex items-center gap-3">
+                              <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                {u.role === "viewer" ? (
+                                  <Eye className="h-5 w-5 text-primary" />
+                                ) : (
+                                  <Pencil className="h-5 w-5 text-primary" />
+                                )}
+                              </div>
+                              <div>
+                                <p className="font-medium">
+                                  {u.fullName || u.email.split("@")[0]}
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                  {u.email}
+                                </p>
+                                {u.institution && (
+                                  <p className="text-xs text-muted-foreground mt-0.5">
+                                    {u.institution}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </TableCell>
 
-                {/* Columna rol */}
-                <TableCell className="whitespace-nowrap align-middle text-center">
-                  <Badge
-                    variant={u.role === "viewer" ? "secondary" : "default"}
-                    className="mx-auto"
-                  >
-                    {u.role === "viewer"
-                      ? "Visualizador"
-                      : u.role === "editor"
-                      ? "Editor"
-                      : "Owner"}
-                  </Badge>
-                </TableCell>
+                          {/* Columna rol */}
+                          <TableCell className="whitespace-nowrap align-middle text-center">
+                            <Badge
+                              variant={
+                                u.role === "viewer" ? "secondary" : "default"
+                              }
+                              className="mx-auto"
+                            >
+                              {u.role === "viewer"
+                                ? "Visualizador"
+                                : u.role === "editor"
+                                ? "Editor"
+                                : "Owner"}
+                            </Badge>
+                          </TableCell>
 
-                {/* Columna acciones */}
-                <TableCell className="whitespace-nowrap align-middle">
-                  <div className="flex justify-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled
-                      title="Próximamente"
-                      className="h-9 w-9 p-0"
-                    >
-                      <RefreshCw className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled
-                      title="Próximamente"
-                      className="h-9 w-9 p-0"
-                    >
-                      <Trash2 className="h-4 w-4 text-red-600" />
-                    </Button>
-                  </div>
-                </TableCell>
-
-
-              </TableRow>
-            ))
+                          {/* Columna acciones */}
+                          <TableCell className="whitespace-nowrap align-middle">
+                            <div className="flex justify-center gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled
+                                title="Próximamente"
+                                className="h-9 w-9 p-0"
+                              >
+                                <RefreshCw className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled
+                                title="Próximamente"
+                                className="h-9 w-9 p-0"
+                              >
+                                <Trash2 className="h-4 w-4 text-red-600" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
           )}
-        </TableBody>
-      </Table>
-    )}
-  </CardContent>
-)}
-
         </Card>
       )}
 
@@ -745,7 +770,7 @@ export function CollectionDetailPage({
               </CardDescription>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
-              {/* Prev/Next estilo AdminPage */}
+              {/* Prev/Next */}
               <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                 <Button
                   variant="outline"
@@ -842,11 +867,7 @@ export function CollectionDetailPage({
                       <TableCell>{occ.family ?? "—"}</TableCell>
                       <TableCell>{occ.location ?? "—"}</TableCell>
                       <TableCell>{occ.collector ?? "—"}</TableCell>
-                      <TableCell>
-                        {occ.date
-                          ? new Date(occ.date).toLocaleDateString("es-ES")
-                          : "—"}
-                      </TableCell>
+                      <TableCell>{formatBriefDate(occ.date)}</TableCell>
                       <TableCell>
                         <div className="flex gap-2">
                           <Button
@@ -905,7 +926,7 @@ export function CollectionDetailPage({
         </div>
       )}
 
-      {/* Confirm dialogs (placeholders) */}
+      {/* Confirm dialogs */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>

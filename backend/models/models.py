@@ -343,43 +343,98 @@ class Taxon(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
 
-    taxonID: Mapped[Optional[String]] = mapped_column(String(255), unique=True, index=True)
-    scientificNameID: Mapped[Optional[String]] = mapped_column(String(255))
-    localID: Mapped[Optional[String]] = mapped_column(String(255))
-    scientificName: Mapped[Optional[String]] = mapped_column(String(500), index=True)
-    taxonRank: Mapped[Optional[String]] = mapped_column(String(50))
-    parentNameUsageID: Mapped[Optional[String]] = mapped_column(String(255))
+    taxonID: Mapped[Optional[String]] = mapped_column(
+        "taxon_id", String(255), unique=True, index=True
+    )
+    scientificNameID: Mapped[Optional[String]] = mapped_column(
+        "scientific_name_id", String(255)
+    )
+    localID: Mapped[Optional[String]] = mapped_column(
+        "local_id", String(255)
+    )
+    scientificName: Mapped[Optional[String]] = mapped_column(
+        "scientific_name", String(500), index=True
+    )
+    taxonRank: Mapped[Optional[String]] = mapped_column(
+        "taxon_rank", String(50)
+    )
+    parentNameUsageID: Mapped[Optional[String]] = mapped_column(
+        "parent_name_usage_id", String(255)
+    )
 
-    scientificNameAuthorship: Mapped[Optional[String]] = mapped_column(String(255))
-    family: Mapped[Optional[String]] = mapped_column(String(100))
-    subfamily: Mapped[Optional[String]] = mapped_column(String(100))
-    tribe: Mapped[Optional[String]] = mapped_column(String(100))
-    subtribe: Mapped[Optional[String]] = mapped_column(String(100))
-    genus: Mapped[Optional[String]] = mapped_column(String(100))
-    subgenus: Mapped[Optional[String]] = mapped_column(String(100))
-    specificEpithet: Mapped[Optional[String]] = mapped_column(String(100))
-    infraspecificEpithet: Mapped[Optional[String]] = mapped_column(String(100))
-    verbatimTaxonRank: Mapped[Optional[String]] = mapped_column(String(50))
-    nomenclaturalStatus: Mapped[Optional[String]] = mapped_column(String(100))
+    scientificNameAuthorship: Mapped[Optional[String]] = mapped_column(
+        "scientific_name_authorship", String(255)
+    )
+    family: Mapped[Optional[String]] = mapped_column(
+        "family", String(100)
+    )
+    subfamily: Mapped[Optional[String]] = mapped_column(
+        "subfamily", String(100)
+    )
+    tribe: Mapped[Optional[String]] = mapped_column(
+        "tribe", String(100)
+    )
+    subtribe: Mapped[Optional[String]] = mapped_column(
+        "subtribe", String(100)
+    )
+    genus: Mapped[Optional[String]] = mapped_column(
+        "genus", String(100)
+    )
+    subgenus: Mapped[Optional[String]] = mapped_column(
+        "subgenus", String(100)
+    )
+    specificEpithet: Mapped[Optional[String]] = mapped_column(
+        "specific_epithet", String(100)
+    )
+    infraspecificEpithet: Mapped[Optional[String]] = mapped_column(
+        "infraspecific_epithet", String(100)
+    )
+    verbatimTaxonRank: Mapped[Optional[String]] = mapped_column(
+        "verbatim_taxon_rank", String(50)
+    )
+    nomenclaturalStatus: Mapped[Optional[String]] = mapped_column(
+        "nomenclatural_status", String(100)
+    )
 
-    namePublishedIn: Mapped[Optional[String]] = mapped_column(String(500))
-    taxonomicStatus: Mapped[Optional[String]] = mapped_column(String(100))
-    acceptedNameUsageID: Mapped[Optional[String]] = mapped_column(String(255))
-    originalNameUsageID: Mapped[Optional[String]] = mapped_column(String(255))
-    nameAccordingToID: Mapped[Optional[String]] = mapped_column(String(255))
-    taxonRemarks: Mapped[Optional[Text]] = mapped_column(Text())
+    namePublishedIn: Mapped[Optional[String]] = mapped_column(
+        "name_published_in", String(500)
+    )
+    taxonomicStatus: Mapped[Optional[String]] = mapped_column(
+        "taxonomic_status", String(100)
+    )
+    acceptedNameUsageID: Mapped[Optional[String]] = mapped_column(
+        "accepted_name_usage_id", String(255)
+    )
+    originalNameUsageID: Mapped[Optional[String]] = mapped_column(
+        "original_name_usage_id", String(255)
+    )
+    nameAccordingToID: Mapped[Optional[String]] = mapped_column(
+        "name_according_to_id", String(255)
+    )
+    taxonRemarks: Mapped[Optional[Text]] = mapped_column(
+        "taxon_remarks", Text()
+    )
 
-    created: Mapped[Optional[date]] = mapped_column(Date)
-    modified: Mapped[Optional[date]] = mapped_column(Date)
+    created: Mapped[Optional[date]] = mapped_column("created", Date)
+    modified: Mapped[Optional[date]] = mapped_column("modified", Date)
 
     # Flora fields
-    references: Mapped[Optional[Text]] = mapped_column("references", Text())
-    source: Mapped[Optional[String]] = mapped_column(String(255))
-    majorGroup: Mapped[Optional[String]] = mapped_column(String(100))
-    tplID: Mapped[Optional[String]] = mapped_column(String(100))
+    references: Mapped[Optional[Text]] = mapped_column(
+        "references", Text()
+    )
+    source: Mapped[Optional[String]] = mapped_column(
+        "source", String(255)
+    )
+    majorGroup: Mapped[Optional[String]] = mapped_column(
+        "major_group", String(100)
+    )
+    tplID: Mapped[Optional[String]] = mapped_column(
+        "tpl_id", String(100)
+    )
 
     # Flag: aparece en el último Excel de Flora?
     isCurrent: Mapped[bool] = mapped_column(
+        "is_current",
         Boolean,
         nullable=False,
         default=True,
@@ -724,6 +779,27 @@ class Occurrence(Base):
         back_populates="occurrence",
         cascade="all, delete-orphan",
         passive_deletes=True,
+        foreign_keys=lambda: [Identification.occurrenceId],
+        primaryjoin=lambda: Occurrence.id == Identification.occurrenceId,
+    )
+
+    # Identificación vigente
+    currentIdentificationId: Mapped[Optional[int]] = mapped_column(
+        "current_identification_id",
+        ForeignKey("identification.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        doc=(
+            "FK a la Identification que se considera vigente para esta ocurrencia. "
+            "Debe ser coherente con Identification.isCurrent = true."
+        ),
+    )
+    currentIdentification: Mapped[Optional["Identification"]] = relationship(
+        "Identification",
+        foreign_keys=lambda: [Occurrence.currentIdentificationId],
+        primaryjoin=lambda: Occurrence.currentIdentificationId == Identification.id,
+        lazy="joined",
+        post_update=True,
     )
 
     # Imágenes asociadas a la ocurrencia
@@ -734,13 +810,13 @@ class Occurrence(Base):
         passive_deletes=True,
     )
 
-    __table_args__ = (
-        UniqueConstraint(
-            "collection_id",
-            "catalog_number",
-            name="uq_occurrence_collection_catalog",
-        ),
-    )
+    # __table_args__ = (
+    #     UniqueConstraint(
+    #         "collection_id",
+    #         "catalog_number",
+    #         name="uq_occurrence_collection_catalog",
+    #     ),
+    # )
 
 
 class OccurrenceAgent(Base):
@@ -838,16 +914,21 @@ class Identification(Base):
     occurrence: Mapped["Occurrence"] = relationship(
         "Occurrence",
         back_populates="identifications",
+        foreign_keys=lambda: [Identification.occurrenceId],
+        primaryjoin=lambda: Identification.occurrenceId == Occurrence.id,
     )
 
-    taxonId: Mapped[int] = mapped_column(
+    taxonId: Mapped[Optional[int]] = mapped_column(
         "taxon_id",
         ForeignKey("taxon.id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
         index=True,
-        doc="FK al taxón asignado en esta identificación.",
+        doc=(
+            "FK al taxón asignado en esta identificación según el backbone. "
+            "Puede ser NULL si aún no se ha resuelto o hay ambigüedad."
+        ),
     )
-    taxon: Mapped["Taxon"] = relationship(
+    taxon: Mapped[Optional["Taxon"]] = relationship(
         "Taxon",
         back_populates="identifications",
     )
@@ -858,6 +939,23 @@ class Identification(Base):
         secondary="identification_identifier",
         back_populates="identifications",
         lazy="selectin",
+    )
+
+    # El campo que se llenó en la etiqueta
+    # A veces no se puede asociar un taxonId automáticamente
+    # Se debe verificar manualmente para asociar un taxonId
+    scientificName: Mapped[Optional[str]] = mapped_column(
+        "scientific_name",
+        String(500),
+        doc=(
+            "Nombre científico asignado en esta identificación, tal como lo usa el identificador "
+            "(puede no coincidir 1:1 con Taxon.scientificName)."
+        ),
+    )
+    scientificNameAuthorship: Mapped[Optional[str]] = mapped_column(
+        "scientific_name_authorship",
+        String(255),
+        doc="Autoría del nombre científico en esta identificación.",
     )
 
     # ------------------------------
@@ -1032,3 +1130,4 @@ Index("ix_identification_occurrence_current", Identification.occurrenceId, Ident
 Index("ix_occurrence_latlon", Occurrence.decimalLatitude, Occurrence.decimalLongitude)
 Index("ix_occurrence_catalog", Occurrence.catalogNumber, Occurrence.collectionId)
 Index("ix_occurrence_event_date", Occurrence.year, Occurrence.month, Occurrence.day)
+Index("ix_taxon_name_auth_rank", Taxon.scientificName, Taxon.scientificNameAuthorship, Taxon.taxonRank)

@@ -56,6 +56,24 @@ class OccurrenceIdentificationOut(ORMBaseModel):
     createdAt: datetime
     updatedAt: datetime
 
+    scientificName: Optional[str] = None
+    scientificNameAuthorship: Optional[str] = None
+
+
+class OccurrenceImageOut(ORMBaseModel):
+    """
+    Imagen asociada a una ocurrencia (refleja el modelo OccurrenceImage).
+    """
+    id: int
+    occurrenceId: int
+
+    imagePath: str
+    fileSize: Optional[int] = None
+    photographer: Optional[str] = None
+
+    createdAt: datetime
+    updatedAt: datetime
+
 
 # -----------------------------
 # Detalle de ocurrencia
@@ -132,6 +150,13 @@ class OccurrenceOut(ORMBaseModel):
     # Relacionados
     agents: List[OccurrenceAgentOut] = []
     identifications: List[OccurrenceIdentificationOut] = []
+
+    # Nueva relación: identificación vigente
+    currentIdentificationId: Optional[int] = None
+    currentIdentification: Optional[OccurrenceIdentificationOut] = None
+
+    # Nuevas imágenes asociadas
+    images: List[OccurrenceImageOut] = []
 
 
 # -----------------------------
