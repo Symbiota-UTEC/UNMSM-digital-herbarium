@@ -7,7 +7,6 @@ export interface BasicInstitutionInfo {
 }
 
 export interface Institution extends BasicInstitutionInfo {
-    institutionID?: string | null;
     institutionCode?: string | null;
     country?: string | null;
     city?: string | null;
@@ -15,8 +14,8 @@ export interface Institution extends BasicInstitutionInfo {
     email?: string | null;
     phone?: string | null;
     webSite?: string | null;
-    institution_admin_user_id?: number | null;
-    admin_user?: BasicUserInfo | null;
+    institutionAdminUserId?: number | null;
+    adminUser?: BasicUserInfo | null;
     usersCount?: number;
 }
 

@@ -26,6 +26,7 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
       toast.success('Inicio de sesión exitoso');
       onNavigate('collections');
     } catch (error) {
+      console.log(error);
       toast.error('Error al iniciar sesión');
     } finally {
       setLoading(false);

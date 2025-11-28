@@ -1,63 +1,104 @@
 import re
-from typing import Dict
+from typing import Dict, Set
 
 DWC_HEADER_RE = re.compile(
-    r"^dwc:(Occurrence|Event|Location|Taxon|ResourceRelationship):([A-Za-z_][A-Za-z0-9_]*)$"
+    r"^dwc:(Occurrence|Event|Location|Taxon|Identification):([A-Za-z_][A-Za-z0-9_]*)$"
 )
 
-ALLOWED_FIELDS: Dict[str, set] = {
+ALLOWED_FIELDS: Dict[str, Set[str]] = {
+    # ------------------------------------------------------------------
+    # DwC: Occurrence (solo campos que realmente tienes en tu modelo)
+    # ------------------------------------------------------------------
     "Occurrence": {
-        "occurrenceID",
+        # Core obligatorios en tu modelo
         "catalogNumber",
         "recordNumber",
         "recordedBy",
-        "recordEnteredBy",
-        "individualCount",
-        "occurrenceStatus",
-        "preparations",
-        "disposition",
+        "recordedByID",  # IDs de colectores (ORCID/URI), alineados con recordedBy
+
+        # Nice to have
+        "organismQuantity",
+        "organismQuantityType",
+        "georeferenceVerificationStatus",
+        "otherCatalogNumbers",
         "occurrenceRemarks",
-        "modified",
-        "license",
-        "rightsHolder",
-        "accessRights",
-        "bibliographicCitation",
+        "lifeStage",
+        "establishmentMeans",
+        "associatedReferences",
+        "associatedTaxa",
+
+        # Extras / extensión
+        "dynamicProperties",
+        "projectTitle",
+        "projectID",
+        "fundingAttribution",
+        "fundingAttributionID",
     },
+
+    # ------------------------------------------------------------------
+    # DwC: Event (se mapean a campos de Occurrence aplanado)
+    # ------------------------------------------------------------------
     "Event": {
         "eventDate",
-        "year", "month", "day",
+        "year",
+        "month",
+        "day",
         "verbatimEventDate",
         "fieldNumber",
-        "samplingProtocol", "samplingEffort",
+        "samplingProtocol",
+        "samplingEffort",
         "habitat",
         "eventRemarks",
+        "sampleSizeValue",
+        "sampleSizeUnit",
+        "fieldNotes",
+        "projectID",
+        "projectTitle",
     },
+
+    # ------------------------------------------------------------------
+    # DwC: Location (también mapean a Occurrence aplanado)
+    # ------------------------------------------------------------------
     "Location": {
+        "country",
         "stateProvince",
         "county",
         "municipality",
         "locality",
         "verbatimLocality",
+        "locationRemarks",
         "decimalLatitude",
         "decimalLongitude",
-        "geodeticDatum",
-        "coordinateUncertaintyInMeters",
-        "coordinatePrecision",
+        "countryCode",
+        "georeferencedBy",
+        "georeferenceRemarks",
         "minimumElevationInMeters",
         "maximumElevationInMeters",
         "verbatimElevation",
+        "verbatimCoordinateSystem",
+        "hydrographicContext",
+        "footprintWKT",
     },
+
+    # ------------------------------------------------------------------
+    # DwC: Taxon
+    #  - Para carga via CSV SOLO usarás scientificName + scientificNameAuthorship
+    #    para resolver taxonId contra tu tabla Taxon (backbone WFO).
+    # ------------------------------------------------------------------
     "Taxon": {
         "scientificName",
         "scientificNameAuthorship",
-        "family",
-        "genus",
-        "specificEpithet",
-        "infraspecificEpithet",
-        "taxonRank",
-        "acceptedNameUsage",
     },
-    "ResourceRelationship": {
-        "relatedResourceID",
+
+    # ------------------------------------------------------------------
+    # DwC: Identification (para identificadores múltiples)
+    # ------------------------------------------------------------------
+    "Identification": {
+        "identifiedBy",    # texto, lista separada por comas (OBLIGATORIO)
+        "identifiedByID",  # IDs (ORCID/URI/etc) en el mismo orden, separados por comas
+        "dateIdentified",
+        "isCurrent",
+        "isVerified",
+        "typeStatus",
     },
 }

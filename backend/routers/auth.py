@@ -1,111 +1,90 @@
 # backend/routers/auth.py
 
 from datetime import timedelta, datetime
-from fastapi import APIRouter, Depends, HTTPException, status, Body, Query
-from sqlalchemy.orm import Session
-from sqlalchemy import select, or_, and_, func, update as sa_update
 from typing import Optional, Literal, List
 
+from fastapi import APIRouter, Depends, HTTPException, status, Body, Query
+from sqlalchemy import select, or_, and_, func, update as sa_update
+from sqlalchemy.orm import Session
+
 from backend.config.database import get_db
-from backend.models.models import User, Institution, Agent, RegistrationRequest
+from backend.models.models import User, Institution, RegistrationRequest
 from backend.utils.security import hash_password, verify_password
-from backend.auth.jwt import create_user_token, get_current_payload, get_current_user
+from backend.auth.jwt import create_user_token, get_current_user
 from backend.config.auth import access_token_expire_minutes
 
-from pydantic import BaseModel
-
+from backend.schemas.common.pages import Page
+from backend.schemas.auth import RegistrationRequestItem, UpdateRequestStatusBody
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
-# --------- Schemas de salida (evitamos exponer hashed_password) ----------
-class RegistrationRequestItem(BaseModel):
-    id: int
-    username: str
-    email: str
-    institution_id: int
-    institution_name: Optional[str]
-    full_name: Optional[str]
-    given_name: Optional[str]
-    family_name: Optional[str]
-    orcid: Optional[str]
-    phone: Optional[str]
-    address: Optional[str]
-    status: Literal["pending", "approved", "rejected"]
-    created_at: datetime
-    reviewed_at: Optional[datetime] = None
-    reviewed_by_user_id: Optional[int] = None
-    resulting_user_id: Optional[int] = None
-
-    class Config:
-        from_attributes = True  # Pydantic v2 (equivalente a orm_mode=True)
-
-
-class RegistrationRequestPage(BaseModel):
-    items: List[RegistrationRequestItem]
-    total: int
-    total_pages: int
-    limit: int
-    offset: int
-    current_page: int
-    remaining_pages: int
-
+# -------------------------------------------------------------------
+# Listar solicitudes de registro (paginado)
+# -------------------------------------------------------------------
 
 
 @router.get(
     "/registration-requests",
     summary="Listar solicitudes de registro (paginado, con permisos)",
-    response_model=RegistrationRequestPage,
+    response_model=Page[RegistrationRequestItem],
 )
 def list_registration_requests(
     limit: int = Query(10, ge=1, le=100),
     offset: int = Query(0, ge=0),
-
-    status_filter: Optional[Literal["pending", "approved", "rejected"]] = Query(None),
-    institution_id: Optional[int] = Query(None, ge=1),
-
-    full_name_prefix: Optional[str] = Query(None, description="Prefijo para filtrar por full_name (case/accent-insensitive)"),
-
+    statusFilter: Optional[Literal["pending", "approved", "rejected"]] = Query(None),
+    institutionId: Optional[int] = Query(
+        None,
+        ge=1,
+        description="ID de institución (obligatorio para institutionAdmin)",
+    ),
+    fullNamePrefix: Optional[str] = Query(
+        None,
+        description="Prefijo para filtrar por fullName (case/accent-insensitive)",
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.is_superuser:
+    # --- Permisos ---
+    if current_user.isSuperuser:
         where_clauses = []
-        if institution_id is not None:
-            where_clauses.append(RegistrationRequest.institution_id == institution_id)
-    elif current_user.is_institution_admin:
-        if institution_id is None:
+        if institutionId is not None:
+            where_clauses.append(
+                RegistrationRequest.institutionId == institutionId
+            )
+    elif current_user.isInstitutionAdmin:
+        if institutionId is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="institution_id es obligatorio para administradores de institución",
+                detail="institutionId es obligatorio para administradores de institución",
             )
-        if institution_id != current_user.institution_id:
+        if institutionId != current_user.institutionId:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No puedes consultar solicitudes de otra institución",
             )
-        where_clauses = [RegistrationRequest.institution_id == institution_id]
+        where_clauses = [RegistrationRequest.institutionId == institutionId]
     else:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tienes permisos para listar solicitudes de registro",
         )
 
-    if status_filter is not None:
-        where_clauses.append(RegistrationRequest.status == status_filter)
+    # --- Filtros adicionales ---
+    if statusFilter is not None:
+        where_clauses.append(RegistrationRequest.status == statusFilter)
 
-    # ⬇Acento-insensible + case-insensitive con unaccent + ILIKE (prefijo)
-    if full_name_prefix:
-        pattern = f"{full_name_prefix}%"
+    if fullNamePrefix:
+        pattern = f"{fullNamePrefix}%"
         where_clauses.append(
-            func.unaccent(func.coalesce(RegistrationRequest.full_name, "")).ilike(
-                func.unaccent(pattern)
-            )
+            func.unaccent(
+                func.coalesce(RegistrationRequest.fullName, "")
+            ).ilike(func.unaccent(pattern))
         )
 
     base_stmt = (
         select(RegistrationRequest)
-        .join(Institution, Institution.id == RegistrationRequest.institution_id)
+        .join(Institution, Institution.id == RegistrationRequest.institutionId)
     )
     if where_clauses:
         base_stmt = base_stmt.where(and_(*where_clauses))
@@ -113,57 +92,63 @@ def list_registration_requests(
     count_stmt = (
         select(func.count())
         .select_from(RegistrationRequest)
-        .join(Institution, Institution.id == RegistrationRequest.institution_id)
+        .join(Institution, Institution.id == RegistrationRequest.institutionId)
     )
     if where_clauses:
         count_stmt = count_stmt.where(and_(*where_clauses))
 
-    total = db.execute(count_stmt).scalar_one()
+    total = db.execute(count_stmt).scalar_one() or 0
 
     stmt = (
         base_stmt
-        .order_by(RegistrationRequest.created_at.desc())
+        .order_by(RegistrationRequest.createdAt.desc())
         .limit(limit)
         .offset(offset)
     )
 
-    items = db.execute(stmt).scalars().all()
+    rows = db.execute(stmt).scalars().all()
 
-    requests_payload = [
+    items: List[RegistrationRequestItem] = [
         RegistrationRequestItem(
             id=r.id,
             username=r.username,
             email=r.email,
-            institution_id=r.institution_id,
-            institution_name=r.institution.institutionName,
-            full_name=r.full_name,
-            given_name=r.given_name,
-            family_name=r.family_name,
+            institutionId=r.institutionId,
+            institutionName=r.institution.institutionName if r.institution else None,
+            fullName=r.fullName,
+            givenName=r.givenName,
+            familyName=r.familyName,
             orcid=r.orcid,
             phone=r.phone,
             address=r.address,
             status=r.status,
-            created_at=r.created_at,
-            reviewed_at=r.reviewed_at,
-            reviewed_by_user_id=r.reviewed_by_user_id,
-            resulting_user_id=r.resulting_user_id,
+            createdAt=r.createdAt,
+            reviewedAt=r.reviewedAt,
+            reviewedByUserId=r.reviewedByUserId,
+            resultingUserId=r.resultingUserId,
         )
-        for r in items
+        for r in rows
     ]
 
     total_pages = (total + limit - 1) // limit if limit > 0 else 1
-    current_page = (offset // limit) + 1
-    remaining_pages = total_pages - current_page
+    current_page = (offset // limit) + 1 if limit > 0 else 1
+    remaining_pages = max(total_pages - current_page, 0)
 
-    return RegistrationRequestPage(
-        items=requests_payload,
+    return Page[RegistrationRequestItem](
+        items=items,
         total=total,
-        total_pages=total_pages,
+        currentPage=current_page,
+        totalPages=total_pages,
         limit=limit,
         offset=offset,
-        current_page=current_page,
-        remaining_pages=remaining_pages
+        remainingPages=remaining_pages,
     )
+
+
+# -------------------------------------------------------------------
+# Crear solicitud de registro
+# -------------------------------------------------------------------
+
 
 # TODO: validar si el nuevo usuario a crear ha sido rejected anteriormente
 @router.post("/registration-request", summary="Creates a register request for a new user")
@@ -171,19 +156,17 @@ def register_user(
     username: str = Body(..., embed=True),
     email: str = Body(..., embed=True),
     password: str = Body(..., embed=True),
-    institution_id: int = Body(..., embed=True, ge=1),
-
-    given_name: Optional[str] = Body(..., embed=True),
-    family_name: Optional[str] = Body(..., embed=True),
+    institutionId: int = Body(..., embed=True, ge=1),
+    givenName: Optional[str] = Body(..., embed=True),
+    familyName: Optional[str] = Body(..., embed=True),
     orcid: Optional[str] = Body(None, embed=True),
     phone: Optional[str] = Body(None, embed=True),
     address: Optional[str] = Body(None, embed=True),
-
     db: Session = Depends(get_db),
 ):
-    # Institución obligatoria
+    # 1) Institución obligatoria
     institution = db.execute(
-        select(Institution).where(Institution.id == institution_id)
+        select(Institution).where(Institution.id == institutionId)
     ).scalar_one_or_none()
     if not institution:
         raise HTTPException(
@@ -191,9 +174,11 @@ def register_user(
             detail="Institución inexistente",
         )
 
-    # el usuario ya existe
+    # 2) Usuario ya existe
     existing_user = db.execute(
-        select(User).where(or_(User.username == username, User.email == email))
+        select(User).where(
+            or_(User.username == username, User.email == email)
+        )
     ).scalar_one_or_none()
     if existing_user:
         raise HTTPException(
@@ -201,11 +186,13 @@ def register_user(
             detail="Username o email ya registrado",
         )
 
-    # Solicitudes pendientes duplicadas: bloquear por email o username
-    # (Hay un constraint único (email, status), pero validamos también por username para error 400 claro)
+    # 3) Solicitudes pendientes duplicadas (email)
     pending_same_email = db.execute(
         select(RegistrationRequest).where(
-            and_(RegistrationRequest.email == email, RegistrationRequest.status == "pending")
+            and_(
+                RegistrationRequest.email == email,
+                RegistrationRequest.status == "pending",
+            )
         )
     ).scalar_one_or_none()
     if pending_same_email:
@@ -214,9 +201,13 @@ def register_user(
             detail="There is already a pending request for this email",
         )
 
+    # 4) Solicitudes pendientes duplicadas (username)
     pending_same_username = db.execute(
         select(RegistrationRequest).where(
-            and_(RegistrationRequest.username == username, RegistrationRequest.status == "pending")
+            and_(
+                RegistrationRequest.username == username,
+                RegistrationRequest.status == "pending",
+            )
         )
     ).scalar_one_or_none()
     if pending_same_username:
@@ -225,17 +216,19 @@ def register_user(
             detail="There is already a pending request for this username",
         )
 
-    # Crear solicitud (en estado pendiente)
-    full_name = " ".join([p for p in [given_name, family_name] if p]).strip() or None
+    # 5) Crear solicitud (en estado pending)
+    full_name = " ".join(
+        [p for p in [givenName, familyName] if p]
+    ).strip() or None
 
     req = RegistrationRequest(
         username=username,
         email=email,
-        hashed_password=hash_password(password),
-        institution_id=institution_id,
-        full_name=full_name,
-        given_name=given_name,
-        family_name=family_name,
+        hashedPassword=hash_password(password),
+        institutionId=institutionId,
+        fullName=full_name,
+        givenName=givenName,
+        familyName=familyName,
         orcid=orcid,
         phone=phone,
         address=address,
@@ -253,18 +246,21 @@ def register_user(
             "status": req.status,
             "username": req.username,
             "email": req.email,
-            "institution_id": req.institution_id,
-            "created_at": req.created_at,
+            "institutionId": req.institutionId,
+            "createdAt": req.createdAt,
         },
     }
 
 
-class UpdateRequestStatusBody(BaseModel):
-    registration_request_id: int
-    new_status: Literal["approved", "rejected"]
+# -------------------------------------------------------------------
+# Actualizar estado de solicitud (approve / reject)
+# -------------------------------------------------------------------
 
 
-@router.patch("/registration-request", summary="Update status of a registration request")
+@router.patch(
+    "/registration-request",
+    summary="Update status of a registration request",
+)
 def update_registration_request_status(
     payload: UpdateRequestStatusBody = Body(...),
     db: Session = Depends(get_db),
@@ -273,12 +269,14 @@ def update_registration_request_status(
     # 1) Cargar solicitud
     registration_request = db.execute(
         select(RegistrationRequest).where(
-            RegistrationRequest.id == payload.registration_request_id
+            RegistrationRequest.id == payload.registrationRequestId
         )
     ).scalar_one_or_none()
 
     if not registration_request:
-        raise HTTPException(status_code=404, detail="Solicitud de registro no encontrada")
+        raise HTTPException(
+            status_code=404, detail="Solicitud de registro no encontrada"
+        )
 
     # 2) Solo desde 'pending'
     if registration_request.status != "pending":
@@ -290,16 +288,22 @@ def update_registration_request_status(
     # 3) Permisos
     institution = registration_request.institution  # relationship
     if not (
-        current_user.is_superuser
-        or (current_user.is_institution_admin and current_user.institution_id == institution.id)
+        current_user.isSuperuser
+        or (
+            current_user.isInstitutionAdmin
+            and current_user.institutionId == institution.id
+        )
     ):
-        raise HTTPException(status_code=403, detail="No tienes permisos para actualizar esta solicitud")
+        raise HTTPException(
+            status_code=403,
+            detail="No tienes permisos para actualizar esta solicitud",
+        )
 
-    # 4) Rechazo (sin cambios en usersCount)
-    if payload.new_status == "rejected":
+    # 4) Rechazo (no crea usuario)
+    if payload.newStatus == "rejected":
         registration_request.status = "rejected"
-        registration_request.reviewed_by_user_id = current_user.id
-        registration_request.reviewed_at = datetime.utcnow()
+        registration_request.reviewedByUserId = current_user.id
+        registration_request.reviewedAt = datetime.utcnow()
         db.add(registration_request)
         db.commit()
         db.refresh(registration_request)
@@ -311,10 +315,10 @@ def update_registration_request_status(
                 "status": registration_request.status,
                 "username": registration_request.username,
                 "email": registration_request.email,
-                "institution_id": registration_request.institution_id,
-                "created_at": registration_request.created_at,
-                "reviewed_at": registration_request.reviewed_at,
-                "reviewed_by_user_id": registration_request.reviewed_by_user_id,
+                "institutionId": registration_request.institutionId,
+                "createdAt": registration_request.createdAt,
+                "reviewedAt": registration_request.reviewedAt,
+                "reviewedByUserId": registration_request.reviewedByUserId,
             },
         }
 
@@ -335,51 +339,43 @@ def update_registration_request_status(
         )
 
     try:
-        # a) Crear Agent
-        agent = Agent(
-            givenName=registration_request.given_name,
-            familyName=registration_request.family_name,
-            fullName=registration_request.full_name,
+        # a) Crear User (ya no se crea Agent)
+        user = User(
+            username=registration_request.username,
+            email=registration_request.email,
+            hashedPassword=registration_request.hashedPassword,
+            isActive=True,
+            isSuperuser=False,
+            isInstitutionAdmin=False,
+            institutionId=registration_request.institutionId,
+            givenName=registration_request.givenName,
+            familyName=registration_request.familyName,
+            fullName=registration_request.fullName,
             orcid=registration_request.orcid,
             phone=registration_request.phone,
             address=registration_request.address,
         )
-        db.add(agent)
-        db.flush()  # obtener agent.id
-
-        # b) Crear User
-        user = User(
-            username=registration_request.username,
-            email=registration_request.email,
-            hashed_password=registration_request.hashed_password,
-            is_active=True,
-            is_superuser=False,
-            is_institution_admin=False,
-            institution_id=registration_request.institution_id,
-            agent_id=agent.id,
-        )
         db.add(user)
         db.flush()  # obtener user.id
 
-        # c) Incremento atómico de usersCount (+1) en Institution
+        # b) Incremento atómico de usersCount (+1) en Institution
         db.execute(
             sa_update(Institution)
-            .where(Institution.id == registration_request.institution_id)
+            .where(Institution.id == registration_request.institutionId)
             .values(usersCount=func.coalesce(Institution.usersCount, 0) + 1)
         )
 
-        # d) Marcar solicitud como aprobada
+        # c) Marcar solicitud como aprobada
         registration_request.status = "approved"
-        registration_request.reviewed_by_user_id = current_user.id
-        registration_request.reviewed_at = datetime.utcnow()
-        registration_request.resulting_user_id = user.id
+        registration_request.reviewedByUserId = current_user.id
+        registration_request.reviewedAt = datetime.utcnow()
+        registration_request.resultingUserId = user.id
         db.add(registration_request)
 
-        # e) Commit único
+        # d) Commit único
         db.commit()
 
-        # Opcional: refrescar para respuesta
-        db.refresh(agent)
+        # Refrescar para respuesta
         db.refresh(user)
         db.refresh(registration_request)
 
@@ -394,26 +390,25 @@ def update_registration_request_status(
             "status": registration_request.status,
             "username": registration_request.username,
             "email": registration_request.email,
-            "institution_id": registration_request.institution_id,
-            "created_at": registration_request.created_at,
-            "reviewed_at": registration_request.reviewed_at,
-            "reviewed_by_user_id": registration_request.reviewed_by_user_id,
-            "resulting_user_id": registration_request.resulting_user_id,
+            "institutionId": registration_request.institutionId,
+            "createdAt": registration_request.createdAt,
+            "reviewedAt": registration_request.reviewedAt,
+            "reviewedByUserId": registration_request.reviewedByUserId,
+            "resultingUserId": registration_request.resultingUserId,
         },
         "user": {
             "id": user.id,
             "username": user.username,
             "email": user.email,
-            "institution_id": user.institution_id,
+            "institutionId": user.institutionId,
         },
-        "agent": {
-            "id": agent.id,
-            "full_name": agent.fullName,
-            "orcid": agent.orcid,
-            "phone": agent.phone,
-            "address": agent.address,
-        }
     }
+
+
+# -------------------------------------------------------------------
+# Login
+# -------------------------------------------------------------------
+
 
 @router.post("/login", summary="Authenticate user and return JWT token")
 def login_user(
@@ -421,47 +416,44 @@ def login_user(
     password: str = Body(...),
     db: Session = Depends(get_db),
 ):
-    user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
+    user = db.execute(
+        select(User).where(User.email == email)
+    ).scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    if not verify_password(password, user.hashed_password):
+    if not verify_password(password, user.hashedPassword):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    print(f"[auth] User: ", user.email if user else "None")
-
-    institution = None
-    if user.institution_id:
-        institution = db.execute(select(Institution).where(Institution.id == user.institution_id)).scalar_one_or_none()
-
-    if not user.is_active:
+    if not user.isActive:
         raise HTTPException(status_code=401, detail="Inactive user")
 
-    print("[auth] Institutiuon:", institution.institutionName if institution else "None")
+    institution = None
+    if user.institutionId:
+        institution = db.execute(
+            select(Institution).where(Institution.id == user.institutionId)
+        ).scalar_one_or_none()
 
     token_expires = timedelta(minutes=access_token_expire_minutes)
     access_token = create_user_token(
         user_id=user.id,
         email=user.email,
-        agent_id=user.agent_id,
         expires_delta=token_expires,
     )
 
-    print(access_token)
     return {
-        "access_token": access_token,
-        "token_type": "bearer",
+        "accessToken": access_token,
+        "tokenType": "bearer",
         "user": {
             "id": user.id,
-            "name": user.agent.fullName if user.agent else None,
+            "name": user.fullName,
             "username": user.username,
             "email": user.email,
-            "is_active": user.is_active,
-            "is_superuser": user.is_superuser,
-            "is_institution_admin": user.is_institution_admin,
+            "isActive": user.isActive,
+            "isSuperuser": user.isSuperuser,
+            "isInstitutionAdmin": user.isInstitutionAdmin,
             "institution": institution.institutionName if institution else None,
-            "agent_id": user.agent_id,
-            "institution_id": user.institution_id,
-            "created_at": user.created_at.isoformat() if user.created_at else None,
+            "institutionId": user.institutionId,
+            "createdAt": user.createdAt.isoformat() if user.createdAt else None,
         },
     }

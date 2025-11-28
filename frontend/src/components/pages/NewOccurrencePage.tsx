@@ -1,126 +1,263 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../ui/accordion";
 import { Badge } from "../ui/badge";
-import { Checkbox } from "../ui/checkbox";
-import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
-import { ArrowLeft, Plus, X, MapPin, Upload, AlertCircle, Info } from "lucide-react";
+import { ArrowLeft, Plus, X, MapPin, AlertCircle } from "lucide-react";
 import { toast } from "sonner@2.0.3";
 import { Alert, AlertDescription } from "../ui/alert";
 
 interface NewOccurrencePageProps {
   onNavigate: (page: string, params?: Record<string, any>) => void;
-  mode?: 'create' | 'edit';
+  mode?: "create" | "edit";
   occurrenceId?: string;
-  returnTo?: 'occurrences' | 'collection';
-  collectionId?: string;
+  returnTo?: "occurrences" | "collection";
+  collectionId?: string; // viene desde la página contenedora
   collectionName?: string;
   isOwner?: boolean;
 }
 
-export function NewOccurrencePage({ 
-  onNavigate, 
-  mode = 'create',
-  occurrenceId,
-  returnTo = 'occurrences',
-  collectionId,
-  collectionName: collectionNameProp,
-  isOwner
-}: NewOccurrencePageProps) {
-  // Generate UUID v4
-  const generateUUID = () => {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
-  };
+type Occurrence = Record<string, any>;
 
-  const getCurrentDate = () => {
-    return new Date().toISOString().split('T')[0];
-  };
+/* ------------------------- Helpers de almacenamiento ------------------------- */
+const LS_KEY = "occurrences";
 
-  // 1. Colección & Registro
-  const [selectedCollectionId, setSelectedCollectionId] = useState(collectionId || '');
-  const [catalogNumber, setCatalogNumber] = useState('');
+function readAll(): Occurrence[] {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeAll(list: Occurrence[]) {
+  localStorage.setItem(LS_KEY, JSON.stringify(list));
+}
+
+function getOccurrenceById(id: string): Occurrence | undefined {
+  const all = readAll();
+  return all.find((o) => o.id === id || o.occurrenceID === id);
+}
+
+function addOccurrenceLS(data: Occurrence): string {
+  const all = readAll();
+  const id = generateUUID();
+  all.push({
+    ...data,
+    id,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+  writeAll(all);
+  return id;
+}
+
+function updateOccurrenceLS(id: string, patch: Occurrence) {
+  const all = readAll();
+  const idx = all.findIndex((o) => o.id === id || o.occurrenceID === id);
+  if (idx === -1) {
+    toast.error("No se encontró la ocurrencia a actualizar");
+    return;
+  }
+  const prev = all[idx];
+  all[idx] = {
+    ...prev,
+    ...patch,
+    id: prev.id ?? id,
+    updatedAt: new Date().toISOString(),
+  };
+  writeAll(all);
+}
+
+/* ------------------------------ Utils generales ----------------------------- */
+function generateUUID() {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+const getCurrentDate = () => new Date().toISOString().split("T")[0];
+
+/* --------------------------------- Componente -------------------------------- */
+export function NewOccurrencePage({
+                                    onNavigate,
+                                    mode = "create",
+                                    occurrenceId,
+                                    returnTo = "occurrences",
+                                    collectionId,
+                                    collectionName: collectionNameProp,
+                                    isOwner,
+                                  }: NewOccurrencePageProps) {
+  // OCCURRENCE
   const [occurrenceID, setOccurrenceID] = useState(generateUUID());
-  const [recordNumber, setRecordNumber] = useState('');
-  const [preparations, setPreparations] = useState('');
-  const [disposition, setDisposition] = useState('in_collection');
+  const [catalogNumber, setCatalogNumber] = useState("");
+  const [recordNumber, setRecordNumber] = useState("");
+  const [recordedBy, setRecordedBy] = useState<string[]>([]);
+  const [recordedByInput, setRecordedByInput] = useState("");
+  const [recordEnteredBy, setRecordEnteredBy] = useState("");
+  const [individualCount, setIndividualCount] = useState("");
+  const [occurrenceStatus, setOccurrenceStatus] = useState("present");
+  const [preparations, setPreparations] = useState("");
+  const [disposition, setDisposition] = useState("in_collection");
+  const [occurrenceRemarks, setOccurrenceRemarks] = useState("");
+  const [license, setLicense] = useState("CC-BY-4.0");
+  const [rightsHolder, setRightsHolder] = useState("");
+  const [accessRights, setAccessRights] = useState("");
   const [occurrenceIDEdited, setOccurrenceIDEdited] = useState(false);
 
-  // 2. Evento
-  const [eventDate, setEventDate] = useState('');
-  const [eventDateEnd, setEventDateEnd] = useState('');
-  const [recordedBy, setRecordedBy] = useState<string[]>([]);
-  const [recordedByInput, setRecordedByInput] = useState('');
-  const [recordedByID, setRecordedByID] = useState<string[]>([]);
-  const [recordedByIDInput, setRecordedByIDInput] = useState('');
-  const [individualCount, setIndividualCount] = useState('');
-  const [samplingProtocol, setSamplingProtocol] = useState('');
+  // Dynamic Properties
+  const [dpKey, setDpKey] = useState("");
+  const [dpValue, setDpValue] = useState("");
+  const [dynamicProps, setDynamicProps] = useState<Array<{ key: string; value: string }>>([]);
 
-  // 3. Localización
-  const [country, setCountry] = useState('');
-  const [stateProvince, setStateProvince] = useState('');
-  const [county, setCounty] = useState('');
-  const [municipality, setMunicipality] = useState('');
-  const [locality, setLocality] = useState('');
-  const [decimalLatitude, setDecimalLatitude] = useState('');
-  const [decimalLongitude, setDecimalLongitude] = useState('');
-  const [geodeticDatum, setGeodeticDatum] = useState('WGS84');
-  const [coordinateUncertainty, setCoordinateUncertainty] = useState('');
-  const [minimumElevation, setMinimumElevation] = useState('');
-  const [maximumElevation, setMaximumElevation] = useState('');
-  const [habitat, setHabitat] = useState('');
+  // EVENT
+  const [eventDate, setEventDate] = useState("");
+  const [year, setYear] = useState("");
+  const [month, setMonth] = useState("");
+  const [day, setDay] = useState("");
+  const [verbatimEventDate, setVerbatimEventDate] = useState("");
+  const [fieldNumber, setFieldNumber] = useState("");
+  const [samplingProtocol, setSamplingProtocol] = useState("");
+  const [samplingEffort, setSamplingEffort] = useState("");
+  const [habitat, setHabitat] = useState("");
+  const [eventRemarks, setEventRemarks] = useState("");
 
-  // 4. Identificación
-  const [scientificName, setScientificName] = useState('');
-  const [identifiedBy, setIdentifiedBy] = useState<string[]>([]);
-  const [identifiedByInput, setIdentifiedByInput] = useState('');
-  const [identifiedByID, setIdentifiedByID] = useState<string[]>([]);
-  const [identifiedByIDInput, setIdentifiedByIDInput] = useState('');
-  const [dateIdentified, setDateIdentified] = useState(getCurrentDate());
-  const [identificationQualifier, setIdentificationQualifier] = useState('');
-  const [identificationReferences, setIdentificationReferences] = useState('');
-  const [isCurrent, setIsCurrent] = useState(true);
-  const [verificationStatus, setVerificationStatus] = useState('pending');
-  const [identificationRemarks, setIdentificationRemarks] = useState('');
-  const [typeStatus, setTypeStatus] = useState('');
+  // LOCATION
+  const [stateProvince, setStateProvince] = useState("");
+  const [county, setCounty] = useState("");
+  const [municipality, setMunicipality] = useState("");
+  const [locality, setLocality] = useState("");
+  const [verbatimLocality, setVerbatimLocality] = useState("");
+  const [decimalLatitude, setDecimalLatitude] = useState("");
+  const [decimalLongitude, setDecimalLongitude] = useState("");
+  const [geodeticDatum, setGeodeticDatum] = useState("WGS84");
+  const [coordinateUncertaintyInMeters, setCoordinateUncertaintyInMeters] = useState("");
+  const [coordinatePrecision, setCoordinatePrecision] = useState("");
+  const [minimumElevationInMeters, setMinimumElevationInMeters] = useState("");
+  const [maximumElevationInMeters, setMaximumElevationInMeters] = useState("");
+  const [verbatimElevation, setVerbatimElevation] = useState("");
 
-  // 5. Organismo
-  const [organismOption, setOrganismOption] = useState('none');
-  const [organismID, setOrganismID] = useState('');
-  const [organismScope, setOrganismScope] = useState('');
-  const [sex, setSex] = useState('');
-  const [lifeStage, setLifeStage] = useState('');
-  const [reproductiveCondition, setReproductiveCondition] = useState('');
-  const [establishmentMeans, setEstablishmentMeans] = useState('');
-  const [organismRemarks, setOrganismRemarks] = useState('');
+  // TAXON
+  const [scientificName, setScientificName] = useState("");
+  const [scientificNameAuthorship, setScientificNameAuthorship] = useState("");
+  const [family, setFamily] = useState("");
+  const [genus, setGenus] = useState("");
+  const [specificEpithet, setSpecificEpithet] = useState("");
+  const [infraspecificEpithet, setInfraspecificEpithet] = useState("");
+  const [taxonRank, setTaxonRank] = useState("");
+  const [acceptedNameUsage, setAcceptedNameUsage] = useState("");
 
-  // 6. Medios
-  const [mediaFiles, setMediaFiles] = useState<Array<{id: string; file: File; title: string; creator: string; license: string; rightsHolder: string}>>([]);
+  // Derivar año/mes/día desde eventDate
+  useEffect(() => {
+    if (!eventDate) {
+      setYear("");
+      setMonth("");
+      setDay("");
+      return;
+    }
+    const d = new Date(eventDate);
+    if (!isNaN(d.getTime())) {
+      setYear(String(d.getUTCFullYear()));
+      setMonth(String(d.getUTCMonth() + 1).padStart(2, "0"));
+      setDay(String(d.getUTCDate()).padStart(2, "0"));
+    }
+  }, [eventDate]);
 
-  // 7. Observaciones & Medidas
-  const [occurrenceRemarks, setOccurrenceRemarks] = useState('');
-  const [measurements, setMeasurements] = useState<Array<{id: string; type: string; value: string; unit: string}>>([]);
+  // Cargar datos en modo edición
+  useEffect(() => {
+    if (mode === "edit" && occurrenceId) {
+      const occurrence = getOccurrenceById(occurrenceId);
+      if (!occurrence) {
+        toast.error("No se encontró la ocurrencia");
+        return;
+      }
+      setOccurrenceID(occurrence.occurrenceID ?? occurrenceID);
+      setCatalogNumber(occurrence.catalogNumber ?? "");
+      setRecordNumber(occurrence.recordNumber ?? "");
+      setRecordedBy(occurrence.recordedBy ?? []);
+      setRecordEnteredBy(occurrence.recordEnteredBy ?? "");
+      setIndividualCount(occurrence.individualCount ?? "");
+      setOccurrenceStatus(occurrence.occurrenceStatus ?? "present");
+      setPreparations(occurrence.preparations ?? "");
+      setDisposition(occurrence.disposition ?? "in_collection");
+      setOccurrenceRemarks(occurrence.occurrenceRemarks ?? "");
+      setLicense(occurrence.license ?? "CC-BY-4.0");
+      setRightsHolder(occurrence.rightsHolder ?? "");
+      setAccessRights(occurrence.accessRights ?? "");
 
-  // 8. Derechos
-  const [license, setLicense] = useState('CC-BY-4.0');
-  const [rightsHolder, setRightsHolder] = useState('');
-  const [accessRights, setAccessRights] = useState('');
+      setEventDate(occurrence.eventDate ?? "");
+      setYear(occurrence.year ?? "");
+      setMonth(occurrence.month ?? "");
+      setDay(occurrence.day ?? "");
+      setVerbatimEventDate(occurrence.verbatimEventDate ?? "");
+      setFieldNumber(occurrence.fieldNumber ?? "");
+      setSamplingProtocol(occurrence.samplingProtocol ?? "");
+      setSamplingEffort(occurrence.samplingEffort ?? "");
+      setHabitat(occurrence.habitat ?? "");
+      setEventRemarks(occurrence.eventRemarks ?? "");
 
-  const [activeView, setActiveView] = useState<'quick' | 'advanced'>('quick');
+      setStateProvince(occurrence.stateProvince ?? "");
+      setCounty(occurrence.county ?? "");
+      setMunicipality(occurrence.municipality ?? "");
+      setLocality(occurrence.locality ?? "");
+      setVerbatimLocality(occurrence.verbatimLocality ?? "");
+      setDecimalLatitude(occurrence.decimalLatitude ?? "");
+      setDecimalLongitude(occurrence.decimalLongitude ?? "");
+      setGeodeticDatum(occurrence.geodeticDatum ?? "WGS84");
+      setCoordinateUncertaintyInMeters(occurrence.coordinateUncertaintyInMeters ?? "");
+      setCoordinatePrecision(occurrence.coordinatePrecision ?? "");
+      setMinimumElevationInMeters(occurrence.minimumElevationInMeters ?? "");
+      setMaximumElevationInMeters(occurrence.maximumElevationInMeters ?? "");
+      setVerbatimElevation(occurrence.verbatimElevation ?? "");
 
+      setScientificName(occurrence.scientificName ?? "");
+      setScientificNameAuthorship(occurrence.scientificNameAuthorship ?? "");
+      setFamily(occurrence.family ?? "");
+      setGenus(occurrence.genus ?? "");
+      setSpecificEpithet(occurrence.specificEpithet ?? "");
+      setInfraspecificEpithet(occurrence.infraspecificEpithet ?? "");
+      setTaxonRank(occurrence.taxonRank ?? "");
+      setAcceptedNameUsage(occurrence.acceptedNameUsage ?? "");
+
+      // dynamicProperties
+      const dp = occurrence.dynamicProperties;
+      if (dp) {
+        try {
+          const obj = typeof dp === "string" ? JSON.parse(dp) : dp;
+          if (obj && typeof obj === "object") {
+            const list = Object.entries(obj).map(([k, v]) => ({
+              key: String(k),
+              value: typeof v === "string" ? v : JSON.stringify(v),
+            }));
+            setDynamicProps(list);
+          }
+        } catch {
+          const list = String(dp)
+              .split(";")
+              .map((s) => s.trim())
+              .filter(Boolean)
+              .map((pair) => {
+                const [k, ...rest] = pair.split("=");
+                return { key: k?.trim() ?? "", value: rest.join("=").trim() };
+              })
+              .filter((kv) => kv.key);
+          setDynamicProps(list);
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, occurrenceId]);
+
+  /* ------------------------------- Manejadores ------------------------------- */
   const handleAddRecordedBy = () => {
     if (recordedByInput.trim()) {
       setRecordedBy([...recordedBy, recordedByInput.trim()]);
-      setRecordedByInput('');
+      setRecordedByInput("");
     }
   };
 
@@ -128,1141 +265,891 @@ export function NewOccurrencePage({
     setRecordedBy(recordedBy.filter((_, i) => i !== index));
   };
 
-  const handleAddRecordedByID = () => {
-    if (recordedByIDInput.trim()) {
-      setRecordedByID([...recordedByID, recordedByIDInput.trim()]);
-      setRecordedByIDInput('');
-    }
-  };
-
-  const handleRemoveRecordedByID = (index: number) => {
-    setRecordedByID(recordedByID.filter((_, i) => i !== index));
-  };
-
-  const handleAddIdentifiedBy = () => {
-    if (identifiedByInput.trim()) {
-      setIdentifiedBy([...identifiedBy, identifiedByInput.trim()]);
-      setIdentifiedByInput('');
-    }
-  };
-
-  const handleRemoveIdentifiedBy = (index: number) => {
-    setIdentifiedBy(identifiedBy.filter((_, i) => i !== index));
-  };
-
-  const handleAddIdentifiedByID = () => {
-    if (identifiedByIDInput.trim()) {
-      setIdentifiedByID([...identifiedByID, identifiedByIDInput.trim()]);
-      setIdentifiedByIDInput('');
-    }
-  };
-
-  const handleRemoveIdentifiedByID = (index: number) => {
-    setIdentifiedByID(identifiedByID.filter((_, i) => i !== index));
-  };
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files) {
-      const newFiles = Array.from(files).map(file => ({
-        id: generateUUID(),
-        file,
-        title: file.name,
-        creator: '',
-        license: 'CC-BY-4.0',
-        rightsHolder: ''
-      }));
-      setMediaFiles([...mediaFiles, ...newFiles]);
-    }
-  };
-
-  const handleRemoveMedia = (id: string) => {
-    setMediaFiles(mediaFiles.filter(m => m.id !== id));
-  };
-
-  const handleAddMeasurement = () => {
-    setMeasurements([...measurements, { id: generateUUID(), type: '', value: '', unit: '' }]);
-  };
-
-  const handleRemoveMeasurement = (id: string) => {
-    setMeasurements(measurements.filter(m => m.id !== id));
-  };
-
-  const handleUpdateMeasurement = (id: string, field: string, value: string) => {
-    setMeasurements(measurements.map(m => 
-      m.id === id ? { ...m, [field]: value } : m
-    ));
-  };
-
   const handleTakeFromMap = () => {
-    // Simulación - en producción se abriría un modal con mapa
-    setDecimalLatitude('-12.0464');
-    setDecimalLongitude('-77.0428');
-    setCoordinateUncertainty('100');
-    setCountry('Perú');
-    setStateProvince('Lima');
-    toast.success('Coordenadas tomadas del mapa');
+    setDecimalLatitude("-12.0464");
+    setDecimalLongitude("-77.0428");
+    setCoordinateUncertaintyInMeters("100");
+    setGeodeticDatum("WGS84");
+    toast.success("Coordenadas tomadas del mapa");
+  };
+
+  const handleAddDynamicProp = () => {
+    if (!dpKey.trim()) {
+      toast.error("Ingresa una clave para el registro adicional");
+      return;
+    }
+    setDynamicProps((prev) => [...prev, { key: dpKey.trim(), value: dpValue }]);
+    setDpKey("");
+    setDpValue("");
+  };
+
+  const handleRemoveDynamicProp = (idx: number) => {
+    setDynamicProps((prev) => prev.filter((_, i) => i !== idx));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Validaciones
-    if (!selectedCollectionId) {
-      toast.error('Debes seleccionar una colección');
+
+    if (!collectionId) {
+      toast.error("Falta collectionId (lo debe pasar la página contenedora).");
       return;
     }
-    if (!catalogNumber) {
-      toast.error('El número de catálogo es requerido');
+    if (!catalogNumber.trim()) {
+      toast.error("El número de catálogo es requerido");
       return;
     }
-    if (!eventDate) {
-      toast.error('La fecha del evento es requerida');
+    if (!scientificName.trim()) {
+      toast.error("El nombre científico es requerido");
       return;
     }
 
-    // En producción aquí se enviaría al backend
-    if (mode === 'edit') {
-      toast.success('Ocurrencia actualizada exitosamente');
+    const dynamicProperties =
+        dynamicProps.length > 0
+            ? JSON.stringify(Object.fromEntries(dynamicProps.map(({ key, value }) => [key, value])))
+            : "";
+
+    const occurrenceData: Occurrence = {
+      collectionId,
+      occurrenceID,
+      catalogNumber,
+      recordNumber,
+      recordedBy,
+      recordEnteredBy,
+      individualCount,
+      occurrenceStatus,
+      preparations,
+      disposition,
+      occurrenceRemarks,
+      license,
+      rightsHolder,
+      accessRights,
+      eventDate,
+      year,
+      month,
+      day,
+      verbatimEventDate,
+      fieldNumber,
+      samplingProtocol,
+      samplingEffort,
+      habitat,
+      eventRemarks,
+      stateProvince,
+      county,
+      municipality,
+      locality,
+      verbatimLocality,
+      decimalLatitude,
+      decimalLongitude,
+      geodeticDatum,
+      coordinateUncertaintyInMeters,
+      coordinatePrecision,
+      minimumElevationInMeters,
+      maximumElevationInMeters,
+      verbatimElevation,
+      scientificName,
+      scientificNameAuthorship,
+      family,
+      genus,
+      specificEpithet,
+      infraspecificEpithet,
+      taxonRank,
+      acceptedNameUsage,
+      dynamicProperties,
+      recordedByID: [],
+      identifiedBy: [],
+      identifiedByID: [],
+      dateIdentified: getCurrentDate(),
+      identificationQualifier: "",
+      identificationReferences: "",
+      isCurrent: true,
+      verificationStatus: "pending",
+      identificationRemarks: "",
+      typeStatus: "",
+      organismOption: "none",
+      organismID: "",
+      organismScope: "",
+      sex: "",
+      lifeStage: "",
+      reproductiveCondition: "",
+      establishmentMeans: "",
+      organismRemarks: "",
+      measurements: [],
+    };
+
+    if (mode === "edit" && occurrenceId) {
+      updateOccurrenceLS(occurrenceId, occurrenceData);
+      toast.success("Ocurrencia actualizada exitosamente");
     } else {
-      toast.success('Ocurrencia registrada exitosamente');
+      addOccurrenceLS(occurrenceData);
+      toast.success("Ocurrencia registrada exitosamente");
     }
-    
-    // Navegar de vuelta
-    if (returnTo === 'collection' && collectionId) {
-      onNavigate('collection-detail', {
-        collectionId, 
-        collectionName: collectionNameProp || '',
-        isOwner: isOwner ?? false
+
+    if (returnTo === "collection" && collectionId) {
+      onNavigate("collection-detail", {
+        collectionId,
+        collectionName: collectionNameProp || "",
+        isOwner: isOwner ?? false,
       });
     } else {
-      onNavigate('occurrences');
+      onNavigate("occurrences");
     }
   };
 
   const handleCancel = () => {
-    if (returnTo === 'collection' && collectionId) {
-      onNavigate('collection-detail', {
-        collectionId, 
-        collectionName: collectionNameProp || '',
-        isOwner: isOwner ?? false
+    if (returnTo === "collection" && collectionId) {
+      onNavigate("collection-detail", {
+        collectionId,
+        collectionName: collectionNameProp || "",
+        isOwner: isOwner ?? false,
       });
     } else {
-      onNavigate('occurrences');
+      onNavigate("occurrences");
     }
   };
 
+  const dynamicJSONPreview =
+      dynamicProps.length > 0
+          ? JSON.stringify(Object.fromEntries(dynamicProps.map(({ key, value }) => [key, value])), null, 2)
+          : "{ }";
+
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-6">
-        <Button 
-          variant="ghost" 
-          onClick={handleCancel}
-          className="mb-4"
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          {returnTo === 'collection' ? `Volver a ${collectionNameProp}` : 'Volver a Ocurrencias'}
-        </Button>
-        
-        <h1 className="text-3xl mb-2">
-          {mode === 'edit' ? 'Actualizar Ocurrencia' : 'Nueva Ocurrencia'}
-        </h1>
-        <p className="text-muted-foreground">
-          {mode === 'edit' 
-            ? 'Modifica la información del espécimen' 
-            : 'Completa la información del espécimen recolectado'}
-        </p>
-      </div>
+      <>
+        <div className="container mx-auto px-4 py-8 max-w-5xl">
+          <div className="mb-6">
+            <Button variant="ghost" onClick={handleCancel} className="mb-4">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              {returnTo === "collection" ? `Volver a ${collectionNameProp}` : "Volver a Ocurrencias"}
+            </Button>
 
-      <Tabs value={activeView} onValueChange={(v) => setActiveView(v as 'quick' | 'advanced')} className="mb-6">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
-          <TabsTrigger value="quick">Vista Rápida</TabsTrigger>
-          <TabsTrigger value="advanced">Vista Avanzada</TabsTrigger>
-        </TabsList>
-      </Tabs>
+            <h1 className="text-3xl mb-2">{mode === "edit" ? "Actualizar ocurrencia" : "Nueva ocurrencia"}</h1>
+            <p className="text-muted-foreground">
+              {mode === "edit"
+                  ? "Modifica la información del espécimen según estándar Darwin Core"
+                  : "Completa la información del espécimen recolectado según estándar Darwin Core"}
+            </p>
+          </div>
 
-      <form onSubmit={handleSubmit}>
-        <Accordion type="multiple" className="space-y-4">
-          {/* Colección & Registro */}
-          <AccordionItem value="collection" className="border rounded-lg px-4">
-            <AccordionTrigger className="hover:no-underline">
-              <div className="text-left">
-                <h3 className="text-lg">Colección & Registro</h3>
-                <p className="text-sm text-muted-foreground">
-                  Información básica de identificación del registro
-                </p>
-              </div>
-            </AccordionTrigger>
-            <AccordionContent className="space-y-4 pt-4">
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="collection">Colección *</Label>
-                <Select value={selectedCollectionId} onValueChange={setSelectedCollectionId}>
-                  <SelectTrigger id="collection">
-                    <SelectValue placeholder="Selecciona una colección" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="col1">Flora Amazónica 2024</SelectItem>
-                    <SelectItem value="col2">Herbáceas Andinas</SelectItem>
-                    <SelectItem value="col3">Plantas Medicinales Locales</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+          {/* Form con padding inferior para no tapar el botón fijo */}
+          <form id="occ-form" onSubmit={handleSubmit} className="pb-28">
+            <Accordion type="multiple" defaultValue={["occurrence", "event", "location", "taxon"]} className="space-y-4">
+              {/* Ocurrencia */}
+              <AccordionItem value="occurrence" className="border rounded-lg px-6 bg-card">
+                <AccordionTrigger className="hover:no-underline py-4">
+                  <div className="text-left">
+                    <h3 className="text-xl">Ocurrencia</h3>
+                    <p className="text-sm text-muted-foreground">Información del registro y preparación del espécimen</p>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="space-y-4 pt-4 pb-6">
+                  {/* Occurrence ID */}
+                  <div className="space-y-2">
+                    <Label htmlFor="occurrenceID" className="flex items-center gap-2">
+                      Occurrence ID (UUID)
+                      <span className="text-xs text-muted-foreground">dwc:occurrenceID</span>
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input
+                          id="occurrenceID"
+                          value={occurrenceID}
+                          onChange={(e) => {
+                            setOccurrenceID(e.target.value);
+                            setOccurrenceIDEdited(true);
+                          }}
+                          className="font-mono text-sm"
+                      />
+                      <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            setOccurrenceID(generateUUID());
+                            setOccurrenceIDEdited(false);
+                          }}
+                      >
+                        Regenerar
+                      </Button>
+                    </div>
+                    {occurrenceIDEdited && (
+                        <Alert>
+                          <AlertCircle className="h-4 w-4" />
+                          <AlertDescription>Has editado manualmente el UUID. Asegúrate de que sea único.</AlertDescription>
+                        </Alert>
+                    )}
+                    <p className="text-xs text-muted-foreground">Identificador único del registro de ocurrencia.</p>
+                  </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="catalogNumber">Número de Catálogo *</Label>
-                <Input
-                  id="catalogNumber"
-                  value={catalogNumber}
-                  onChange={(e) => setCatalogNumber(e.target.value)}
-                  placeholder="BOT-2024-001"
-                  required
-                />
-              </div>
-            </div>
+                  {/* Catalog Number */}
+                  <div className="space-y-2">
+                    <Label htmlFor="catalogNumber" className="flex items-center gap-2">
+                      Número de catálogo <span className="text-destructive">*</span>
+                      <Badge variant="secondary" className="text-xs">Requerido</Badge>
+                      <span className="text-xs text-muted-foreground">dwc:catalogNumber</span>
+                    </Label>
+                    <Input
+                        id="catalogNumber"
+                        value={catalogNumber}
+                        onChange={(e) => setCatalogNumber(e.target.value)}
+                        placeholder="BOT-2024-001"
+                        required
+                    />
+                    <p className="text-xs text-muted-foreground">Número o código de catálogo asignado al ejemplar.</p>
+                  </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="occurrenceID">Occurrence ID (UUID)</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="occurrenceID"
-                  value={occurrenceID}
-                  onChange={(e) => {
-                    setOccurrenceID(e.target.value);
-                    setOccurrenceIDEdited(true);
-                  }}
-                  className="font-mono text-sm"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setOccurrenceID(generateUUID());
-                    setOccurrenceIDEdited(false);
-                  }}
-                >
-                  Regenerar
-                </Button>
-              </div>
-              {occurrenceIDEdited && (
-                <Alert>
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>
-                    Has editado manualmente el UUID. Asegúrate de que sea único.
-                  </AlertDescription>
-                </Alert>
-              )}
-            </div>
-
-            <div className="grid md:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="recordNumber">Número de Registro</Label>
-                <Input
-                  id="recordNumber"
-                  value={recordNumber}
-                  onChange={(e) => setRecordNumber(e.target.value)}
-                  placeholder="Número de colecta"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="preparations">Preparación</Label>
-                <Select value={preparations} onValueChange={setPreparations}>
-                  <SelectTrigger id="preparations">
-                    <SelectValue placeholder="Selecciona" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="herbarium_sheet">Herbarium sheet</SelectItem>
-                    <SelectItem value="alcohol">Alcohol</SelectItem>
-                    <SelectItem value="dried">Dried</SelectItem>
-                    <SelectItem value="pressed">Pressed</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="disposition">Disposición</Label>
-                <Select value={disposition} onValueChange={setDisposition}>
-                  <SelectTrigger id="disposition">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="in_collection">In collection</SelectItem>
-                    <SelectItem value="on_loan">On loan</SelectItem>
-                    <SelectItem value="missing">Missing</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            </AccordionContent>
-          </AccordionItem>
-
-          {/* Evento de Registro */}
-          <AccordionItem value="event" className="border rounded-lg px-4">
-            <AccordionTrigger className="hover:no-underline">
-              <div className="text-left">
-                <h3 className="text-lg">Evento de Registro</h3>
-                <p className="text-sm text-muted-foreground">
-                  Información sobre cuándo y cómo se colectó
-                </p>
-              </div>
-            </AccordionTrigger>
-            <AccordionContent className="space-y-4 pt-4">
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="eventDate">Fecha del Evento *</Label>
-                <Input
-                  id="eventDate"
-                  type="date"
-                  value={eventDate}
-                  onChange={(e) => setEventDate(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="eventDateEnd">Fecha Final (rango opcional)</Label>
-                <Input
-                  id="eventDateEnd"
-                  type="date"
-                  value={eventDateEnd}
-                  onChange={(e) => setEventDateEnd(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Registrado por (Recorded by)</Label>
-              <div className="flex gap-2">
-                <Input
-                  value={recordedByInput}
-                  onChange={(e) => setRecordedByInput(e.target.value)}
-                  placeholder="Nombre del recolector"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleAddRecordedBy();
-                    }
-                  }}
-                />
-                <Button type="button" onClick={handleAddRecordedBy}>
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-              <div className="flex flex-wrap gap-2 mt-2">
-                {recordedBy.map((person, index) => (
-                  <Badge key={index} variant="secondary" className="gap-1">
-                    {person}
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveRecordedBy(index)}
-                      className="ml-1 hover:text-destructive"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Recorded by ID (ORCID/URI)</Label>
-              <div className="flex gap-2">
-                <Input
-                  value={recordedByIDInput}
-                  onChange={(e) => setRecordedByIDInput(e.target.value)}
-                  placeholder="https://orcid.org/0000-0000-0000-0000"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleAddRecordedByID();
-                    }
-                  }}
-                />
-                <Button type="button" onClick={handleAddRecordedByID}>
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-              <div className="flex flex-wrap gap-2 mt-2">
-                {recordedByID.map((id, index) => (
-                  <Badge key={index} variant="secondary" className="gap-1 font-mono text-xs">
-                    {id}
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveRecordedByID(index)}
-                      className="ml-1 hover:text-destructive"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="individualCount">Número de Individuos</Label>
-                <Input
-                  id="individualCount"
-                  type="number"
-                  min="0"
-                  value={individualCount}
-                  onChange={(e) => setIndividualCount(e.target.value)}
-                  placeholder="1"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="samplingProtocol">Protocolo de Muestreo</Label>
-                <Input
-                  id="samplingProtocol"
-                  value={samplingProtocol}
-                  onChange={(e) => setSamplingProtocol(e.target.value)}
-                  placeholder="Ej: Transecto 50m x 2m"
-                />
-              </div>
-            </div>
-            </AccordionContent>
-          </AccordionItem>
-
-          {/* Localización */}
-          <AccordionItem value="location" className="border rounded-lg px-4">
-            <AccordionTrigger className="hover:no-underline">
-              <div className="text-left">
-                <h3 className="text-lg">Localización</h3>
-                <p className="text-sm text-muted-foreground">
-                  Información geográfica del lugar de colecta
-                </p>
-              </div>
-            </AccordionTrigger>
-            <AccordionContent className="space-y-4 pt-4">
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="country">País</Label>
-                <Select value={country} onValueChange={setCountry}>
-                  <SelectTrigger id="country">
-                    <SelectValue placeholder="Selecciona un país" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Perú">Perú</SelectItem>
-                    <SelectItem value="Brasil">Brasil</SelectItem>
-                    <SelectItem value="Colombia">Colombia</SelectItem>
-                    <SelectItem value="Ecuador">Ecuador</SelectItem>
-                    <SelectItem value="Bolivia">Bolivia</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="stateProvince">Departamento/Provincia</Label>
-                <Input
-                  id="stateProvince"
-                  value={stateProvince}
-                  onChange={(e) => setStateProvince(e.target.value)}
-                  placeholder="Ej: Cusco"
-                />
-              </div>
-            </div>
-
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="county">Provincia/Condado</Label>
-                <Input
-                  id="county"
-                  value={county}
-                  onChange={(e) => setCounty(e.target.value)}
-                  placeholder="Ej: Urubamba"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="municipality">Municipio/Distrito</Label>
-                <Input
-                  id="municipality"
-                  value={municipality}
-                  onChange={(e) => setMunicipality(e.target.value)}
-                  placeholder="Ej: Ollantaytambo"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="locality">Localidad</Label>
-              <Textarea
-                id="locality"
-                value={locality}
-                onChange={(e) => setLocality(e.target.value)}
-                placeholder="Descripción detallada de la localidad"
-                rows={2}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex justify-between items-center mb-2">
-                <Label>Coordenadas</Label>
-                <Button type="button" variant="outline" size="sm" onClick={handleTakeFromMap}>
-                  <MapPin className="h-4 w-4 mr-2" />
-                  Tomar del Mapa
-                </Button>
-              </div>
-              <div className="grid md:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="decimalLatitude">Latitud Decimal</Label>
-                  <Input
-                    id="decimalLatitude"
-                    type="number"
-                    step="0.000001"
-                    value={decimalLatitude}
-                    onChange={(e) => setDecimalLatitude(e.target.value)}
-                    placeholder="-12.0464"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="decimalLongitude">Longitud Decimal</Label>
-                  <Input
-                    id="decimalLongitude"
-                    type="number"
-                    step="0.000001"
-                    value={decimalLongitude}
-                    onChange={(e) => setDecimalLongitude(e.target.value)}
-                    placeholder="-77.0428"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="geodeticDatum">Datum</Label>
-                  <Select value={geodeticDatum} onValueChange={setGeodeticDatum}>
-                    <SelectTrigger id="geodeticDatum">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="WGS84">WGS84</SelectItem>
-                      <SelectItem value="NAD27">NAD27</SelectItem>
-                      <SelectItem value="NAD83">NAD83</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid md:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="coordinateUncertainty">Incertidumbre (m)</Label>
-                <Input
-                  id="coordinateUncertainty"
-                  type="number"
-                  min="0"
-                  value={coordinateUncertainty}
-                  onChange={(e) => setCoordinateUncertainty(e.target.value)}
-                  placeholder="100"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="minimumElevation">Elevación Mínima (m)</Label>
-                <Input
-                  id="minimumElevation"
-                  type="number"
-                  value={minimumElevation}
-                  onChange={(e) => setMinimumElevation(e.target.value)}
-                  placeholder="500"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="maximumElevation">Elevación Máxima (m)</Label>
-                <Input
-                  id="maximumElevation"
-                  type="number"
-                  value={maximumElevation}
-                  onChange={(e) => setMaximumElevation(e.target.value)}
-                  placeholder="550"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="habitat">Hábitat / Sustrato</Label>
-              <Textarea
-                id="habitat"
-                value={habitat}
-                onChange={(e) => setHabitat(e.target.value)}
-                placeholder="Descripción del hábitat, tipo de suelo, vegetación asociada..."
-                rows={3}
-              />
-            </div>
-            </AccordionContent>
-          </AccordionItem>
-
-          {/* Identificación */}
-          <AccordionItem value="identification" className="border rounded-lg px-4">
-            <AccordionTrigger className="hover:no-underline">
-              <div className="text-left">
-                <h3 className="text-lg">Identificación</h3>
-                <p className="text-sm text-muted-foreground">
-                  Nombre científico y detalles taxonómicos
-                </p>
-              </div>
-            </AccordionTrigger>
-            <AccordionContent className="space-y-4 pt-4">
-            <div className="space-y-2">
-              <Label htmlFor="scientificName">Nombre Científico *</Label>
-              <Input
-                id="scientificName"
-                value={scientificName}
-                onChange={(e) => setScientificName(e.target.value)}
-                placeholder="Genus species Author"
-                required
-              />
-              <p className="text-sm text-muted-foreground">
-                Comienza a escribir para buscar en la base de datos de taxones
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Identificado por</Label>
-              <div className="flex gap-2">
-                <Input
-                  value={identifiedByInput}
-                  onChange={(e) => setIdentifiedByInput(e.target.value)}
-                  placeholder="Nombre del identificador"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleAddIdentifiedBy();
-                    }
-                  }}
-                />
-                <Button type="button" onClick={handleAddIdentifiedBy}>
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-              <div className="flex flex-wrap gap-2 mt-2">
-                {identifiedBy.map((person, index) => (
-                  <Badge key={index} variant="secondary" className="gap-1">
-                    {person}
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveIdentifiedBy(index)}
-                      className="ml-1 hover:text-destructive"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Identified by ID (ORCID/URI)</Label>
-              <div className="flex gap-2">
-                <Input
-                  value={identifiedByIDInput}
-                  onChange={(e) => setIdentifiedByIDInput(e.target.value)}
-                  placeholder="https://orcid.org/0000-0000-0000-0000"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleAddIdentifiedByID();
-                    }
-                  }}
-                />
-                <Button type="button" onClick={handleAddIdentifiedByID}>
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-              <div className="flex flex-wrap gap-2 mt-2">
-                {identifiedByID.map((id, index) => (
-                  <Badge key={index} variant="secondary" className="gap-1 font-mono text-xs">
-                    {id}
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveIdentifiedByID(index)}
-                      className="ml-1 hover:text-destructive"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="dateIdentified">Fecha de Identificación</Label>
-                <Input
-                  id="dateIdentified"
-                  type="date"
-                  value={dateIdentified}
-                  onChange={(e) => setDateIdentified(e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="identificationQualifier">Calificador</Label>
-                <Select value={identificationQualifier} onValueChange={setIdentificationQualifier}>
-                  <SelectTrigger id="identificationQualifier">
-                    <SelectValue placeholder="Selecciona calificador" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Sin calificador</SelectItem>
-                    <SelectItem value="cf.">cf. (confer)</SelectItem>
-                    <SelectItem value="aff.">aff. (affinis)</SelectItem>
-                    <SelectItem value="sp.">sp. (especie indeterminada)</SelectItem>
-                    <SelectItem value="s.l.">s.l. (sensu lato)</SelectItem>
-                    <SelectItem value="s.s.">s.s. (sensu stricto)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="identificationReferences">Referencias / According to</Label>
-              <Input
-                id="identificationReferences"
-                value={identificationReferences}
-                onChange={(e) => setIdentificationReferences(e.target.value)}
-                placeholder="Fuente, URL o referencia bibliográfica"
-              />
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="isCurrent"
-                checked={isCurrent}
-                onCheckedChange={(checked) => setIsCurrent(checked as boolean)}
-              />
-              <Label htmlFor="isCurrent" className="cursor-pointer">
-                Esta es la identificación vigente
-              </Label>
-            </div>
-
-            {activeView === 'advanced' && (
-              <Accordion type="single" collapsible>
-                <AccordionItem value="advanced-identification">
-                  <AccordionTrigger>Opciones Avanzadas de Identificación</AccordionTrigger>
-                  <AccordionContent className="space-y-4 pt-4">
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {/* Record Number */}
                     <div className="space-y-2">
-                      <Label htmlFor="verificationStatus">Estado de Verificación</Label>
-                      <Select value={verificationStatus} onValueChange={setVerificationStatus}>
-                        <SelectTrigger id="verificationStatus">
+                      <Label htmlFor="recordNumber" className="flex items-center gap-2">
+                        Número de registro
+                        <span className="text-xs text-muted-foreground">dwc:recordNumber</span>
+                      </Label>
+                      <Input
+                          id="recordNumber"
+                          value={recordNumber}
+                          onChange={(e) => setRecordNumber(e.target.value)}
+                          placeholder="Número de colecta"
+                      />
+                      <p className="text-xs text-muted-foreground">Número de campo asignado por el colector.</p>
+                    </div>
+
+                    {/* Individual Count */}
+                    <div className="space-y-2">
+                      <Label htmlFor="individualCount" className="flex items-center gap-2">
+                        Número de individuos
+                        <span className="text-xs text-muted-foreground">dwc:individualCount</span>
+                      </Label>
+                      <Input
+                          id="individualCount"
+                          type="number"
+                          min={0}
+                          value={individualCount}
+                          onChange={(e) => setIndividualCount(e.target.value)}
+                          placeholder="1"
+                      />
+                      <p className="text-xs text-muted-foreground">Número de individuos observados/recolectados.</p>
+                    </div>
+                  </div>
+
+                  {/* Recorded By */}
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2">
+                      Registrado por
+                      <Badge variant="outline" className="text-xs">Recomendado</Badge>
+                      <span className="text-xs text-muted-foreground">dwc:recordedBy</span>
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input
+                          value={recordedByInput}
+                          onChange={(e) => setRecordedByInput(e.target.value)}
+                          placeholder="Nombre del recolector"
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleAddRecordedBy();
+                            }
+                          }}
+                      />
+                      <Button type="button" onClick={handleAddRecordedBy} variant="outline">
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {recordedBy.map((person, index) => (
+                          <Badge key={index} variant="secondary" className="gap-1">
+                            {person}
+                            <button
+                                type="button"
+                                onClick={() => handleRemoveRecordedBy(index)}
+                                className="ml-1 hover:text-destructive"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </Badge>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Nombre(s) de quien observó o recolectó.</p>
+                  </div>
+
+                  {/* Record Entered By */}
+                  <div className="space-y-2">
+                    <Label htmlFor="recordEnteredBy" className="flex items-center gap-2">
+                      Digitado por
+                      <span className="text-xs text-muted-foreground">dwc:recordEnteredBy</span>
+                    </Label>
+                    <Input
+                        id="recordEnteredBy"
+                        value={recordEnteredBy}
+                        onChange={(e) => setRecordEnteredBy(e.target.value)}
+                        placeholder="Nombre de quien digitó"
+                    />
+                    <p className="text-xs text-muted-foreground">Persona que ingresó el registro.</p>
+                  </div>
+
+                  <div className="grid md:grid-cols-3 gap-4">
+                    {/* Occurrence Status */}
+                    <div className="space-y-2">
+                      <Label htmlFor="occurrenceStatus" className="flex items-center gap-2">
+                        Estado
+                        <span className="text-xs text-muted-foreground">dwc:occurrenceStatus</span>
+                      </Label>
+                      <Select value={occurrenceStatus} onValueChange={setOccurrenceStatus}>
+                        <SelectTrigger id="occurrenceStatus">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="pending">Pendiente</SelectItem>
-                          <SelectItem value="provisionally_accepted">Provisionalmente aceptado</SelectItem>
-                          <SelectItem value="confirmed">Confirmado</SelectItem>
-                          <SelectItem value="rejected">Rechazado</SelectItem>
+                          <SelectItem value="present">Presente</SelectItem>
+                          <SelectItem value="absent">Ausente</SelectItem>
                         </SelectContent>
                       </Select>
+                      <p className="text-xs text-muted-foreground">Estado de la ocurrencia.</p>
                     </div>
 
+                    {/* Preparations */}
                     <div className="space-y-2">
-                      <Label htmlFor="typeStatus">Estado de Tipo</Label>
-                      <Select value={typeStatus} onValueChange={setTypeStatus}>
-                        <SelectTrigger id="typeStatus">
-                          <SelectValue placeholder="Selecciona si aplica" />
+                      <Label htmlFor="preparations" className="flex items-center gap-2">
+                        Preparación
+                        <span className="text-xs text-muted-foreground">dwc:preparations</span>
+                      </Label>
+                      <Select value={preparations} onValueChange={setPreparations}>
+                        <SelectTrigger id="preparations">
+                          <SelectValue placeholder="Selecciona" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="none">No es tipo</SelectItem>
-                          <SelectItem value="holotype">Holotipo</SelectItem>
-                          <SelectItem value="isotype">Isotipo</SelectItem>
-                          <SelectItem value="paratype">Paratipo</SelectItem>
-                          <SelectItem value="syntype">Sintipo</SelectItem>
-                          <SelectItem value="lectotype">Lectotipo</SelectItem>
-                          <SelectItem value="neotype">Neotipo</SelectItem>
+                          <SelectItem value="herbarium_sheet">Herbarium sheet</SelectItem>
+                          <SelectItem value="alcohol">Alcohol</SelectItem>
+                          <SelectItem value="dried">Dried</SelectItem>
+                          <SelectItem value="pressed">Pressed</SelectItem>
+                          <SelectItem value="tissue">Tissue</SelectItem>
                         </SelectContent>
                       </Select>
+                      <p className="text-xs text-muted-foreground">Tipo de preparación del material.</p>
                     </div>
 
+                    {/* Disposition */}
                     <div className="space-y-2">
-                      <Label htmlFor="identificationRemarks">Notas de Identificación</Label>
-                      <Textarea
-                        id="identificationRemarks"
-                        value={identificationRemarks}
-                        onChange={(e) => setIdentificationRemarks(e.target.value)}
-                        placeholder="Comentarios adicionales sobre la identificación"
-                        rows={3}
-                      />
+                      <Label htmlFor="disposition" className="flex items-center gap-2">
+                        Disposición
+                        <span className="text-xs text-muted-foreground">dwc:disposition</span>
+                      </Label>
+                      <Select value={disposition} onValueChange={setDisposition}>
+                        <SelectTrigger id="disposition">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="in_collection">En colección</SelectItem>
+                          <SelectItem value="on_loan">Prestado</SelectItem>
+                          <SelectItem value="missing">Perdido</SelectItem>
+                          <SelectItem value="destroyed">Destruido</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">Situación del ejemplar.</p>
                     </div>
-                  </AccordionContent>
-                </AccordionItem>
-              </Accordion>
-            )}
-            </AccordionContent>
-          </AccordionItem>
+                  </div>
 
-          {/* Organismo (Avanzado) */}
-          {activeView === 'advanced' && (
-          <AccordionItem value="organism" className="border rounded-lg px-4">
-            <AccordionTrigger className="hover:no-underline">
-              <div className="text-left">
-                <h3 className="text-lg">Organismo (Opcional)</h3>
-                <p className="text-sm text-muted-foreground">
-                  Agrupa múltiples ocurrencias del mismo individuo
-                </p>
-              </div>
-            </AccordionTrigger>
-            <AccordionContent className="space-y-4 pt-4">
-              <RadioGroup value={organismOption} onValueChange={setOrganismOption}>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="none" id="organism-none" />
-                  <Label htmlFor="organism-none" className="cursor-pointer">
-                    No agrupar (sin Organism)
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="existing" id="organism-existing" />
-                  <Label htmlFor="organism-existing" className="cursor-pointer">
-                    Asociar a Organism existente
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="new" id="organism-new" />
-                  <Label htmlFor="organism-new" className="cursor-pointer">
-                    Crear nuevo Organism
-                  </Label>
-                </div>
-              </RadioGroup>
-
-              {organismOption === 'new' && (
-                <div className="space-y-4 pt-4 border-t">
+                  {/* Occurrence Remarks */}
                   <div className="space-y-2">
-                    <Label htmlFor="organismID">Organism ID (UUID)</Label>
-                    <div className="flex gap-2">
+                    <Label htmlFor="occurrenceRemarks" className="flex items-center gap-2">
+                      Observaciones
+                      <span className="text-xs text-muted-foreground">dwc:occurrenceRemarks</span>
+                    </Label>
+                    <Textarea
+                        id="occurrenceRemarks"
+                        value={occurrenceRemarks}
+                        onChange={(e) => setOccurrenceRemarks(e.target.value)}
+                        placeholder="Observaciones adicionales sobre la ocurrencia"
+                        rows={3}
+                    />
+                    <p className="text-xs text-muted-foreground">Observaciones adicionales sobre la ocurrencia.</p>
+                  </div>
+
+                  {/* Dynamic Properties */}
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2">
+                      Registros adicionales (dynamicProperties)
+                      <span className="text-xs text-muted-foreground">dwc:dynamicProperties</span>
+                    </Label>
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
                       <Input
-                        id="organismID"
-                        value={organismID}
-                        onChange={(e) => setOrganismID(e.target.value)}
-                        placeholder="Auto-generado"
-                        className="font-mono text-sm"
+                          placeholder="clave (p.ej. microhabitat)"
+                          value={dpKey}
+                          onChange={(e) => setDpKey(e.target.value)}
+                          className="md:col-span-2"
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleAddDynamicProp();
+                            }
+                          }}
                       />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => setOrganismID(generateUUID())}
-                      >
-                        Generar
+                      <Input
+                          placeholder="valor (p.ej. 'bajo roca')"
+                          value={dpValue}
+                          onChange={(e) => setDpValue(e.target.value)}
+                          className="md:col-span-2"
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleAddDynamicProp();
+                            }
+                          }}
+                      />
+                      <Button type="button" variant="outline" onClick={handleAddDynamicProp} className="md:col-span-1">
+                        <Plus className="h-4 w-4 mr-2" /> Agregar
                       </Button>
                     </div>
+
+                    {/* chips + preview */}
+                    {dynamicProps.length > 0 && (
+                        <>
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {dynamicProps.map((kv, idx) => (
+                                <Badge key={`${kv.key}-${idx}`} variant="secondary" className="gap-1">
+                                  <span className="font-mono">{kv.key}</span>: {kv.value}
+                                  <button
+                                      type="button"
+                                      onClick={() => handleRemoveDynamicProp(idx)}
+                                      className="ml-1 hover:text-destructive"
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                </Badge>
+                            ))}
+                          </div>
+                          <div className="rounded-md border bg-muted/30 p-3">
+                            <p className="text-xs text-muted-foreground mb-1">Vista previa JSON:</p>
+                            <pre className="text-xs overflow-auto max-h-40">
+{JSON.stringify(Object.fromEntries(dynamicProps.map(({ key, value }) => [key, value])), null, 2)}
+                      </pre>
+                          </div>
+                        </>
+                    )}
+                  </div>
+
+                  <div className="grid md:grid-cols-3 gap-4">
+                    {/* License */}
+                    <div className="space-y-2">
+                      <Label htmlFor="license" className="flex items-center gap-2">
+                        Licencia
+                        <span className="text-xs text-muted-foreground">dwc:license</span>
+                      </Label>
+                      <Select value={license} onValueChange={setLicense}>
+                        <SelectTrigger id="license">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="CC-BY-4.0">CC BY 4.0</SelectItem>
+                          <SelectItem value="CC-BY-NC-4.0">CC BY-NC 4.0</SelectItem>
+                          <SelectItem value="CC0">CC0 (Dominio Público)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">Licencia de uso de los datos.</p>
+                    </div>
+
+                    {/* Rights Holder */}
+                    <div className="space-y-2 md:col-span-2">
+                      <Label htmlFor="rightsHolder" className="flex items-center gap-2">
+                        Titular de derechos
+                        <span className="text-xs text-muted-foreground">dwc:rightsHolder</span>
+                      </Label>
+                      <Input
+                          id="rightsHolder"
+                          value={rightsHolder}
+                          onChange={(e) => setRightsHolder(e.target.value)}
+                          placeholder="Institución o persona titular"
+                      />
+                      <p className="text-xs text-muted-foreground">Titular de los derechos del registro.</p>
+                    </div>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+
+              {/* Evento */}
+              <AccordionItem value="event" className="border rounded-lg px-6 bg-card">
+                <AccordionTrigger className="hover:no-underline py-4">
+                  <div className="text-left">
+                    <h3 className="text-xl">Evento</h3>
+                    <p className="text-sm text-muted-foreground">Información sobre cuándo y cómo se colectó</p>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="space-y-4 pt-4 pb-6">
+                  {/* Event Date */}
+                  <div className="space-y-2">
+                    <Label htmlFor="eventDate" className="flex items-center gap-2">
+                      Fecha del evento
+                      <Badge variant="outline" className="text-xs">Recomendado</Badge>
+                      <span className="text-xs text-muted-foreground">dwc:eventDate</span>
+                    </Label>
+                    <Input id="eventDate" type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
+                    <p className="text-xs text-muted-foreground">Fecha (o rango) del evento de colecta/observación.</p>
+                  </div>
+
+                  <div className="grid md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="year" className="flex items-center gap-2">
+                        Año <span className="text-xs text-muted-foreground">dwc:year</span>
+                      </Label>
+                      <Input id="year" value={year} readOnly />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="month" className="flex items-center gap-2">
+                        Mes <span className="text-xs text-muted-foreground">dwc:month</span>
+                      </Label>
+                      <Input id="month" value={month} readOnly />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="day" className="flex items-center gap-2">
+                        Día <span className="text-xs text-muted-foreground">dwc:day</span>
+                      </Label>
+                      <Input id="day" value={day} readOnly />
+                    </div>
                   </div>
 
                   <div className="grid md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="organismScope">Alcance del Organismo</Label>
-                      <Select value={organismScope} onValueChange={setOrganismScope}>
-                        <SelectTrigger id="organismScope">
-                          <SelectValue placeholder="Selecciona" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="individual">Individual</SelectItem>
-                          <SelectItem value="colony">Colonia</SelectItem>
-                          <SelectItem value="clone">Clon</SelectItem>
-                          <SelectItem value="population_sample">Muestra poblacional</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <Label htmlFor="verbatimEventDate" className="flex items-center gap-2">
+                        Fecha original
+                        <span className="text-xs text-muted-foreground">dwc:verbatimEventDate</span>
+                      </Label>
+                      <Input
+                          id="verbatimEventDate"
+                          value={verbatimEventDate}
+                          onChange={(e) => setVerbatimEventDate(e.target.value)}
+                          placeholder="Ej: Primavera 2024"
+                      />
+                      <p className="text-xs text-muted-foreground">Fecha tal como aparece en la fuente original.</p>
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="sex">Sexo</Label>
-                      <Select value={sex} onValueChange={setSex}>
-                        <SelectTrigger id="sex">
-                          <SelectValue placeholder="Selecciona" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="male">Masculino</SelectItem>
-                          <SelectItem value="female">Femenino</SelectItem>
-                          <SelectItem value="hermaphrodite">Hermafrodita</SelectItem>
-                          <SelectItem value="unknown">Desconocido</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <Label htmlFor="fieldNumber" className="flex items-center gap-2">
+                        Número de campo
+                        <span className="text-xs text-muted-foreground">dwc:fieldNumber</span>
+                      </Label>
+                      <Input
+                          id="fieldNumber"
+                          value={fieldNumber}
+                          onChange={(e) => setFieldNumber(e.target.value)}
+                          placeholder="Código del evento"
+                      />
+                      <p className="text-xs text-muted-foreground">Código o número del evento de campo.</p>
                     </div>
                   </div>
 
                   <div className="grid md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="lifeStage">Estado de Vida</Label>
+                      <Label htmlFor="samplingProtocol" className="flex items-center gap-2">
+                        Protocolo de muestreo
+                        <span className="text-xs text-muted-foreground">dwc:samplingProtocol</span>
+                      </Label>
                       <Input
-                        id="lifeStage"
-                        value={lifeStage}
-                        onChange={(e) => setLifeStage(e.target.value)}
-                        placeholder="Ej: adulto, juvenil, plántula"
+                          id="samplingProtocol"
+                          value={samplingProtocol}
+                          onChange={(e) => setSamplingProtocol(e.target.value)}
+                          placeholder="Ej: Transecto 50m x 2m"
                       />
+                      <p className="text-xs text-muted-foreground">Protocolo o método de muestreo empleado.</p>
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="reproductiveCondition">Condición Reproductiva</Label>
+                      <Label htmlFor="samplingEffort" className="flex items-center gap-2">
+                        Esfuerzo de muestreo
+                        <span className="text-xs text-muted-foreground">dwc:samplingEffort</span>
+                      </Label>
                       <Input
-                        id="reproductiveCondition"
-                        value={reproductiveCondition}
-                        onChange={(e) => setReproductiveCondition(e.target.value)}
-                        placeholder="Ej: en flor, con frutos"
+                          id="samplingEffort"
+                          value={samplingEffort}
+                          onChange={(e) => setSamplingEffort(e.target.value)}
+                          placeholder="Ej: 4 horas, 10 trampas"
                       />
+                      <p className="text-xs text-muted-foreground">Esfuerzo de muestreo (horas, trampas, etc.).</p>
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="establishmentMeans">Medio de Establecimiento</Label>
-                    <Select value={establishmentMeans} onValueChange={setEstablishmentMeans}>
-                      <SelectTrigger id="establishmentMeans">
-                        <SelectValue placeholder="Selecciona" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="native">Nativo</SelectItem>
-                        <SelectItem value="introduced">Introducido</SelectItem>
-                        <SelectItem value="cultivated">Cultivado</SelectItem>
-                        <SelectItem value="invasive">Invasivo</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="organismRemarks">Notas sobre el Organismo</Label>
+                    <Label htmlFor="habitat" className="flex items-center gap-2">
+                      Hábitat
+                      <span className="text-xs text-muted-foreground">dwc:habitat</span>
+                    </Label>
                     <Textarea
-                      id="organismRemarks"
-                      value={organismRemarks}
-                      onChange={(e) => setOrganismRemarks(e.target.value)}
-                      placeholder="Comentarios adicionales"
-                      rows={2}
+                        id="habitat"
+                        value={habitat}
+                        onChange={(e) => setHabitat(e.target.value)}
+                        placeholder="Descripción del hábitat"
+                        rows={3}
                     />
+                    <p className="text-xs text-muted-foreground">Descripción del hábitat donde ocurrió el evento.</p>
                   </div>
-                </div>
-              )}
-            </AccordionContent>
-          </AccordionItem>
-          )}
 
-          {/* Multimedia (Avanzado) */}
-          {activeView === 'advanced' && (
-          <AccordionItem value="multimedia" className="border rounded-lg px-4">
-            <AccordionTrigger className="hover:no-underline">
-              <div className="text-left">
-                <h3 className="text-lg">Multimedia</h3>
-                <p className="text-sm text-muted-foreground">
-                  Imágenes y archivos asociados al espécimen
-                </p>
-              </div>
-            </AccordionTrigger>
-            <AccordionContent className="space-y-4 pt-4">
-              <div className="space-y-2">
-                <Label htmlFor="media-upload">Subir Imágenes</Label>
-                <div className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary transition-colors">
-                  <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                  <div className="mb-2">
-                    <label htmlFor="media-upload" className="cursor-pointer text-primary hover:underline">
-                      Seleccionar archivos
-                    </label>
-                    <input
-                      id="media-upload"
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      onChange={handleFileUpload}
-                      className="hidden"
+                  <div className="space-y-2">
+                    <Label htmlFor="eventRemarks" className="flex items-center gap-2">
+                      Observaciones del evento
+                      <span className="text-xs text-muted-foreground">dwc:eventRemarks</span>
+                    </Label>
+                    <Textarea
+                        id="eventRemarks"
+                        value={eventRemarks}
+                        onChange={(e) => setEventRemarks(e.target.value)}
+                        placeholder="Observaciones o notas sobre el evento"
+                        rows={3}
                     />
+                    <p className="text-xs text-muted-foreground">Observaciones o notas sobre el evento.</p>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Formatos: JPG, PNG, TIFF
-                  </p>
-                </div>
-              </div>
+                </AccordionContent>
+              </AccordionItem>
 
-              {mediaFiles.length > 0 && (
-                <div className="space-y-3">
-                  {mediaFiles.map((media) => (
-                    <div key={media.id} className="border rounded-lg p-4">
-                      <div className="flex justify-between items-start mb-3">
-                        <p className="truncate">{media.title}</p>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleRemoveMedia(media.id)}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                      <div className="grid md:grid-cols-2 gap-3">
-                        <div className="space-y-2">
-                          <Label>Creador</Label>
-                          <Input
-                            value={media.creator}
-                            onChange={(e) => {
-                              setMediaFiles(mediaFiles.map(m => 
-                                m.id === media.id ? {...m, creator: e.target.value} : m
-                              ));
-                            }}
-                            placeholder="Nombre del fotógrafo"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Titular de Derechos</Label>
-                          <Input
-                            value={media.rightsHolder}
-                            onChange={(e) => {
-                              setMediaFiles(mediaFiles.map(m => 
-                                m.id === media.id ? {...m, rightsHolder: e.target.value} : m
-                              ));
-                            }}
-                            placeholder="Institución o persona"
-                          />
-                        </div>
-                      </div>
+              {/* Localización */}
+              <AccordionItem value="location" className="border rounded-lg px-6 bg-card">
+                <AccordionTrigger className="hover:no-underline py-4">
+                  <div className="text-left">
+                    <h3 className="text-xl">Localización</h3>
+                    <p className="text-sm text-muted-foreground">Información geográfica del lugar de colecta</p>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="space-y-4 pt-4 pb-6">
+                  <div className="grid md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="stateProvince" className="flex items-center gap-2">
+                        Departamento/Estado
+                        <span className="text-xs text-muted-foreground">dwc:stateProvince</span>
+                      </Label>
+                      <Input id="stateProvince" value={stateProvince} onChange={(e) => setStateProvince(e.target.value)} placeholder="Ej: Cusco" />
+                      <p className="text-xs text-muted-foreground">Primera división política.</p>
                     </div>
-                  ))}
-                </div>
-              )}
-            </AccordionContent>
-          </AccordionItem>
-          )}
 
-          {/* Observaciones & Medidas (Avanzado) */}
-          {activeView === 'advanced' && (
-          <AccordionItem value="observations" className="border rounded-lg px-4">
-            <AccordionTrigger className="hover:no-underline">
-              <div className="text-left">
-                <h3 className="text-lg">Observaciones & Medidas</h3>
-                <p className="text-sm text-muted-foreground">
-                  Notas adicionales y mediciones
-                </p>
-              </div>
-            </AccordionTrigger>
-            <AccordionContent className="space-y-4 pt-4">
-              <div className="space-y-2">
-                <Label htmlFor="occurrenceRemarks">Observaciones del Registro</Label>
-                <Textarea
-                  id="occurrenceRemarks"
-                  value={occurrenceRemarks}
-                  onChange={(e) => setOccurrenceRemarks(e.target.value)}
-                  placeholder="Notas generales sobre la ocurrencia"
-                  rows={3}
-                />
-              </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="county" className="flex items-center gap-2">
+                        Provincia/Condado
+                        <span className="text-xs text-muted-foreground">dwc:county</span>
+                      </Label>
+                      <Input id="county" value={county} onChange={(e) => setCounty(e.target.value)} placeholder="Ej: Urubamba" />
+                      <p className="text-xs text-muted-foreground">Segunda división política.</p>
+                    </div>
 
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <Label>Mediciones (MeasurementOrFact)</Label>
-                  <Button type="button" variant="outline" size="sm" onClick={handleAddMeasurement}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Agregar Medida
-                  </Button>
-                </div>
-                
-                {measurements.length > 0 && (
-                  <div className="space-y-3">
-                    {measurements.map((measurement) => (
-                      <div key={measurement.id} className="border rounded-lg p-3">
-                        <div className="flex gap-2">
-                          <Input
-                            value={measurement.type}
-                            onChange={(e) => handleUpdateMeasurement(measurement.id, 'type', e.target.value)}
-                            placeholder="Tipo (ej: altura)"
-                            className="flex-1"
-                          />
-                          <Input
-                            value={measurement.value}
-                            onChange={(e) => handleUpdateMeasurement(measurement.id, 'value', e.target.value)}
-                            placeholder="Valor"
-                            className="flex-1"
-                          />
-                          <Input
-                            value={measurement.unit}
-                            onChange={(e) => handleUpdateMeasurement(measurement.id, 'unit', e.target.value)}
-                            placeholder="Unidad"
-                            className="flex-1"
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleRemoveMeasurement(measurement.id)}
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
+                    <div className="space-y-2">
+                      <Label htmlFor="municipality" className="flex items-center gap-2">
+                        Municipio/Distrito
+                        <span className="text-xs text-muted-foreground">dwc:municipality</span>
+                      </Label>
+                      <Input id="municipality" value={municipality} onChange={(e) => setMunicipality(e.target.value)} placeholder="Ej: Ollantaytambo" />
+                      <p className="text-xs text-muted-foreground">División local.</p>
+                    </div>
                   </div>
-                )}
-              </div>
-            </AccordionContent>
-          </AccordionItem>
-          )}
 
-          {/* Derechos & Publicación (Avanzado) */}
-          {activeView === 'advanced' && (
-          <AccordionItem value="rights" className="border rounded-lg px-4">
-            <AccordionTrigger className="hover:no-underline">
-              <div className="text-left">
-                <h3 className="text-lg">Derechos & Publicación</h3>
-                <p className="text-sm text-muted-foreground">
-                  Licencia y permisos de uso
-                </p>
-              </div>
-            </AccordionTrigger>
-            <AccordionContent className="space-y-4 pt-4">
-              <div className="space-y-2">
-                <Label htmlFor="license">Licencia</Label>
-                <Select value={license} onValueChange={setLicense}>
-                  <SelectTrigger id="license">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="CC0">CC0 (Dominio Público)</SelectItem>
-                    <SelectItem value="CC-BY-4.0">CC BY 4.0</SelectItem>
-                    <SelectItem value="CC-BY-NC-4.0">CC BY-NC 4.0</SelectItem>
-                    <SelectItem value="CC-BY-SA-4.0">CC BY-SA 4.0</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="locality" className="flex items-center gap-2">
+                      Localidad
+                      <Badge variant="outline" className="text-xs">Recomendado</Badge>
+                      <span className="text-xs text-muted-foreground">dwc:locality</span>
+                    </Label>
+                    <Textarea id="locality" value={locality} onChange={(e) => setLocality(e.target.value)} placeholder="Descripción específica del sitio de colecta" rows={2} />
+                    <p className="text-xs text-muted-foreground">Descripción de la localidad (sitio) de la colecta/observación.</p>
+                  </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="rightsHolderGeneral">Titular de Derechos</Label>
-                <Input
-                  id="rightsHolderGeneral"
-                  value={rightsHolder}
-                  onChange={(e) => setRightsHolder(e.target.value)}
-                  placeholder="Nombre de la institución o persona"
-                />
-              </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="verbatimLocality" className="flex items-center gap-2">
+                      Localidad original
+                      <span className="text-xs text-muted-foreground">dwc:verbatimLocality</span>
+                    </Label>
+                    <Input id="verbatimLocality" value={verbatimLocality} onChange={(e) => setVerbatimLocality(e.target.value)} placeholder="Localidad tal como aparece en la etiqueta" />
+                    <p className="text-xs text-muted-foreground">Localidad tal como aparece en la fuente original.</p>
+                  </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="accessRights">Derechos de Acceso</Label>
-                <Textarea
-                  id="accessRights"
-                  value={accessRights}
-                  onChange={(e) => setAccessRights(e.target.value)}
-                  placeholder="Información sobre restricciones o condiciones de acceso"
-                  rows={2}
-                />
-              </div>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="decimalLatitude" className="flex items-center gap-2">
+                        Latitud decimal
+                        <span className="text-xs text-muted-foreground">dwc:decimalLatitude</span>
+                      </Label>
+                      <Input id="decimalLatitude" type="number" step="0.000001" value={decimalLatitude} onChange={(e) => setDecimalLatitude(e.target.value)} placeholder="-12.046373" />
+                      <p className="text-xs text-muted-foreground">Latitud en grados decimales.</p>
+                    </div>
 
-              <Alert>
-                <Info className="h-4 w-4" />
-                <AlertDescription>
-                  Los campos de modificación se actualizarán automáticamente al guardar
-                </AlertDescription>
-              </Alert>
-            </AccordionContent>
-          </AccordionItem>
-          )}
-        </Accordion>
+                    <div className="space-y-2">
+                      <Label htmlFor="decimalLongitude" className="flex items-center gap-2">
+                        Longitud decimal
+                        <span className="text-xs text-muted-foreground">dwc:decimalLongitude</span>
+                      </Label>
+                      <Input id="decimalLongitude" type="number" step="0.000001" value={decimalLongitude} onChange={(e) => setDecimalLongitude(e.target.value)} placeholder="-77.042755" />
+                      <p className="text-xs text-muted-foreground">Longitud en grados decimales.</p>
+                    </div>
+                  </div>
 
-        {/* Botones de Acción */}
-        <div className="flex gap-4 justify-end sticky bottom-0 bg-background py-4 border-t mt-6">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handleCancel}
-          >
-            Cancelar
-          </Button>
-          <Button type="submit">
-            {mode === 'edit' ? 'Guardar Cambios' : 'Guardar Ocurrencia'}
-          </Button>
+                  <Button type="button" variant="outline" onClick={handleTakeFromMap} className="w-full">
+                    <MapPin className="h-4 w-4 mr-2" />
+                    Tomar coordenadas del mapa
+                  </Button>
+
+                  <div className="grid md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="geodeticDatum" className="flex items-center gap-2">
+                        Datum geodésico
+                        <span className="text-xs text-muted-foreground">dwc:geodeticDatum</span>
+                      </Label>
+                      <Select value={geodeticDatum} onValueChange={setGeodeticDatum}>
+                        <SelectTrigger id="geodeticDatum">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="WGS84">WGS84</SelectItem>
+                          <SelectItem value="NAD27">NAD27</SelectItem>
+                          <SelectItem value="NAD83">NAD83</SelectItem>
+                          <SelectItem value="EPSG:4326">EPSG:4326</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">Datum geodésico.</p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="coordinateUncertaintyInMeters" className="flex items-center gap-2">
+                        Incertidumbre (m)
+                        <span className="text-xs text-muted-foreground">dwc:coordinateUncertainty</span>
+                      </Label>
+                      <Input id="coordinateUncertaintyInMeters" type="number" min={0} value={coordinateUncertaintyInMeters} onChange={(e) => setCoordinateUncertaintyInMeters(e.target.value)} placeholder="100" />
+                      <p className="text-xs text-muted-foreground">Incertidumbre en metros.</p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="coordinatePrecision" className="flex items-center gap-2">
+                        Precisión
+                        <span className="text-xs text-muted-foreground">dwc:coordinatePrecision</span>
+                      </Label>
+                      <Input id="coordinatePrecision" value={coordinatePrecision} onChange={(e) => setCoordinatePrecision(e.target.value)} placeholder="0.00001" />
+                      <p className="text-xs text-muted-foreground">Precisión de coordenadas.</p>
+                    </div>
+                  </div>
+
+                  <div className="grid md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="minimumElevationInMeters" className="flex items-center gap-2">
+                        Elevación mín. (m)
+                        <span className="text-xs text-muted-foreground">dwc:minimumElevation</span>
+                      </Label>
+                      <Input id="minimumElevationInMeters" type="number" value={minimumElevationInMeters} onChange={(e) => setMinimumElevationInMeters(e.target.value)} placeholder="1200" />
+                      <p className="text-xs text-muted-foreground">Elevación mínima en metros.</p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="maximumElevationInMeters" className="flex items-center gap-2">
+                        Elevación máx. (m)
+                        <span className="text-xs text-muted-foreground">dwc:maximumElevation</span>
+                      </Label>
+                      <Input id="maximumElevationInMeters" type="number" value={maximumElevationInMeters} onChange={(e) => setMaximumElevationInMeters(e.target.value)} placeholder="1500" />
+                      <p className="text-xs text-muted-foreground">Elevación máxima en metros.</p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="verbatimElevation" className="flex items-center gap-2">
+                        Elevación original
+                        <span className="text-xs text-muted-foreground">dwc:verbatimElevation</span>
+                      </Label>
+                      <Input id="verbatimElevation" value={verbatimElevation} onChange={(e) => setVerbatimElevation(e.target.value)} placeholder="Ej: 1200-1500m" />
+                      <p className="text-xs text-muted-foreground">Elevación original.</p>
+                    </div>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+
+              {/* Taxonomía */}
+              <AccordionItem value="taxon" className="border rounded-lg px-6 bg-card">
+                <AccordionTrigger className="hover:no-underline py-4">
+                  <div className="text-left">
+                    <h3 className="text-xl">Taxonomía</h3>
+                    <p className="text-sm text-muted-foreground">Información taxonómica del espécimen</p>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="space-y-4 pt-4 pb-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="scientificName" className="flex items-center gap-2">
+                      Nombre científico <span className="text-destructive">*</span>
+                      <Badge variant="secondary" className="text-xs">Requerido</Badge>
+                    </Label>
+                    <Input id="scientificName" value={scientificName} onChange={(e) => setScientificName(e.target.value)} placeholder="Genus species Author, year" required />
+                    <p className="text-xs text-muted-foreground">Nombre científico completo (Genus species Autor, año).</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="scientificNameAuthorship" className="flex items-center gap-2">
+                      Autoría del nombre
+                    </Label>
+                    <Input id="scientificNameAuthorship" value={scientificNameAuthorship} onChange={(e) => setScientificNameAuthorship(e.target.value)} placeholder="L., 1753" />
+                    <p className="text-xs text-muted-foreground">Autoría del nombre científico (autor y año).</p>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="family" className="flex items-center gap-2">
+                        Familia
+                        <Badge variant="outline" className="text-xs">Recomendado</Badge>
+                      </Label>
+                      <Input id="family" value={family} onChange={(e) => setFamily(e.target.value)} placeholder="Ej: Asteraceae" />
+                      <p className="text-xs text-muted-foreground">Familia taxonómica.</p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="genus" className="flex items-center gap-2">
+                        Género
+                        <Badge variant="outline" className="text-xs">Recomendado</Badge>
+                      </Label>
+                      <Input id="genus" value={genus} onChange={(e) => setGenus(e.target.value)} placeholder="Ej: Helianthus" />
+                      <p className="text-xs text-muted-foreground">Género taxonómico.</p>
+                    </div>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="specificEpithet" className="flex items-center gap-2">Epíteto específico</Label>
+                      <Input id="specificEpithet" value={specificEpithet} onChange={(e) => setSpecificEpithet(e.target.value)} placeholder="Ej: annuus" />
+                      <p className="text-xs text-muted-foreground">Epíteto específico (parte de la especie).</p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="infraspecificEpithet" className="flex items-center gap-2">Epíteto infraespecífico</Label>
+                      <Input id="infraspecificEpithet" value={infraspecificEpithet} onChange={(e) => setInfraspecificEpithet(e.target.value)} placeholder="Ej: subsp. lenticularis" />
+                      <p className="text-xs text-muted-foreground">Epíteto infraespecífico (subsp., var., etc.).</p>
+                    </div>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="taxonRank" className="flex items-center gap-2">Rango taxonómico</Label>
+                      <Select value={taxonRank} onValueChange={setTaxonRank}>
+                        <SelectTrigger id="taxonRank">
+                          <SelectValue placeholder="Selecciona" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="species">Especie</SelectItem>
+                          <SelectItem value="subspecies">Subespecie</SelectItem>
+                          <SelectItem value="variety">Variedad</SelectItem>
+                          <SelectItem value="form">Forma</SelectItem>
+                          <SelectItem value="genus">Género</SelectItem>
+                          <SelectItem value="family">Familia</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">Rango taxonómico del nombre.</p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="acceptedNameUsage" className="flex items-center gap-2">Nombre aceptado</Label>
+                      <Input id="acceptedNameUsage" value={acceptedNameUsage} onChange={(e) => setAcceptedNameUsage(e.target.value)} placeholder="Si es sinónimo, nombre aceptado" />
+                      <p className="text-xs text-muted-foreground">Nombre aceptado en caso de sinónimos.</p>
+                    </div>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          </form>
         </div>
-      </form>
-    </div>
+
+        {/* Barra de acciones fija al fondo (fuera del form) */}
+        <div className="fixed bottom-0 left-0 right-0 z-50 bg-card/90 supports-[backdrop-filter]:bg-card/60 backdrop-blur border-t">
+          <div className="container mx-auto max-w-5xl px-4 py-3 flex justify-end gap-4">
+            <Button type="button" variant="outline" onClick={handleCancel}>
+              Cancelar
+            </Button>
+            <Button type="submit" form="occ-form" className="bg-[rgb(117,26,29)] hover:bg-[rgb(97,16,19)]">
+              {mode === "edit" ? "Actualizar ocurrencia" : "Guardar ocurrencia"}
+            </Button>
+          </div>
+        </div>
+      </>
   );
 }

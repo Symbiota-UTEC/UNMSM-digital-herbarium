@@ -4,14 +4,15 @@ from typing import List, Optional, Literal
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from backend.config.database import get_db
 from backend.models.models import User, Institution
 from backend.auth.jwt import get_current_user
 
-from pydantic import BaseModel, ConfigDict
+from backend.schemas.common.pages import Page
 
+from pydantic import BaseModel, ConfigDict
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -20,28 +21,32 @@ class UserOut(BaseModel):
     id: int
     username: str
     email: str
-    is_active: bool
-    is_superuser: bool
-    is_institution_admin: bool
-    agent_id: Optional[int] = None
-    institution_id: int
-    created_at: datetime
+    isActive: bool
+    isSuperuser: bool
+    isInstitutionAdmin: bool
+    institutionId: int
+    createdAt: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
 
-# TODO: estandarizar paginacion
-class UserPaginationResponse(BaseModel):
-    users: List[UserOut]
-    total_users: int
-    total_pages: int
-    limit: int
-    offset: int
+def user_to_out(user: User) -> UserOut:
+    """Mapeo explícito de modelo SQLAlchemy -> schema de salida."""
+    return UserOut(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        isActive=user.isActive,
+        isSuperuser=user.isSuperuser,
+        isInstitutionAdmin=user.isInstitutionAdmin,
+        institutionId=user.institutionId,
+        createdAt=user.createdAt,
+    )
 
 
 class UserLookupResponse(BaseModel):
     found: bool
-    same_institution: Optional[bool] = None
+    sameInstitution: Optional[bool] = None
     visibility: Literal["full", "limited", "none"]
     user: Optional[UserOut] = None
     message: Optional[str] = None
@@ -50,7 +55,7 @@ class UserLookupResponse(BaseModel):
 @router.get(
     "/by-email",
     response_model=UserLookupResponse,
-    summary="Get user by email with role-aware visibility"
+    summary="Get user by email with role-aware visibility",
 )
 def get_user_by_email(
     email: str = Query(...),
@@ -61,45 +66,44 @@ def get_user_by_email(
     # 1) Buscar por email (y opcionalmente confirmar institution_id si se envía)
     stmt = select(User).where(User.email == email)
     if institution_id is not None:
-        stmt = stmt.where(User.institution_id == institution_id)
+        stmt = stmt.where(User.institutionId == institution_id)
 
     target = db.execute(stmt).scalar_one_or_none()
 
     if not target:
-        # 404 solo si de verdad NO existe el email en el sistema
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Usuario no encontrado"
+            detail="Usuario no encontrado",
         )
 
-    same_inst = (target.institution_id == current_user.institution_id)
+    same_inst = target.institutionId == current_user.institutionId
 
     # 2) Determinar visibilidad según rol
-    if current_user.is_superuser:
+    if current_user.isSuperuser:
         # Superuser ve todo
         return UserLookupResponse(
             found=True,
-            same_institution=same_inst,
+            sameInstitution=same_inst,
             visibility="full",
-            user=target
+            user=user_to_out(target),
         )
 
-    if current_user.is_institution_admin:
+    if current_user.isInstitutionAdmin:
         if same_inst:
-            # Admin de institución ve completa la informacion
+            # Admin de institución ve completa la información
             return UserLookupResponse(
                 found=True,
-                same_institution=True,
+                sameInstitution=True,
                 visibility="full",
-                user=target
+                user=user_to_out(target),
             )
         else:
             # Admin de institución: existe pero no es de su institución → limited
             return UserLookupResponse(
                 found=True,
-                same_institution=False,
+                sameInstitution=False,
                 visibility="limited",
-                message="Usuario encontrado pero no pertenece a tu institución"
+                message="Usuario encontrado pero no pertenece a tu institución",
             )
 
     # Usuario regular
@@ -107,22 +111,21 @@ def get_user_by_email(
         # Puede ver sus propios datos completos
         return UserLookupResponse(
             found=True,
-            same_institution=True,  # por definición comparte su propia institución
+            sameInstitution=True,
             visibility="full",
-            user=target
+            user=user_to_out(target),
         )
     else:
-        # Cualquier usuario puede consultar por email:
-        # - solo indicamos si existe y si es o no de su institución
-        # - NO devolvemos datos sensibles
+        # Solo indicamos existencia y si comparte institución
         return UserLookupResponse(
             found=True,
-            same_institution=same_inst,
+            sameInstitution=same_inst,
             visibility="limited",
             message=(
-                "Usuario pertenece a tu institución" if same_inst
+                "Usuario pertenece a tu institución"
+                if same_inst
                 else "Usuario encontrado pero no pertenece a tu institución"
-            )
+            ),
         )
 
 
@@ -139,19 +142,19 @@ def get_user_by_id(
             detail="Usuario no encontrado",
         )
 
-    if current_user.is_superuser:
-        return user
+    if current_user.isSuperuser:
+        return user_to_out(user)
 
-    elif current_user.is_institution_admin:
-        if current_user.institution_id != user.institution_id:
+    elif current_user.isInstitutionAdmin:
+        if current_user.institutionId != user.institutionId:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No tienes permisos para acceder a este usuario",
             )
-        return user
+        return user_to_out(user)
 
     elif current_user.id == user_id:
-        return user
+        return user_to_out(user)
 
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
@@ -159,35 +162,42 @@ def get_user_by_id(
     )
 
 
-# TODO: rename users=[...] to items
-@router.get("/", response_model=UserPaginationResponse, summary="Get users with optional institution filter and pagination")
+@router.get(
+    "/",
+    response_model=Page[UserOut],
+    summary="Get users with optional institution filter and pagination",
+)
 def get_users(
-    institution_id: int = Query(None, ge=1),
+    institution_id: Optional[int] = Query(None, ge=1),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # Iniciar la consulta de usuarios (tanto activo como inactivos)
-    stmt = select(User)
+    # Iniciar la consulta de usuarios (tanto activos como inactivos)
+    base_stmt = select(User)
+    count_stmt = select(func.count()).select_from(User)
 
-    # El superadmin no necesita mayor validacion
-    if current_user.is_superuser:
-        pass
+    # El superadmin puede ver todos; opcionalmente filtrar por institution_id
+    if current_user.isSuperuser:
+        if institution_id is not None:
+            base_stmt = base_stmt.where(User.institutionId == institution_id)
+            count_stmt = count_stmt.where(User.institutionId == institution_id)
 
-    # Si el usuario es admin de la institución se filtra por su institución
-    elif current_user.is_institution_admin:
-        if not institution_id:
+    # Admin de institución: solo su institución y require institution_id
+    elif current_user.isInstitutionAdmin:
+        if institution_id is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Debes proporcionar un institution_id para consultar usuarios",
             )
-        if institution_id != current_user.institution_id:
+        if institution_id != current_user.institutionId:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No tienes permisos para acceder a los usuarios de esta institución",
             )
-        stmt = stmt.where(User.institution_id == institution_id)  # Filtro para admin de institucion
+        base_stmt = base_stmt.where(User.institutionId == institution_id)
+        count_stmt = count_stmt.where(User.institutionId == institution_id)
 
     else:
         raise HTTPException(
@@ -195,70 +205,22 @@ def get_users(
             detail="No tienes permisos para acceder a los usuarios",
         )
 
-    stmt = stmt.limit(limit).offset(offset)
+    base_stmt = base_stmt.limit(limit).offset(offset)
 
-    users = db.scalars(stmt).all()
+    users = db.scalars(base_stmt).all()
+    total_users = db.scalar(count_stmt) or 0
 
-    total_users = db.execute(select(User)).scalar()
-
-    # Numero de paginas
-    total_pages = math.ceil(total_users / limit)
-
-    return UserPaginationResponse(
-        users=[UserOut(
-            id=user.id,
-            username=user.username,
-            email=user.email,
-            is_active=user.is_active,
-            is_superuser=user.is_superuser,
-            is_institution_admin=user.is_institution_admin,
-            agent_id=user.agent_id,
-            institution_id=user.institution_id,
-            created_at=user.created_at,
-        ) for user in users],
-        total_users=total_users,
-        total_pages=total_pages,
-        limit=limit,
-        offset=offset
+    total_pages = math.ceil(total_users / limit) if total_users else 0
+    current_page_index = offset // limit if limit else 0
+    remaining_pages = (
+        max(total_pages - current_page_index - 1, 0) if total_pages > 0 else 0
     )
 
-
-@router.patch("/{user_id}/assign_admin", summary="Assign a user as an institution admin")
-def assign_institution_admin(
-    user_id: int,
-    institution_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    if not current_user.is_superuser:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos para realizar esta acción",
-        )
-
-    user = db.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Usuario no encontrado",
-        )
-
-    institution = db.execute(select(Institution).where(Institution.id == institution_id)).scalar_one_or_none()
-    if not institution:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Institución no encontrada",
-        )
-
-    if user.institution_id != institution_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El usuario no está asociado con la institución proporcionada",
-        )
-
-    user.is_institution_admin = True
-    institution.institution_admin_user_id = current_user.id
-
-    db.commit()
-
-    return {"detail": "Usuario asignado como administrador de la institución"}
+    return Page[UserOut](
+        items=[user_to_out(u) for u in users],
+        total=total_users,
+        totalPages=total_pages,
+        limit=limit,
+        offset=offset,
+        remainingPages=remaining_pages,
+    )

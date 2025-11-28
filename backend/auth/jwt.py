@@ -34,11 +34,13 @@ def create_access_token(
     now = _now_utc()
     expire = now + (expires_delta or timedelta(minutes=access_token_expire_minutes))
 
-    to_encode.update({
-        "iat": int(now.timestamp()),
-        "nbf": int(now.timestamp()),
-        "exp": int(expire.timestamp()),
-    })
+    to_encode.update(
+        {
+            "iat": int(now.timestamp()),
+            "nbf": int(now.timestamp()),
+            "exp": int(expire.timestamp()),
+        }
+    )
 
     encoded_jwt = jwt.encode(to_encode, secret_key, algorithm=algorithm)
     return encoded_jwt
@@ -76,7 +78,6 @@ def verify_token(token: str) -> Dict[str, Any]:
         )
 
 
-
 def get_current_payload(token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
     """
     Extracts JWT payload for routes that need user info.
@@ -87,13 +88,42 @@ def get_current_payload(token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
     return payload
 
 
-
-
 def get_current_user(
     payload: Dict[str, Any] = Depends(get_current_payload),
     db: Session = Depends(get_db),
-):
-    user = db.execute(select(User).where(User.id == payload["user_id"])).scalar_one_or_none()
-    if not user or not user.is_active:
+) -> User:
+    user = (
+        db.execute(select(User).where(User.id == payload["user_id"]))
+        .scalar_one_or_none()
+    )
+    if not user or not user.isActive:
         raise HTTPException(status_code=401, detail="Inactive or missing user")
     return user
+
+
+# ==============================
+#  Reglas de autorización
+# ==============================
+
+def require_admin(current_user: User = Depends(get_current_user)) -> User:
+    """
+    Requiere que el usuario sea superuser o admin de institución.
+    """
+    if not (current_user.isSuperuser or current_user.isInstitutionAdmin):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para acceder a este recurso.",
+        )
+    return current_user
+
+
+def require_superuser(current_user: User = Depends(get_current_user)) -> User:
+    """
+    Requiere que el usuario sea superuser.
+    """
+    if not current_user.isSuperuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los superusuarios pueden acceder a este recurso.",
+        )
+    return current_user

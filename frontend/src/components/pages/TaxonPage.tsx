@@ -1,104 +1,448 @@
-import { useState } from "react";
+import {
+  useState,
+  useEffect,
+  FormEvent,
+  ChangeEvent,
+} from "react";
 import { Button } from "../ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "../ui/dialog";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "../ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../ui/dialog";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Badge } from "../ui/badge";
-import { Plus, Leaf, ChevronRight } from "lucide-react";
+import { Alert, AlertDescription } from "../ui/alert";
+import {
+  Leaf,
+  ChevronRight,
+  ChevronDown,
+  Upload,
+  Info,
+  Loader2,
+  Plus,
+  Eye,
+} from "lucide-react";
 import { toast } from "sonner@2.0.3";
+import { useAuth } from "@contexts/AuthContext";
+import { API } from "@constants/api";
+import type { PaginatedResponse } from "@interfaces/utils/pagination";
 
-interface Taxon {
-  id: string;
-  scientificName: string;
-  commonName: string;
-  rank: string;
-  family: string;
-  author: string;
-  occurrencesCount: number;
+/* ----------------------------- Tipos API ----------------------------- */
+
+interface TaxonSynonym {
+  id: number;
+  taxonID: string | null;
+  scientificName: string | null;
+  scientificNameAuthorship: string | null;
+  taxonomicStatus: string | null;
 }
 
-export function TaxonPage() {
-  const [taxa, setTaxa] = useState<Taxon[]>([
-    {
-      id: '1',
-      scientificName: 'Heliconia bihai',
-      commonName: 'Platanillo rojo',
-      rank: 'Especie',
-      family: 'Heliconiaceae',
-      author: '(L.) L.',
-      occurrencesCount: 5
-    },
-    {
-      id: '2',
-      scientificName: 'Ceiba pentandra',
-      commonName: 'Ceiba',
-      rank: 'Especie',
-      family: 'Malvaceae',
-      author: '(L.) Gaertn.',
-      occurrencesCount: 3
-    },
-    {
-      id: '3',
-      scientificName: 'Gentiana sedifolia',
-      commonName: 'Genciana andina',
-      rank: 'Especie',
-      family: 'Gentianaceae',
-      author: 'Kunth',
-      occurrencesCount: 7
-    },
-    {
-      id: '4',
-      scientificName: 'Puya raimondii',
-      commonName: 'Puya de Raimondi',
-      rank: 'Especie',
-      family: 'Bromeliaceae',
-      author: 'Harms',
-      occurrencesCount: 2
+interface TaxonTreeNode {
+  id: number;
+  taxonID: string | null;
+  scientificName: string | null;
+  scientificNameAuthorship: string | null;
+  fullName: string | null;
+  taxonRank: string | null;
+  parentNameUsageID: string | null;
+  acceptedNameUsageID: string | null;
+  taxonomicStatus: string | null;
+  isCurrent: boolean;
+  hasChildren: boolean;
+  synonyms: TaxonSynonym[];
+}
+
+/* ---------------------- Config paginación árbol ---------------------- */
+
+const ROOT_PAGE_SIZE = 50;
+const CHILDREN_PAGE_SIZE = 50;
+
+/* --------------------------- Componente fila ------------------------- */
+
+interface TreeRowProps {
+  node: TaxonTreeNode;
+  depth: number;
+  isExpanded: boolean;
+  isLoadingChildren: boolean;
+  onToggle: () => void;
+  childrenNodes?: TaxonTreeNode[];
+  canLoadMoreChildren: boolean;
+  onLoadMoreChildren?: () => void;
+  onViewDetail?: () => void;
+  onNavigate?: (page: string, params?: Record<string, any>) => void;
+}
+
+function TaxonTreeRow({
+  node,
+  depth,
+  isExpanded,
+  isLoadingChildren,
+  onToggle,
+  childrenNodes,
+  canLoadMoreChildren,
+  onLoadMoreChildren,
+  onViewDetail,
+  onNavigate,
+}: TreeRowProps) {
+  const indentPx = depth * 18;
+
+  const synonymsLabel =
+    node.synonyms && node.synonyms.length > 0
+      ? node.synonyms
+          .map((s) => s.scientificName)
+          .filter(Boolean)
+          .join("; ")
+      : "";
+
+  const rankLabel = node.taxonRank ?? "—";
+
+  const handleEyeClick = (e: any) => {
+    e.stopPropagation(); // que no colapse/expanda al hacer click en el ojito
+    if (onViewDetail) {
+      onViewDetail();
     }
-  ]);
-
-  const [open, setOpen] = useState(false);
-  const [newTaxon, setNewTaxon] = useState({
-    scientificName: '',
-    commonName: '',
-    rank: '',
-    family: '',
-    author: ''
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const taxon: Taxon = {
-      id: Date.now().toString(),
-      ...newTaxon,
-      occurrencesCount: 0
-    };
-    setTaxa([taxon, ...taxa]);
-    setNewTaxon({
-      scientificName: '',
-      commonName: '',
-      rank: '',
-      family: '',
-      author: ''
-    });
-    setOpen(false);
-    toast.success('Taxón registrado exitosamente');
-  };
-
-  const getRankColor = (rank: string) => {
-    const colors: { [key: string]: string } = {
-      'Especie': 'bg-red-50 text-primary',
-      'Género': 'bg-blue-100 text-blue-800',
-      'Familia': 'bg-purple-100 text-purple-800',
-      'Orden': 'bg-orange-100 text-orange-800'
-    };
-    return colors[rank] || 'bg-gray-100 text-gray-800';
   };
 
   return (
+    <div className="text-sm">
+      <div
+        className="flex items-start gap-2 py-1 hover:bg-muted/60 rounded-md cursor-pointer"
+        style={{ paddingLeft: indentPx }}
+        onClick={onToggle}
+      >
+        {/* Icono de expandir/colapsar */}
+        <div className="mt-0.5">
+          {node.hasChildren ? (
+            isLoadingChildren ? (
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            ) : isExpanded ? (
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            )
+          ) : (
+            <span className="inline-block w-4" />
+          )}
+        </div>
+
+        {/* Cuerpo: nombre + autoría + rango + ojito */}
+        <div className="flex-1 flex items-center justify-between gap-2">
+          <div className="space-y-0.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <Leaf className="h-3.5 w-3.5 text-primary" />
+              <span className="italic">
+                {node.scientificName || "(sin nombre)"}
+              </span>
+              {node.scientificNameAuthorship && (
+                <span className="text-xs text-muted-foreground">
+                  {node.scientificNameAuthorship}
+                </span>
+              )}
+              <Badge variant="outline" className="text-[10px]">
+                {rankLabel}
+              </Badge>
+            </div>
+
+            {synonymsLabel && (
+              <div className="text-[11px] text-muted-foreground">
+                [{synonymsLabel}]
+              </div>
+            )}
+          </div>
+
+          {/* Botón ojito para ver detalle del taxón */}
+          {onViewDetail && node.taxonID && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 flex-shrink-0"
+              onClick={handleEyeClick}
+              title="Ver detalle del taxón"
+            >
+              <Eye className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Hijas ya cargadas */}
+      {isExpanded &&
+        childrenNodes &&
+        childrenNodes.map((child) => (
+          <TaxonTreeNodeContainer
+            key={child.taxonID ?? `id-${child.id}`}
+            node={child}
+            depth={depth + 1}
+            onNavigate={onNavigate}
+          />
+        ))}
+
+      {/* Botón "cargar más hijas" */}
+      {isExpanded && canLoadMoreChildren && (
+        <div
+          className="pl-8 pb-1"
+          style={{ paddingLeft: indentPx + 24 }}
+        >
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs px-2 h-6"
+            onClick={(e) => {
+              e.stopPropagation();
+              onLoadMoreChildren?.();
+            }}
+          >
+            <Plus className="h-3 w-3 mr-1" />
+            Cargar más taxones…
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* -------------- Contenedor que maneja recursión/estado --------------- */
+
+interface NodeContainerProps {
+  node: TaxonTreeNode;
+  depth: number;
+  onNavigate?: (page: string, params?: Record<string, any>) => void;
+}
+
+function TaxonTreeNodeContainer({ node, depth, onNavigate }: NodeContainerProps) {
+  const { token } = useAuth();
+  const [children, setChildren] = useState<TaxonTreeNode[]>([]);
+  const [expanded, setExpanded] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [totalPages, setTotalPages] = useState<number>(0);
+
+  const fetchChildrenPage = async (page: number) => {
+    if (!node.taxonID || !node.hasChildren) return;
+
+    try {
+      setLoading(true);
+      const params = new URLSearchParams({
+        parent_id: node.taxonID,
+        page: page.toString(),
+        size: CHILDREN_PAGE_SIZE.toString(),
+      });
+
+      const res = await fetch(
+        `${API.BASE_URL}/taxon/tree?${params.toString()}`,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          credentials: "include",
+        }
+      );
+
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(
+          txt || "No se pudo obtener las hijas de este taxón."
+        );
+      }
+
+      const data: PaginatedResponse<TaxonTreeNode> = await res.json();
+      setChildren((prev) =>
+        page === 1 ? data.items ?? [] : [...prev, ...(data.items ?? [])]
+      );
+      setCurrentPage(data.currentPage);
+      setTotalPages(data.totalPages);
+    } catch (error: any) {
+      console.error(error);
+      toast.error(
+        error?.message || "Ocurrió un error al cargar las hijas del taxón."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleToggle = async () => {
+    if (!expanded && node.hasChildren && currentPage === 0) {
+      await fetchChildrenPage(1);
+    }
+    setExpanded((prev) => !prev);
+  };
+
+  const handleLoadMoreChildren = async () => {
+    const nextPage = currentPage + 1;
+    if (nextPage <= totalPages) {
+      await fetchChildrenPage(nextPage);
+    }
+  };
+
+  const canLoadMoreChildren =
+    node.hasChildren && totalPages > 0 && currentPage < totalPages;
+
+  const handleViewDetail = () => {
+    if (!node.taxonID) return;
+
+    // Si el App te pasó onNavigate, úsalo
+    if (onNavigate) {
+      onNavigate("taxon-detail", { taxonId: node.taxonID });
+      return;
+    }
+
+    // Fallback: navegación directa con taxonID en la URL
+    window.location.href = `/taxon/${encodeURIComponent(node.taxonID)}`;
+  };
+
+  return (
+    <TaxonTreeRow
+      node={node}
+      depth={depth}
+      isExpanded={expanded}
+      isLoadingChildren={loading}
+      onToggle={handleToggle}
+      childrenNodes={children}
+      canLoadMoreChildren={canLoadMoreChildren}
+      onLoadMoreChildren={handleLoadMoreChildren}
+      onViewDetail={handleViewDetail}
+      onNavigate={onNavigate}
+    />
+  );
+}
+
+/* ================================ PAGE ================================ */
+
+interface TaxonPageProps {
+  onNavigate?: (page: string, params?: Record<string, any>) => void;
+}
+
+export function TaxonPage({ onNavigate }: TaxonPageProps) {
+  const { token } = useAuth();
+
+  // Dialog para CSV de flora
+  const [open, setOpen] = useState(false);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
+  // Árbol raíz
+  const [rootNodes, setRootNodes] = useState<TaxonTreeNode[]>([]);
+  const [isLoadingRoot, setIsLoadingRoot] = useState(false);
+
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      toast.error("Por favor selecciona un archivo .csv");
+      return;
+    }
+
+    setCsvFile(file);
+  };
+
+  const handleUpload = async (e: FormEvent) => {
+    e.preventDefault();
+
+    if (!csvFile) {
+      toast.error("Selecciona primero un archivo CSV de flora");
+      return;
+    }
+
+    try {
+      setIsUploading(true);
+
+      const form = new FormData();
+      form.append("file", csvFile);
+
+      const res = await fetch(`${API.BASE_URL}/upload/taxon-flora-csv`, {
+        method: "POST",
+        body: form,
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt || "No se pudo subir el CSV de flora");
+      }
+
+      toast.success(
+        "CSV de taxones enviado. El backend procesará los nombres en segundo plano."
+      );
+      setOpen(false);
+      setCsvFile(null);
+
+      // Recargar raíces después de un upload exitoso
+      await fetchRootNodes();
+    } catch (err: any) {
+      console.error(err);
+      toast.error(
+        err?.message || "Ocurrió un error al subir el CSV de taxones"
+      );
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const fetchRootNodes = async () => {
+    try {
+      setIsLoadingRoot(true);
+
+      const params = new URLSearchParams({
+        page: "1",
+        size: ROOT_PAGE_SIZE.toString(),
+      });
+
+      const res = await fetch(
+        `${API.BASE_URL}/taxon/tree?${params.toString()}`,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          credentials: "include",
+        }
+      );
+
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(
+          txt || "No se pudo obtener el árbol taxonómico."
+        );
+      }
+
+      const data: PaginatedResponse<TaxonTreeNode> = await res.json();
+      setRootNodes(data.items ?? []);
+    } catch (error: any) {
+      console.error(error);
+      toast.error(
+        error?.message || "Ocurrió un error al cargar los taxones."
+      );
+    } finally {
+      setIsLoadingRoot(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRootNodes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
     <div className="container mx-auto px-4 py-8">
+      {/* Header + botón CSV */}
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-3xl mb-2">Taxones</h1>
@@ -106,126 +450,142 @@ export function TaxonPage() {
             Catálogo de clasificación taxonómica
           </p>
         </div>
-        
+
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Nuevo Taxón
+              <Upload className="h-4 w-4 mr-2" />
+              Cargar CSV de flora
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Registrar Nuevo Taxón</DialogTitle>
+              <DialogTitle>Cargar CSV de Flora</DialogTitle>
               <DialogDescription>
-                Agrega un nuevo taxón al catálogo taxonómico
+                Sube un archivo CSV con los taxones de flora para poblar el
+                catálogo taxonómico.
               </DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="scientificName">Nombre Científico</Label>
-                <Input
-                  id="scientificName"
-                  value={newTaxon.scientificName}
-                  onChange={(e) => setNewTaxon({...newTaxon, scientificName: e.target.value})}
-                  placeholder="Genus species"
-                  required
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="commonName">Nombre Común</Label>
-                <Input
-                  id="commonName"
-                  value={newTaxon.commonName}
-                  onChange={(e) => setNewTaxon({...newTaxon, commonName: e.target.value})}
-                  placeholder="Nombre vulgar"
-                  required
-                />
-              </div>
 
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="rank">Rango Taxonómico</Label>
-                  <Select
-                    value={newTaxon.rank}
-                    onValueChange={(value) => setNewTaxon({...newTaxon, rank: value})}
+            <Alert className="mb-4">
+              <Info className="h-4 w-4" />
+              <AlertDescription>
+                <ol className="list-decimal pl-5 space-y-1 text-sm mt-2">
+                  <li>
+                    Descarga el archivo de taxones de tu flora de referencia
+                    (el CSV <code>classification.csv</code> de{" "}
+                    <a
+                      href="https://wfoplantlist.org/classifications"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-primary underline"
+                    >
+                      World Flora Online
+                    </a>
+                    ).
+                  </li>
+                  <li>
+                    No modifiques los encabezados originales del archivo para
+                    mantener la compatibilidad con Darwin Core.
+                  </li>
+                  <li>
+                    Selecciona el CSV descargado en tu computadora y súbelo. El
+                    servidor procesará los nombres e integrará los taxones
+                    válidos al sistema.
+                  </li>
+                </ol>
+              </AlertDescription>
+            </Alert>
+
+            <form onSubmit={handleUpload} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="flora-csv-input">Archivo CSV de flora</Label>
+                <div className="flex items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() =>
+                      document.getElementById("flora-csv-input")?.click()
+                    }
+                    disabled={isUploading}
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecciona el rango" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Especie">Especie</SelectItem>
-                      <SelectItem value="Género">Género</SelectItem>
-                      <SelectItem value="Familia">Familia</SelectItem>
-                      <SelectItem value="Orden">Orden</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    Seleccionar archivo
+                  </Button>
+                  <span className="text-sm text-muted-foreground truncate">
+                    {csvFile
+                      ? csvFile.name
+                      : "Ningún archivo seleccionado aún"}
+                  </span>
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="family">Familia</Label>
-                  <Input
-                    id="family"
-                    value={newTaxon.family}
-                    onChange={(e) => setNewTaxon({...newTaxon, family: e.target.value})}
-                    placeholder="Familia"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="author">Autor</Label>
                 <Input
-                  id="author"
-                  value={newTaxon.author}
-                  onChange={(e) => setNewTaxon({...newTaxon, author: e.target.value})}
-                  placeholder="L. / (L.) Gaertn."
+                  id="flora-csv-input"
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  onChange={handleFileChange}
                 />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Formato esperado: <code>.csv</code> (por ejemplo, el
+                  classification.csv de la flora de referencia).
+                </p>
               </div>
 
-              <Button type="submit" className="w-full">Registrar Taxón</Button>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setOpen(false);
+                    setCsvFile(null);
+                  }}
+                  disabled={isUploading}
+                >
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={!csvFile || isUploading}>
+                  {isUploading ? "Subiendo..." : "Subir CSV de taxones"}
+                </Button>
+              </div>
             </form>
           </DialogContent>
         </Dialog>
       </div>
 
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {taxa.map((taxon) => (
-          <Card key={taxon.id} className="hover:shadow-lg transition-shadow cursor-pointer">
-            <CardHeader>
-              <div className="flex items-start justify-between mb-2">
-                <Leaf className="h-6 w-6 text-primary" />
-                <Badge className={getRankColor(taxon.rank)}>
-                  {taxon.rank}
-                </Badge>
-              </div>
-              <CardTitle className="italic">{taxon.scientificName}</CardTitle>
-              {taxon.author && (
-                <p className="text-sm text-muted-foreground">{taxon.author}</p>
-              )}
-              <CardDescription>{taxon.commonName}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Familia:</span>
-                  <span>{taxon.family}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Ocurrencias:</span>
-                  <Badge variant="secondary">{taxon.occurrencesCount}</Badge>
-                </div>
-                <Button variant="ghost" size="sm" className="w-full mt-2">
-                  Ver detalles
-                  <ChevronRight className="h-4 w-4 ml-2" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {/* Árbol taxonómico */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Árbol taxonómico</CardTitle>
+          <CardDescription>
+            Explora la jerarquía taxonómica tal como se encuentra en el
+            backbone de flora. Haz clic en un taxón para expandir sus hijas.
+            Usa el botón con el ojo para ir al detalle de cada taxón.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoadingRoot ? (
+            <div className="flex items-center justify-center py-10 text-muted-foreground gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Cargando clasificación taxonómica…</span>
+            </div>
+          ) : rootNodes.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No hay taxones disponibles aún. Sube un CSV de flora para poblar
+              el backbone taxonómico.
+            </p>
+          ) : (
+            <div className="space-y-1">
+              {rootNodes.map((node) => (
+                <TaxonTreeNodeContainer
+                  key={node.taxonID ?? `id-${node.id}`}
+                  node={node}
+                  depth={0}
+                  onNavigate={onNavigate}
+                />
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -1,5 +1,6 @@
-# routers/institutions.py
-from typing import List, Optional
+# backend/routers/institutions.py
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func, and_, literal
@@ -7,83 +8,37 @@ from sqlalchemy import select, func, and_, literal
 from backend.config.database import get_db
 from backend.models.models import Institution, User
 from backend.auth.jwt import get_current_user
-from pydantic import BaseModel
 
-router = APIRouter(prefix="/institutions", tags=["institutions"])
+from backend.schemas.common.pages import Page
+from backend.schemas.institutions import (
+    InstitutionOut,
+    InstitutionCreate,
+    InstitutionUpdate,
+)
 
-
-class AdminUserOut(BaseModel):
-    id: int
-    username: str
-    email: str
-
-    class Config:
-        orm_mode = True
-
-
-class InstitutionOut(BaseModel):
-    id: int
-    institutionID: Optional[str]
-    institutionCode: Optional[str]
-    institutionName: Optional[str]
-    country: Optional[str]
-    city: Optional[str]
-    address: Optional[str]
-    email: Optional[str]
-    phone: Optional[str]
-    webSite: Optional[str]
-    institution_admin_user_id: Optional[int] = None  # Mantener como None hasta asignarlo manualmente
-    usersCount: Optional[int] = 0
-    admin_user: Optional[
-        AdminUserOut] = None  # Esto puede ser útil para mostrar más detalles del admin cuando se asigna
-
-    class Config:
-        orm_mode = True
-
-
-class InstitutionPageOut(BaseModel):
-    items: List[InstitutionOut]
-    total: int
-    limit: int
-    offset: int
-    current_page: int
-    total_pages: int
-    remaining_pages: int
-
-class InstitutionCreate(BaseModel):
-    institutionID: Optional[str]
-    institutionCode: Optional[str]
-    institutionName: str
-    country: Optional[str]
-    city: Optional[str]
-    address: Optional[str]
-    email: Optional[str]
-    phone: Optional[str]
-    webSite: Optional[str]
-    institution_admin_user_id: Optional[int] = None
-
-    class Config:
-        orm_mode = True
+router = APIRouter(prefix="/institutions", tags=["Institutions"])
 
 
 @router.get(
     "",
-    response_model=InstitutionPageOut,
-    summary="List all institutions with pagination",
+    response_model=Page[InstitutionOut],
+    summary="Listar instituciones con paginación",
 )
 def list_institutions(
     db: Session = Depends(get_db),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
-
     name_prefix: Optional[str] = Query(
         None,
-        description="Filtro por nombre de institución (contiene, case/accent-insensitive)"
+        alias="namePrefix",  # <-- para que ?namePrefix=... funcione
+        description="Filtro por nombre de institución (contiene, case/accent-insensitive)",
     ),
 ):
     where_clauses = []
 
-    norm_name = func.unaccent(func.lower(func.coalesce(Institution.institutionName, "")))
+    norm_name = func.unaccent(
+        func.lower(func.coalesce(Institution.institutionName, ""))
+    )
 
     if name_prefix:
         q = name_prefix.strip().lower()
@@ -92,11 +47,13 @@ def list_institutions(
             norm_name.ilike(func.unaccent(func.lower(literal(contains_pattern))))
         )
 
+    # ---- Total
     count_stmt = select(func.count()).select_from(Institution)
     if where_clauses:
         count_stmt = count_stmt.where(and_(*where_clauses))
     total = db.scalar(count_stmt) or 0
 
+    # ---- Query principal
     stmt = select(Institution)
     if where_clauses:
         stmt = stmt.where(and_(*where_clauses))
@@ -117,31 +74,35 @@ def list_institutions(
 
     order_by_columns.append(Institution.institutionName.asc().nulls_last())
 
-    stmt = (
-        stmt.order_by(*order_by_columns)
-            .limit(limit)
-            .offset(offset)
-    )
+    stmt = stmt.order_by(*order_by_columns).limit(limit).offset(offset)
 
     institutions = db.scalars(stmt).all()
 
+    # ---- Métricas de página (usa el schema Page con currentPage)
     current_page = (offset // limit) + 1 if limit else 1
     total_pages = (total + limit - 1) // limit if limit else 1
     remaining_pages = max(0, total_pages - current_page)
 
-    return {
-        "items": institutions,
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-        "current_page": current_page,
-        "total_pages": total_pages,
-        "remaining_pages": remaining_pages,
-    }
+    return Page[InstitutionOut](
+        items=institutions,
+        total=total,
+        limit=limit,
+        offset=offset,
+        currentPage=current_page,      # <-- faltaba
+        totalPages=total_pages,
+        remainingPages=remaining_pages,
+    )
 
 
-@router.get("/{institution_id}", response_model=InstitutionOut, summary="Get institution by id")
-def get_institution_by_id(institution_id: int, db: Session = Depends(get_db)):
+@router.get(
+    "/{institution_id}",
+    response_model=InstitutionOut,
+    summary="Obtener institución por id",
+)
+def get_institution_by_id(
+    institution_id: int,
+    db: Session = Depends(get_db),
+):
     stmt = select(Institution).where(Institution.id == institution_id)
     inst = db.scalars(stmt).first()
     if not inst:
@@ -152,21 +113,24 @@ def get_institution_by_id(institution_id: int, db: Session = Depends(get_db)):
     return inst
 
 
-@router.post("", response_model=InstitutionOut, summary="Create a new institution")
+@router.post(
+    "",
+    response_model=InstitutionOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Crear una nueva institución",
+)
 def create_institution(
-        institution: InstitutionCreate,
-        db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_user),
+    institution: InstitutionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    if not current_user.is_superuser:
+    if not current_user.isSuperuser:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only the global administrator can create a new institution",
         )
 
-    new_institution_id = f"urn:uuid:{institution.institutionID}"
     new_institution = Institution(
-        institutionID= new_institution_id,
         institutionCode=institution.institutionCode,
         institutionName=institution.institutionName,
         country=institution.country,
@@ -175,7 +139,7 @@ def create_institution(
         email=institution.email,
         phone=institution.phone,
         webSite=institution.webSite,
-        institution_admin_user_id=None,
+        institutionAdminUserId=None,
     )
 
     db.add(new_institution)
@@ -184,10 +148,14 @@ def create_institution(
     return new_institution
 
 
-@router.patch("/{institution_id}", response_model=InstitutionOut, summary="Update institution information")
+@router.patch(
+    "/{institution_id}",
+    response_model=InstitutionOut,
+    summary="Actualizar información de una institución (parcial)",
+)
 def update_institution(
     institution_id: int,
-    institution: InstitutionCreate,
+    institution: InstitutionUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -202,16 +170,20 @@ def update_institution(
             detail="Institución no encontrada",
         )
 
-    if current_user.is_superuser:
-        # Superadmin puede modificar su propia institución,
-        # sin modificar el institution_admin_user_id.
+    # 2) Autorización
+    if current_user.isSuperuser:
+        # Superadmin puede modificar cualquier institución,
+        # con la lógica especial para institutionAdminUserId más abajo.
         pass
-    elif current_user.is_institution_admin:
+    elif current_user.isInstitutionAdmin:
         # Admin de institución solo puede modificar su propia institución
-        if institution_id != current_user.institution_id:
+        if institution_id != current_user.institutionId:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="No tienes permisos para modificar una institución diferente a la tuya",
+                detail=(
+                    "No tienes permisos para modificar una institución "
+                    "diferente a la tuya"
+                ),
             )
     else:
         raise HTTPException(
@@ -219,12 +191,10 @@ def update_institution(
             detail="No tienes permisos para modificar la institución",
         )
 
-    # para distinguir si institution_admin_user_id fue enviado o no
+    # 3) Datos enviados (solo campos presentes en el payload)
     update_data = institution.model_dump(exclude_unset=True)
 
     # ---- Campos simples
-    if "institutionID" in update_data:
-        institution_db.institutionID = update_data["institutionID"]
     if "institutionCode" in update_data:
         institution_db.institutionCode = update_data["institutionCode"]
     if "institutionName" in update_data:
@@ -239,42 +209,48 @@ def update_institution(
         institution_db.email = update_data["email"]
     if "phone" in update_data:
         institution_db.phone = update_data["phone"]
-    if "webSite" in update_data:
-        institution_db.webSite = update_data["webSite"]
 
     # ---- Cambio de administrador (si fue enviado)
-    if "institution_admin_user_id" in update_data:
-        new_admin_id: Optional[int] = update_data["institution_admin_user_id"]
-        old_admin_id: Optional[int] = institution_db.institution_admin_user_id
+    if "institutionAdminUserId" in update_data:
+        new_admin_id: Optional[int] = update_data["institutionAdminUserId"]
+        old_admin_id: Optional[int] = institution_db.institutionAdminUserId
 
-        if current_user.is_superuser and institution_id == current_user.institution_id:
-            # si intenta cambiar (a otro id o a None), bloquear
+        # Regla: el superadmin no puede cambiar el admin de su propia institución
+        if current_user.isSuperuser and institution_id == current_user.institutionId:
             if new_admin_id != old_admin_id:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail="El superadmin no puede modificar el administrador de su propia institución",
+                    detail=(
+                        "El superadmin no puede modificar el administrador "
+                        "de su propia institución"
+                    ),
                 )
 
+        # Regla: un institution admin no puede cambiar su propio adminId
         if (
-            current_user.is_institution_admin
-            and institution_db.institution_admin_user_id == current_user.id
+            current_user.isInstitutionAdmin
+            and institution_db.institutionAdminUserId == current_user.id
             and new_admin_id != old_admin_id
         ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="No puedes modificar tu propio campo 'institution_admin_user_id'",
+                detail=(
+                    "No puedes modificar tu propio campo "
+                    "'institutionAdminUserId'"
+                ),
             )
 
         if new_admin_id == old_admin_id:
+            # No hay cambios reales
             pass
         else:
-            # a) Si hay un admin actual y está cambiando o se desasigna, "degradar" al admin anterior
+            # a) Si hay un admin actual y se cambia o desasigna → degradar al anterior
             if old_admin_id is not None and old_admin_id != new_admin_id:
                 old_admin = db.execute(
                     select(User).where(User.id == old_admin_id)
                 ).scalar_one_or_none()
                 if old_admin:
-                    old_admin.is_institution_admin = False
+                    old_admin.isInstitutionAdmin = False
 
             # b) Si se asigna un nuevo admin (entero)
             if new_admin_id is not None:
@@ -287,12 +263,12 @@ def update_institution(
                         detail="El usuario indicado como administrador no existe",
                     )
 
-                new_admin.is_institution_admin = True
-                new_admin.institution_id = institution_db.id
-                institution_db.institution_admin_user_id = new_admin_id
+                new_admin.isInstitutionAdmin = True
+                new_admin.institutionId = institution_db.id
+                institution_db.institutionAdminUserId = new_admin_id
             else:
                 # c) Si se envía None -> quitar admin
-                institution_db.institution_admin_user_id = None
+                institution_db.institutionAdminUserId = None
 
     db.commit()
     db.refresh(institution_db)
