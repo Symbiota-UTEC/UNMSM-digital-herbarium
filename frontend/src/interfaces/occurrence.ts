@@ -29,6 +29,7 @@ export interface OccurrenceIdentifierOut {
 
 export interface OccurrenceTaxonOut {
   id: number;
+  taxonId: string | null;
   scientificName: string | null;
   scientificNameAuthorship: string | null;
   family: string | null;

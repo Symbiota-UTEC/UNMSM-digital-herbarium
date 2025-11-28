@@ -31,6 +31,7 @@ from sqlalchemy import (
     Index,
     Enum,
     Date,
+    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -1131,3 +1132,32 @@ Index("ix_occurrence_latlon", Occurrence.decimalLatitude, Occurrence.decimalLong
 Index("ix_occurrence_catalog", Occurrence.catalogNumber, Occurrence.collectionId)
 Index("ix_occurrence_event_date", Occurrence.year, Occurrence.month, Occurrence.day)
 Index("ix_taxon_name_auth_rank", Taxon.scientificName, Taxon.scientificNameAuthorship, Taxon.taxonRank)
+
+Index(
+    "ix_taxon_family_unaccent",
+    func.unaccent_immutable(func.lower(Taxon.family)),
+)
+
+Index(
+    "ix_institution_name_unaccent",
+    func.unaccent_immutable(func.lower(Institution.institutionName)),
+)
+
+Index(
+    "ix_occurrence_recordedby_unaccent",
+    func.unaccent_immutable(func.lower(Occurrence.recordedBy)),
+)
+
+Index(
+    "ix_occurrence_location_unaccent",
+    func.unaccent_immutable(
+        func.lower(
+            func.coalesce(
+                Occurrence.locality,
+                Occurrence.municipality,
+                Occurrence.stateProvince,
+                Occurrence.country,
+            )
+        )
+    ),
+)

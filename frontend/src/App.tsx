@@ -18,6 +18,8 @@ import { AdminPage } from "./components/pages/AdminPage";
 import { MapPage } from "./components/pages/MapPage";
 import { Toaster } from "./components/ui/sonner";
 
+import { TaxonDetailPage } from "./components/pages/TaxonDetailPage";
+
 interface NavigationParams {
   collectionId?: string | number;
   collectionName?: string;
@@ -25,6 +27,7 @@ interface NavigationParams {
   isOwner?: boolean;
   occurrenceId?: string;
   returnTo?: "occurrences" | "collection";
+  taxonId?: string | number;
 }
 
 interface RouteConfig {
@@ -44,6 +47,7 @@ const routeConfigs: RouteConfig[] = [
   { path: "/occurrences/:occurrenceId/edit", pageId: "edit-occurrence" },
   { path: "/occurrences/:occurrenceId", pageId: "occurrence-detail" },
   { path: "/taxon", pageId: "taxon" },
+  { path: "/taxon/:taxonId", pageId: "taxon-detail" },
   { path: "/profile", pageId: "profile" },
   { path: "/admin", pageId: "admin" },
   { path: "/map", pageId: "map" },
@@ -117,7 +121,7 @@ const buildRoute = (page: string, params: NavigationParams = {}) => {
       return {
         path: `/occurrences/${params.occurrenceId}/edit`,
         state: {
-          returnTo: params.returnTo ?? (params.collectionId ? "collection" : undefined),
+          returnTo: params.returnTo ?? (params.collectionId ? "collection" : "occurrences"),
           collectionId: params.collectionId?.toString(),
           collectionName: params.collectionName,
           isOwner: params.isOwner,
@@ -128,7 +132,7 @@ const buildRoute = (page: string, params: NavigationParams = {}) => {
       return {
         path: `/occurrences/${params.occurrenceId}`,
         state: {
-          returnTo: params.returnTo ?? (params.collectionId ? "collection" : undefined),
+          returnTo: params.returnTo ?? (params.collectionId ? "collection" : "occurrences"),
           collectionId: params.collectionId?.toString(),
           collectionName: params.collectionName,
           isOwner: params.isOwner,
@@ -136,6 +140,14 @@ const buildRoute = (page: string, params: NavigationParams = {}) => {
       };
     case "taxon":
       return { path: "/taxon" };
+    case "taxon-detail": {
+      const taxonId = params.taxonId?.toString();
+      if (!taxonId) return null;
+      return {
+        path: `/taxon/${taxonId}`,
+        state: { taxonId },
+      };
+    }
     case "profile":
       return { path: "/profile" };
     case "admin":
@@ -249,6 +261,18 @@ function AppContent() {
     );
   };
 
+  const TaxonDetailRoute = () => {
+    const { taxonId = "" } = useParams();
+    const state = (location.state as NavigationParams) || {};
+
+    return (
+      <TaxonDetailPage
+        taxonId={taxonId || (state.taxonId?.toString() ?? "")}
+        onNavigate={handleNavigation}
+      />
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {isAuthenticated ? (
@@ -268,7 +292,8 @@ function AppContent() {
         <Route path="/occurrences/new" element={<NewOccurrenceRoute mode="create" />} />
         <Route path="/occurrences/:occurrenceId/edit" element={<NewOccurrenceRoute mode="edit" />} />
         <Route path="/occurrences/:occurrenceId" element={<OccurrenceDetailRoute />} />
-        <Route path="/taxon" element={<TaxonPage />} />
+        <Route path="/taxon" element={<TaxonPage onNavigate={handleNavigation} />} />
+        <Route path="/taxon/:taxonId" element={<TaxonDetailRoute />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/admin" element={<AdminPage onNavigate={handleNavigation} />} />
         <Route path="/map" element={<MapPage />} />

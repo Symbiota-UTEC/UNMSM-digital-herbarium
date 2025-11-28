@@ -32,11 +32,11 @@ import {
   Info,
   Loader2,
   Plus,
+  Eye,
 } from "lucide-react";
 import { toast } from "sonner@2.0.3";
 import { useAuth } from "@contexts/AuthContext";
 import { API } from "@constants/api";
-// ajusta la ruta si tu alias es distinto
 import type { PaginatedResponse } from "@interfaces/utils/pagination";
 
 /* ----------------------------- Tipos API ----------------------------- */
@@ -66,8 +66,8 @@ interface TaxonTreeNode {
 
 /* ---------------------- Config paginación árbol ---------------------- */
 
-const ROOT_PAGE_SIZE = 50;      // por si algún día hay muchos "root"
-const CHILDREN_PAGE_SIZE = 50;  // nº de hijas por página en cada nivel
+const ROOT_PAGE_SIZE = 50;
+const CHILDREN_PAGE_SIZE = 50;
 
 /* --------------------------- Componente fila ------------------------- */
 
@@ -80,6 +80,8 @@ interface TreeRowProps {
   childrenNodes?: TaxonTreeNode[];
   canLoadMoreChildren: boolean;
   onLoadMoreChildren?: () => void;
+  onViewDetail?: () => void;
+  onNavigate?: (page: string, params?: Record<string, any>) => void;
 }
 
 function TaxonTreeRow({
@@ -91,6 +93,8 @@ function TaxonTreeRow({
   childrenNodes,
   canLoadMoreChildren,
   onLoadMoreChildren,
+  onViewDetail,
+  onNavigate,
 }: TreeRowProps) {
   const indentPx = depth * 18;
 
@@ -103,6 +107,13 @@ function TaxonTreeRow({
       : "";
 
   const rankLabel = node.taxonRank ?? "—";
+
+  const handleEyeClick = (e: any) => {
+    e.stopPropagation(); // que no colapse/expanda al hacer click en el ojito
+    if (onViewDetail) {
+      onViewDetail();
+    }
+  };
 
   return (
     <div className="text-sm">
@@ -126,27 +137,42 @@ function TaxonTreeRow({
           )}
         </div>
 
-        {/* Icono + nombre */}
-        <div className="flex-1 space-y-0.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <Leaf className="h-3.5 w-3.5 text-primary" />
-            <span className="italic">
-              {node.scientificName || "(sin nombre)"}
-            </span>
-            {node.scientificNameAuthorship && (
-              <span className="text-xs text-muted-foreground">
-                {node.scientificNameAuthorship}
+        {/* Cuerpo: nombre + autoría + rango + ojito */}
+        <div className="flex-1 flex items-center justify-between gap-2">
+          <div className="space-y-0.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <Leaf className="h-3.5 w-3.5 text-primary" />
+              <span className="italic">
+                {node.scientificName || "(sin nombre)"}
               </span>
+              {node.scientificNameAuthorship && (
+                <span className="text-xs text-muted-foreground">
+                  {node.scientificNameAuthorship}
+                </span>
+              )}
+              <Badge variant="outline" className="text-[10px]">
+                {rankLabel}
+              </Badge>
+            </div>
+
+            {synonymsLabel && (
+              <div className="text-[11px] text-muted-foreground">
+                [{synonymsLabel}]
+              </div>
             )}
-            <Badge variant="outline" className="text-[10px]">
-              {rankLabel}
-            </Badge>
           </div>
 
-          {synonymsLabel && (
-            <div className="text-[11px] text-muted-foreground">
-              [{synonymsLabel}]
-            </div>
+          {/* Botón ojito para ver detalle del taxón */}
+          {onViewDetail && node.taxonID && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 flex-shrink-0"
+              onClick={handleEyeClick}
+              title="Ver detalle del taxón"
+            >
+              <Eye className="h-4 w-4" />
+            </Button>
           )}
         </div>
       </div>
@@ -159,6 +185,7 @@ function TaxonTreeRow({
             key={child.taxonID ?? `id-${child.id}`}
             node={child}
             depth={depth + 1}
+            onNavigate={onNavigate}
           />
         ))}
 
@@ -173,7 +200,7 @@ function TaxonTreeRow({
             size="sm"
             className="text-xs px-2 h-6"
             onClick={(e) => {
-              e.stopPropagation(); // que no colapse el nodo
+              e.stopPropagation();
               onLoadMoreChildren?.();
             }}
           >
@@ -191,15 +218,16 @@ function TaxonTreeRow({
 interface NodeContainerProps {
   node: TaxonTreeNode;
   depth: number;
+  onNavigate?: (page: string, params?: Record<string, any>) => void;
 }
 
-function TaxonTreeNodeContainer({ node, depth }: NodeContainerProps) {
+function TaxonTreeNodeContainer({ node, depth, onNavigate }: NodeContainerProps) {
   const { token } = useAuth();
   const [children, setChildren] = useState<TaxonTreeNode[]>([]);
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [currentPage, setCurrentPage] = useState(0);        // página de hijas ya cargada
-  const [totalPages, setTotalPages] = useState<number>(0);  // total de páginas de hijas
+  const [currentPage, setCurrentPage] = useState(0);
+  const [totalPages, setTotalPages] = useState<number>(0);
 
   const fetchChildrenPage = async (page: number) => {
     if (!node.taxonID || !node.hasChildren) return;
@@ -263,6 +291,19 @@ function TaxonTreeNodeContainer({ node, depth }: NodeContainerProps) {
   const canLoadMoreChildren =
     node.hasChildren && totalPages > 0 && currentPage < totalPages;
 
+  const handleViewDetail = () => {
+    if (!node.taxonID) return;
+
+    // Si el App te pasó onNavigate, úsalo
+    if (onNavigate) {
+      onNavigate("taxon-detail", { taxonId: node.taxonID });
+      return;
+    }
+
+    // Fallback: navegación directa con taxonID en la URL
+    window.location.href = `/taxon/${encodeURIComponent(node.taxonID)}`;
+  };
+
   return (
     <TaxonTreeRow
       node={node}
@@ -273,13 +314,19 @@ function TaxonTreeNodeContainer({ node, depth }: NodeContainerProps) {
       childrenNodes={children}
       canLoadMoreChildren={canLoadMoreChildren}
       onLoadMoreChildren={handleLoadMoreChildren}
+      onViewDetail={handleViewDetail}
+      onNavigate={onNavigate}
     />
   );
 }
 
 /* ================================ PAGE ================================ */
 
-export function TaxonPage() {
+interface TaxonPageProps {
+  onNavigate?: (page: string, params?: Record<string, any>) => void;
+}
+
+export function TaxonPage({ onNavigate }: TaxonPageProps) {
   const { token } = useAuth();
 
   // Dialog para CSV de flora
@@ -511,8 +558,7 @@ export function TaxonPage() {
           <CardDescription>
             Explora la jerarquía taxonómica tal como se encuentra en el
             backbone de flora. Haz clic en un taxón para expandir sus hijas.
-            En niveles con muchas especies, usa el botón “Cargar más taxones…”
-            para verlas por partes.
+            Usa el botón con el ojo para ir al detalle de cada taxón.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -533,6 +579,7 @@ export function TaxonPage() {
                   key={node.taxonID ?? `id-${node.id}`}
                   node={node}
                   depth={0}
+                  onNavigate={onNavigate}
                 />
               ))}
             </div>

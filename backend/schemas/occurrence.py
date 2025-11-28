@@ -1,11 +1,11 @@
 # backend/schemas/occurrence.py
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, date
 from typing import Any, Dict, List, Optional
 
 from backend.schemas.common.base import ORMBaseModel, StrictBaseModel
-
+from pydantic import BaseModel, Field
 
 # -----------------------------
 # Resumenes / submodelos
@@ -40,6 +40,7 @@ class OccurrenceTaxonOut(ORMBaseModel):
     specificEpithet: Optional[str] = None
     infraspecificEpithet: Optional[str] = None
     taxonRank: Optional[str] = None
+    taxonID: Optional[str] = None
 
 
 class OccurrenceIdentificationOut(ORMBaseModel):
@@ -183,3 +184,17 @@ class OccurrenceBriefItem(ORMBaseModel):
 
 class DynamicPropsIn(StrictBaseModel):
     dynamicProperties: Optional[Dict[str, Any] | str] = None
+
+
+class OccurrenceFilters(BaseModel):
+    code: Optional[str] = None
+    scientific_name: Optional[str] = None
+    family: Optional[str] = None
+    institution: Optional[str] = None
+    location: Optional[str] = None
+    collector: Optional[str] = None
+    date_from: Optional[date] = None
+    date_to: Optional[date] = None
+
+    collection_id: Optional[int] = None
+    institution_id: Optional[int] = None

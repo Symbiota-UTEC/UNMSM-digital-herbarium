@@ -1,9 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "../ui/card";
 import { Button } from "../ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { Separator } from "../ui/separator";
-import { ArrowLeft } from "lucide-react";
+import {
+  ArrowLeft,
+  Eye,
+  Leaf,
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+} from "lucide-react";
 
 import { API } from "@constants/api";
 import { useAuth } from "@contexts/AuthContext";
@@ -119,7 +132,7 @@ export function OccurrenceDetailPage({
     if (!data) return null;
     if (data.currentIdentification) return data.currentIdentification;
     if (data.identifications?.length) {
-      const current = data.identifications.find((i: any) => i.isCurrent);
+      const current = data.identifications.find((i) => i.isCurrent);
       return current ?? data.identifications[0];
     }
     return null;
@@ -128,7 +141,7 @@ export function OccurrenceDetailPage({
   // Todas las identificaciones ordenadas
   const sortedIdentifications = useMemo(() => {
     if (!data?.identifications) return [];
-    return [...data.identifications].sort((a: any, b: any) => {
+    return [...data.identifications].sort((a, b) => {
       const da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
       const db = b.createdAt ? new Date(b.createdAt).getTime() : 0;
       if (da !== db) return da - db;
@@ -158,16 +171,27 @@ export function OccurrenceDetailPage({
     }
   };
 
+  const goToTaxon = (taxonId?: string | null) => {
+    if (!taxonId) return;
+    onNavigate("taxon-detail", { taxonId });
+  };
+
   if (loading) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <Button variant="ghost" onClick={handleBack} className="mb-4">
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Volver
-        </Button>
-        <p className="text-sm text-muted-foreground">
-          Cargando ocurrencia...
-        </p>
+        <div className="flex items-center gap-4 mb-6">
+          <Button variant="ghost" onClick={handleBack}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Volver
+          </Button>
+        </div>
+        <Card>
+          <CardContent className="py-8">
+            <p className="text-center text-muted-foreground">
+              Cargando información de la ocurrencia…
+            </p>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -175,56 +199,63 @@ export function OccurrenceDetailPage({
   if (error || !data) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <Button variant="ghost" onClick={handleBack} className="mb-4">
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Volver
-        </Button>
-        <p className="text-sm text-red-600">
-          No se pudo cargar la ocurrencia: {error || "Desconocido"}
-        </p>
+        <div className="flex items-center gap-4 mb-6">
+          <Button variant="ghost" onClick={handleBack}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Volver
+          </Button>
+        </div>
+        <Card>
+          <CardContent className="py-8">
+            <p className="text-center text-red-600">
+              No se pudo cargar la ocurrencia: {error || "Desconocido"}
+            </p>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   return (
     <div className="container mx-auto px-4 py-8">
-      {/* Volver */}
-      <div className="mb-6">
-        <Button variant="ghost" onClick={handleBack} className="mb-4">
+      {/* Header */}
+      <div className="flex items-center gap-4 mb-6">
+        <Button variant="ghost" onClick={handleBack}>
           <ArrowLeft className="h-4 w-4 mr-2" />
           {returnTo === "collection"
             ? `Volver a ${collectionName}`
             : "Volver a ocurrencias"}
         </Button>
+      </div>
 
-        {/* Encabezado */}
-        <div className="flex justify-between items-start gap-4">
+      {/* Nombre científico principal (estilo similar a TaxonDetailPage) */}
+      <div className="mb-6">
+        <div className="flex items-start gap-4">
+          <Leaf className="h-8 w-8 text-primary mt-1" />
           <div>
-            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight mb-1 italic">
-              {sciName}
-            </h1>
+            <h1 className="text-4xl mb-2 italic">{sciName}</h1>
             {sciAuth && (
-              <p className="text-sm text-muted-foreground mb-1">
-                {sciAuth}
-              </p>
+              <p className="text-muted-foreground">{sciAuth}</p>
             )}
-            <p className="text-sm text-muted-foreground">
-              Código de catálogo: {show(data.catalogNumber)} • Colección:{" "}
-              {show(data.collection?.collectionName)}
-            </p>
+            <div className="flex gap-2 mt-3 flex-wrap text-sm text-muted-foreground">
+              <span>Código de catálogo: {show(data.catalogNumber)}</span>
+              <span>•</span>
+              <span>Colección: {show(data.collection?.collectionName)}</span>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        {/* Columna principal */}
-        <div className="lg:col-span-2 space-y-6">
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Columna principal (datos de la ocurrencia) */}
+        <div className="space-y-6">
           {/* 1. Colección y registro */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base md:text-lg font-semibold">
-                Colección y registro
-              </CardTitle>
+              <CardTitle>Colección y registro</CardTitle>
+              <CardDescription>
+                Información básica de la colección y el catálogo
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <div className="grid md:grid-cols-2 gap-4">
@@ -283,16 +314,16 @@ export function OccurrenceDetailPage({
                 </div>
               </div>
 
-              <Separator />
+              <Separator className="my-4" />
 
               <div className="grid md:grid-cols-2 gap-4 text-xs">
                 <div>
-                  <p className="text-muted-foreground">Creado en</p>
+                  <p className="text-muted-foreground">Creado:</p>
                   <p>{formatDateTime(data.createdAt as any)}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">
-                    Última actualización
+                    Última actualización:
                   </p>
                   <p>{formatDateTime(data.updatedAt as any)}</p>
                 </div>
@@ -303,9 +334,10 @@ export function OccurrenceDetailPage({
           {/* 2. Evento de colecta y proyecto */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base md:text-lg font-semibold">
-                Evento de colecta y proyecto
-              </CardTitle>
+              <CardTitle>Evento de colecta y proyecto</CardTitle>
+              <CardDescription>
+                Fechas, campaña y financiamiento asociados
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <div className="grid md:grid-cols-2 gap-4">
@@ -396,9 +428,10 @@ export function OccurrenceDetailPage({
           {/* 3. Localización */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base md:text-lg font-semibold">
-                Localización
-              </CardTitle>
+              <CardTitle>Localización</CardTitle>
+              <CardDescription>
+                Lugar de colecta y detalles geográficos
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <div className="grid md:grid-cols-2 gap-4">
@@ -454,7 +487,7 @@ export function OccurrenceDetailPage({
                 <p>{show(data.locationRemarks)}</p>
               </div>
 
-              <Separator />
+              <Separator className="my-4" />
 
               <div className="grid md:grid-cols-3 gap-4">
                 <div>
@@ -541,9 +574,10 @@ export function OccurrenceDetailPage({
           {currentIdentification ? (
             <Card>
               <CardHeader>
-                <CardTitle className="text-base md:text-lg font-semibold">
-                  Identificación actual
-                </CardTitle>
+                <CardTitle>Identificación actual</CardTitle>
+                <CardDescription>
+                  Determinación vigente para esta ocurrencia
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
                 <div className="grid md:grid-cols-2 gap-4">
@@ -559,7 +593,9 @@ export function OccurrenceDetailPage({
                     <p className="text-xs font-medium text-muted-foreground">
                       Autoría
                     </p>
-                    <p>{show(currentIdentification.scientificNameAuthorship)}</p>
+                    <p>
+                      {show(currentIdentification.scientificNameAuthorship)}
+                    </p>
                   </div>
                   <div>
                     <p className="text-xs font-medium text-muted-foreground">
@@ -579,18 +615,17 @@ export function OccurrenceDetailPage({
                     <p className="text-xs font-medium text-muted-foreground">
                       Vigencia
                     </p>
-                    <Badge
-                      variant={
-                        currentIdentification.isCurrent
-                          ? "secondary"
-                          : "outline"
-                      }
-                      className="text-[11px] font-medium rounded-full px-2 py-0.5"
-                    >
-                      {currentIdentification.isCurrent
-                        ? "Actual (vigente)"
-                        : "Histórica"}
-                    </Badge>
+                    {currentIdentification.isCurrent ? (
+                      <Badge className="bg-green-100 text-green-800 text-[11px] font-medium rounded-full px-2 py-0.5">
+                        <CheckCircle className="h-3 w-3 mr-1" />
+                        Actual (vigente)
+                      </Badge>
+                    ) : (
+                      <Badge className="text-[11px] font-medium rounded-full px-2 py-0.5">
+                        <XCircle className="h-3 w-3 mr-1" />
+                        Histórica
+                      </Badge>
+                    )}
                   </div>
 
                   {/* Verificación */}
@@ -598,18 +633,20 @@ export function OccurrenceDetailPage({
                     <p className="text-xs font-medium text-muted-foreground">
                       Estado de verificación
                     </p>
-                    <Badge
-                      variant={
-                        currentIdentification.isVerified
-                          ? "secondary"
-                          : "outline"
-                      }
-                      className="text-[11px] font-medium rounded-full px-2 py-0.5"
-                    >
-                      {currentIdentification.isVerified
-                        ? "Verificada"
-                        : "No verificada"}
-                    </Badge>
+                    {currentIdentification.isVerified ? (
+                      <Badge className="bg-blue-100 text-blue-800 text-[11px] font-medium rounded-full px-2 py-0.5">
+                        <CheckCircle className="h-3 w-3 mr-1" />
+                        Verificada
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className="text-[11px] font-medium rounded-full px-2 py-0.5"
+                      >
+                        <AlertCircle className="h-3 w-3 mr-1" />
+                        No verificada
+                      </Badge>
+                    )}
                   </div>
 
                   <div>
@@ -620,6 +657,22 @@ export function OccurrenceDetailPage({
                   </div>
                 </div>
 
+                {/* Botón para ir al taxón si hay taxonId */}
+                {currentIdentification.taxon?.taxonId && (
+                  <div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        goToTaxon(currentIdentification.taxon?.taxonId)
+                      }
+                    >
+                      <Eye className="h-4 w-4 mr-1" />
+                      Ver taxón en backbone
+                    </Button>
+                  </div>
+                )}
+
                 {currentIdentification.identifiers &&
                   currentIdentification.identifiers.length > 0 && (
                     <div>
@@ -627,7 +680,7 @@ export function OccurrenceDetailPage({
                         Personas asociadas a la identificación
                       </p>
                       <ul className="list-disc list-inside text-sm">
-                        {currentIdentification.identifiers.map((idn: any) => (
+                        {currentIdentification.identifiers.map((idn) => (
                           <li key={idn.id}>{show(idn.fullName)}</li>
                         ))}
                       </ul>
@@ -638,9 +691,10 @@ export function OccurrenceDetailPage({
           ) : (
             <Card>
               <CardHeader>
-                <CardTitle className="text-base md:text-lg font-semibold">
-                  Identificación actual
-                </CardTitle>
+                <CardTitle>Identificación actual</CardTitle>
+                <CardDescription>
+                  Determinación vigente para esta ocurrencia
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-muted-foreground">
@@ -654,15 +708,16 @@ export function OccurrenceDetailPage({
           {sortedIdentifications.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-base md:text-lg font-semibold">
-                  Historial de identificaciones
-                </CardTitle>
+                <CardTitle>Historial de identificaciones</CardTitle>
+                <CardDescription>
+                  Cambios históricos en la determinación de este espécimen
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                {sortedIdentifications.map((ident: any) => (
+                {sortedIdentifications.map((ident) => (
                   <div
                     key={ident.id}
-                    className="rounded-lg border border-border bg-background/60 p-3 sm:p-4 space-y-2"
+                    className="rounded-lg border border-border bg-background/60 p-3 sm:p-4 space-y-2 hover:shadow-md transition-shadow"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
@@ -673,23 +728,47 @@ export function OccurrenceDetailPage({
                           {show(ident.scientificNameAuthorship)}
                         </p>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {ident.isCurrent && (
+                      <div className="flex items-center gap-2 flex-wrap justify-end">
+                        {ident.isCurrent ? (
+                          <Badge className="bg-green-100 text-green-800 text-[11px] font-medium rounded-full px-2 py-0.5">
+                            <CheckCircle className="h-3 w-3 mr-1" />
+                            Vigente
+                          </Badge>
+                        ) : (
                           <Badge
                             variant="secondary"
                             className="text-[11px] font-medium rounded-full px-2 py-0.5"
                           >
-                            Vigente
+                            <XCircle className="h-3 w-3 mr-1" />
+                            No vigente
                           </Badge>
                         )}
-                        <Badge
-                          variant={ident.isVerified ? "secondary" : "outline"}
-                          className="text-[11px] font-medium rounded-full px-2 py-0.5"
-                        >
-                          {ident.isVerified
-                            ? "Verificada"
-                            : "No verificada"}
-                        </Badge>
+                        {ident.isVerified ? (
+                          <Badge className="bg-blue-100 text-blue-800 text-[11px] font-medium rounded-full px-2 py-0.5">
+                            <CheckCircle className="h-3 w-3 mr-1" />
+                            Verificada
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="text-[11px] font-medium rounded-full px-2 py-0.5"
+                          >
+                            <AlertCircle className="h-3 w-3 mr-1" />
+                            No verificada
+                          </Badge>
+                        )}
+
+                        {ident.taxon?.taxonId && (
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            className="h-7 px-2 text-[11px]"
+                            onClick={() => goToTaxon(ident.taxon?.taxonId)}
+                          >
+                            <Eye className="h-3 w-3 mr-1" />
+                            Ver taxón
+                          </Button>
+                        )}
                       </div>
                     </div>
 
@@ -707,7 +786,7 @@ export function OccurrenceDetailPage({
                           Personas asociadas:{" "}
                         </span>
                         {ident.identifiers
-                          .map((idn: any) => idn.fullName)
+                          .map((idn) => idn.fullName)
                           .filter(Boolean)
                           .join(", ")}
                       </p>
@@ -726,9 +805,10 @@ export function OccurrenceDetailPage({
           {/* 6. Observaciones y datos biológicos */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base md:text-lg font-semibold">
-                Observaciones y datos biológicos
-              </CardTitle>
+              <CardTitle>Observaciones y datos biológicos</CardTitle>
+              <CardDescription>
+                Notas de campo y atributos biológicos del espécimen
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <div>
@@ -771,9 +851,10 @@ export function OccurrenceDetailPage({
             Object.keys(data.dynamicProperties).length > 0 && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base md:text-lg font-semibold">
-                    Datos dinámicos
-                  </CardTitle>
+                  <CardTitle>Datos dinámicos</CardTitle>
+                  <CardDescription>
+                    Campos adicionales capturados en la digitalización
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm">
                   <div className="grid md:grid-cols-2 gap-4">
@@ -793,13 +874,14 @@ export function OccurrenceDetailPage({
             )}
         </div>
 
-        {/* Columna lateral */}
-        <div className="lg:col-span-1 space-y-6 lg:sticky lg:top-4 lg:self-start">
+        {/* Columna lateral (resumen e imágenes) */}
+        <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base md:text-lg font-semibold">
-                Resumen
-              </CardTitle>
+              <CardTitle>Resumen</CardTitle>
+              <CardDescription>
+                Metadatos internos y agentes relacionados
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
               <div>
@@ -832,7 +914,7 @@ export function OccurrenceDetailPage({
                 </span>
                 {data.agents && data.agents.length > 0 ? (
                   <ul className="list-disc list-inside mt-1 text-sm">
-                    {data.agents.map((ag: any) => (
+                    {data.agents.map((ag) => (
                       <li key={ag.id}>{show(ag.fullName)}</li>
                     ))}
                   </ul>
@@ -845,14 +927,15 @@ export function OccurrenceDetailPage({
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base md:text-lg font-semibold">
-                Imágenes asociadas
-              </CardTitle>
+              <CardTitle>Imágenes asociadas</CardTitle>
+              <CardDescription>
+                Archivos de imagen vinculados a la ocurrencia
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
               {data.images && data.images.length > 0 ? (
                 <ul className="space-y-2">
-                  {data.images.map((img: any) => (
+                  {data.images.map((img) => (
                     <li key={img.id} className="text-xs break-all">
                       {img.photographer && (
                         <span className="block text-muted-foreground">

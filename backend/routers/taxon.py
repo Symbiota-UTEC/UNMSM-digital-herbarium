@@ -4,14 +4,14 @@ from __future__ import annotations
 import math
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from backend.config.database import get_db
-from backend.models.models import Taxon
+from backend.models.models import Taxon, Identification
 from backend.schemas.common.pages import Page
-from backend.schemas.taxon import TaxonTreeNode, TaxonSynonym
+from backend.schemas.taxon import TaxonTreeNode, TaxonSynonym, TaxonDetailOut
 
 router = APIRouter(prefix="/taxon", tags=["Taxon"])
 
@@ -189,3 +189,30 @@ def get_taxon_tree(
         totalPages=total_pages,
         remainingPages=remaining_pages,
     )
+
+
+@router.get(
+    "/{taxon_id}",
+    response_model=TaxonDetailOut,
+    summary="Devuelve un taxón del backbone y todas sus identificaciones asociadas.",
+)
+def get_taxon_detail(
+    taxon_id: str,
+    db: Session = Depends(get_db),
+):
+    if not taxon_id or taxon_id == "undefined":
+        raise HTTPException(status_code=400, detail="taxon_id inválido")
+
+    taxon: Optional[Taxon] = db.scalar(
+        select(Taxon)
+        .options(
+            selectinload(Taxon.identifications)
+            .selectinload(Identification.identifiers)
+        )
+        .where(Taxon.taxonID == taxon_id)
+    )
+
+    if taxon is None:
+        raise HTTPException(status_code=404, detail="Taxón no encontrado")
+
+    return taxon

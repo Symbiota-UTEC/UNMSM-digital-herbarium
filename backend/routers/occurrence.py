@@ -27,8 +27,13 @@ from backend.schemas.occurrence import (
     OccurrenceOut,
     OccurrenceBriefItem,
     DynamicPropsIn,
+    OccurrenceFilters,
 )
 
+from backend.services.occurrence_filters import (
+    get_occurrence_filters,
+    apply_occurrence_filters,
+)
 
 router = APIRouter(
     prefix="/occurrences",
@@ -220,13 +225,10 @@ def get_occurrence_by_id(
 def list_occurrences_basic(
     page: int = Query(1, ge=1, description="Número de página (1-based)"),
     page_size: int = Query(50, ge=1, le=200, description="Tamaño de página"),
-    q: Optional[str] = Query(
-        None,
-        description="Buscar en código, nombre científico, familia, ubicación o recolector (ILIKE)",
-    ),
     collection_id: Optional[int] = Query(
         None, description="Filtrar por ID de colección específico"
     ),
+    filters: OccurrenceFilters = Depends(get_occurrence_filters),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -248,7 +250,7 @@ def list_occurrences_basic(
         Occurrence.country,
     )
 
-    # Join a la identificación "current" (si hay) y su Taxon
+    # SELECT principal (para filas)
     base_select = (
         select(
             Occurrence.id.label("occ_id"),
@@ -277,6 +279,7 @@ def list_occurrences_basic(
         )
     )
 
+    # SELECT para conteo (misma estructura de joins)
     count_select = (
         select(Occurrence.id)
         .join(Collection, Occurrence.collectionId == Collection.id)
@@ -288,9 +291,12 @@ def list_occurrences_basic(
             ),
         )
         .outerjoin(Taxon, Taxon.id == Identification.taxonId)
+        .outerjoin(
+            Institution,
+            Collection.institutionId == Institution.id,
+        )
     )
 
-    # Permisos
     if not is_superuser:
         perm_subq = (
             select(CollectionPermission.collectionId)
@@ -313,24 +319,15 @@ def list_occurrences_basic(
         base_select = base_select.where(Occurrence.collectionId == collection_id)
         count_select = count_select.where(Occurrence.collectionId == collection_id)
 
-    # Filtro de texto
-    if q:
-        like = f"%{q.strip()}%"
-        text_filter = or_(
-            code_expr.ilike(like),
-            Taxon.scientificName.ilike(like),
-            Taxon.family.ilike(like),
-            location_expr.ilike(like),
-            Occurrence.recordedBy.ilike(like),
-        )
-        base_select = base_select.where(text_filter)
-        count_select = count_select.where(text_filter)
+    base_select = apply_occurrence_filters(base_select, filters)
+    count_select = apply_occurrence_filters(count_select, filters)
 
-    # Paginación: adaptamos page/page_size a limit/offset y usamos Page[T]
     limit = page_size
     offset = (page - 1) * page_size
 
-    total = db.scalar(select(func.count()).select_from(count_select.subquery())) or 0
+    total = db.scalar(
+        select(func.count()).select_from(count_select.subquery())
+    ) or 0
 
     rows = db.execute(
         base_select
