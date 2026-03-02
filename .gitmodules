@@ -1,0 +1,3 @@
+[submodule "digital-camera-integration"]
+	path = digital-camera-integration
+	url = https://github.com/Symbiota-UTEC/digital-camera-integration.git
