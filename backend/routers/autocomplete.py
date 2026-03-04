@@ -6,12 +6,12 @@ from sqlalchemy.orm import Session
 from backend.config.database import get_db
 from backend.auth.jwt import get_current_user
 from backend.models.models import Taxon, Institution, Occurrence, User, Collection, CollectionPermission
-from backend.schemas.autocomplete import SuggestionList
+from backend.schemas.autocomplete import SuggestionList, ScientificNameSuggestionList, ScientificNameSuggestion
 
 router = APIRouter(prefix="/autocomplete", tags=["autocomplete"])
 
 
-@router.get("/scientific-name", response_model=SuggestionList)
+@router.get("/scientific-name", response_model=ScientificNameSuggestionList)
 def autocomplete_scientific_name(
     q: str = Query(..., min_length=1, description="Prefijo del nombre científico"),
     limit: int = Query(10, ge=1, le=50),
@@ -24,16 +24,26 @@ def autocomplete_scientific_name(
     pattern = f"{term.lower()}%"  # prefijo
 
     stmt = (
-        select(func.distinct(Taxon.scientificName))
+        select(Taxon.scientificName, Taxon.taxonID, Taxon.scientificNameAuthorship)
         .where(
             func.unaccent_immutable(
                 func.lower(Taxon.scientificName)
             ).like(func.unaccent_immutable(pattern))
         )
+        .distinct(Taxon.scientificName, Taxon.taxonID, Taxon.scientificNameAuthorship)
         .order_by(Taxon.scientificName)
         .limit(limit)
     )
-    items = [row[0] for row in db.execute(stmt) if row[0]]
+    rows = db.execute(stmt).all()
+    items = [
+        ScientificNameSuggestion(
+            scientificName=row[0],
+            taxonID=row[1],
+            scientificNameAuthorship=row[2],
+        )
+        for row in rows
+        if row[0]
+    ]
     return {"items": items}
 
 
