@@ -4,6 +4,8 @@ from datetime import timedelta, datetime
 from typing import Optional, Literal, List
 
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Query
+from fastapi.security import OAuth2PasswordRequestForm
+
 from sqlalchemy import select, or_, and_, func, update as sa_update
 from sqlalchemy.orm import Session
 
@@ -412,17 +414,16 @@ def update_registration_request_status(
 
 @router.post("/login", summary="Authenticate user and return JWT token")
 def login_user(
-    email: str = Body(...),
-    password: str = Body(...),
+    form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
     user = db.execute(
-        select(User).where(User.email == email)
+        select(User).where(User.email == form_data.username)
     ).scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    if not verify_password(password, user.hashedPassword):
+    if not verify_password(form_data.password, user.hashedPassword):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     if not user.isActive:
@@ -441,9 +442,12 @@ def login_user(
         expires_delta=token_expires,
     )
 
+    # IMPORTANTE: Para que Swagger reconozca el token, las llaves DEBEN ser 
+    # access_token y token_type (en snake_case, no camelCase)
+
     return {
-        "accessToken": access_token,
-        "tokenType": "bearer",
+        "access_token": access_token, 
+        "token_type": "bearer",
         "user": {
             "id": user.id,
             "name": user.fullName,

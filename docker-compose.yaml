@@ -62,6 +62,17 @@ services:
       - "3000:80"   # http://localhost:3000
     networks: [appnet]
 
+  seaweedfs:
+    image: chrislusf/seaweedfs
+    container_name: herbarium_seaweedfs
+    ports:
+      - "9333:9333"
+      - "8080:8080"
+      - "8888:8888" # Filer UI
+      - "8333:8333" # S3 API
+    command: "server -dir=/data -s3"
+    networks: [appnet]
+
 volumes:
   pgdata:
 
