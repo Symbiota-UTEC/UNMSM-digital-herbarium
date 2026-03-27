@@ -87,10 +87,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = async (email: string, password: string) => {
+    const formData = new URLSearchParams();
+    formData.append("username", email);
+    formData.append("password", password);
+
     const response = await fetch(`${API.BASE_URL}${API.PATHS.LOGIN}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: formData.toString(),
     });
 
     if (!response.ok) {
@@ -102,13 +106,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const data = await response.json();
     console.log(data);
 
-    if (!data.accessToken || !data.user) {
+    if (!data.access_token || !data.user) {
       throw new Error("Respuesta del servidor inválida");
     }
 
-    localStorage.setItem(STORAGE_KEYS.TOKEN, data.accessToken);
-    setToken(data.accessToken);
-    scheduleAutoLogout(data.accessToken);
+    localStorage.setItem(STORAGE_KEYS.TOKEN, data.access_token);
+    setToken(data.access_token);
+    scheduleAutoLogout(data.access_token);
 
     const u = data.user;
     console.log("user data: ", u)

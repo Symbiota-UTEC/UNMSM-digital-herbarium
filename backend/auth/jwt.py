@@ -18,7 +18,7 @@ from backend.config.auth import (
     access_token_expire_minutes,
 )
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
 def _now_utc() -> datetime:

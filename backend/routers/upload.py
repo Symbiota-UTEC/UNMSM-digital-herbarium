@@ -5,6 +5,9 @@ import csv
 import io
 import json
 import logging
+import requests
+import uuid
+
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status, BackgroundTasks
@@ -26,6 +29,7 @@ from backend.models.models import (
     Identification,
     OccurrenceAgent,
     IdentificationIdentifier,
+    OccurrenceImage,
 )
 
 from backend.utils.dwc import (
@@ -961,4 +965,89 @@ async def upload_taxon_flora_csv(
         "backbone": "taxon",
         "filename": filename,
         "detail": "El archivo se está procesando en segundo plano.",
+    }
+
+
+@router.post(
+    "/image",
+    status_code=status.HTTP_201_CREATED,
+    summary="Subir una imagen y asociarla a una Occurrence a través de SeaweedFS",
+)
+def upload_image_seaweedfs(
+    occurrence_id: int = Form(..., description="ID de la Ocurrencia destino"),
+    file: UploadFile = File(..., description="Archivo de imagen"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Sube una imagen al cluster de SeaweedFS y crea un OccurrenceImage.
+    """
+
+    occurrence = db.scalar(select(Occurrence).where(Occurrence.id == occurrence_id))
+    if not occurrence:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Occurrence not found"
+        )
+        
+    if not _user_can_edit_collection(db, current_user, occurrence.collection):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para editar esta colección",
+        )
+
+    # 1. Subir imagen a SeaweedFS Filer (en herbarium_seaweedfs:8888)
+    try:
+        institution_name = "UnknownInstitution"
+        collection_code = "UnknownCollection"
+        catalog_number = occurrence.catalogNumber or "UnknownCatalog"
+
+        if occurrence.collection:
+            collection_code = occurrence.collection.collectionCode or "UnknownCollection"
+            if occurrence.collection.institution:
+                institution_name = occurrence.collection.institution.institutionName or "UnknownInstitution"
+
+        # Sanitizar rutas para URL
+        institution_name_safe = institution_name.replace(" ", "_").replace("/", "-")
+        collection_code_safe = collection_code.replace(" ", "_").replace("/", "-")
+        catalog_number_safe = catalog_number.replace(" ", "_").replace("/", "-")
+        
+        safe_filename = file.filename.replace(" ", "_")
+        unique_filename = f"{uuid.uuid4()}_{safe_filename}"
+        
+        image_path = f"/images/{institution_name_safe}/{collection_code_safe}/{catalog_number_safe}/{unique_filename}"
+        upload_url = f"http://herbarium_seaweedfs:8888{image_path}"
+        
+        files = {"file": (file.filename, file.file, file.content_type)}
+        upload_res = requests.post(upload_url, files=files)
+        upload_res.raise_for_status()
+        
+        # Filer devuelve información json sobre la carga
+        upload_data = upload_res.json()
+        file_size = upload_data.get("size", 0)
+    except Exception as e:
+        logger.error(f"Error subiendo imagen a SeaweedFS Filer: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error copiando el archivo al servidor de archivos (Filer)",
+        )
+
+    # 2. Guardar en Base de Datos
+    occ_img = OccurrenceImage(
+        occurrenceId=occurrence.id,
+        imagePath=image_path,
+        fileSize=file_size,
+        photographer=current_user.fullName or current_user.username
+    )
+    
+    db.add(occ_img)
+    db.commit()
+    db.refresh(occ_img)
+
+    return {
+        "status": "ok",
+        "occurrenceImageId": occ_img.id,
+        "occurrenceId": occurrence.id,
+        "imagePath": image_path,
+        "size": file_size,
+        "publicUrl": f"http://localhost:8888{image_path}"
     }
