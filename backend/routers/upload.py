@@ -11,6 +11,7 @@ import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status, BackgroundTasks
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select, exists, or_, update
 from sqlalchemy.orm import Session
 from sqlalchemy.inspection import inspect
@@ -1051,3 +1052,39 @@ def upload_image_seaweedfs(
         "size": file_size,
         "publicUrl": f"http://localhost:8888{image_path}"
     }
+
+
+@router.get(
+    "/image/{image_id}",
+    summary="Descargar u obtener una imagen por su ID",
+)
+def get_image_seaweedfs(
+    image_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Obtiene una imagen de SeaweedFS consultando su ruta original mediante el OccurrenceImage ID
+    """
+    image = db.scalar(select(OccurrenceImage).where(OccurrenceImage.id == image_id))
+    if not image:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Image not found"
+        )
+    
+    # URL interna definida para SeaweedFS en docker network
+    download_url = f"http://herbarium_seaweedfs:8888{image.imagePath}"
+    
+    try:
+        response = requests.get(download_url, stream=True)
+        response.raise_for_status()
+        
+        return StreamingResponse(
+            response.iter_content(chunk_size=1024*1024),
+            media_type=response.headers.get("Content-Type", "image/jpeg"),
+        )
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error downloading image from SeaweedFS: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error downloading image from SeaweedFS"
+        )

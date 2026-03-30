@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Card,
   CardContent,
@@ -934,25 +934,29 @@ export function OccurrenceDetailPage({
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
               {data.images && data.images.length > 0 ? (
-                <ul className="space-y-2">
+                <div className="flex flex-col gap-4 mt-2">
                   {data.images.map((img) => (
-                    <li key={img.id} className="text-xs break-all">
-                      {img.photographer && (
-                        <span className="block text-muted-foreground">
-                          Fotógrafo: {img.photographer}
-                        </span>
-                      )}
-                      <span className="font-mono block">
-                        {img.imagePath}
-                      </span>
-                      {img.fileSize && (
-                        <span className="text-[11px] text-muted-foreground">
-                          Tamaño del archivo: {img.fileSize} bytes
-                        </span>
-                      )}
-                    </li>
+                    <div key={img.id} className="relative rounded-lg border bg-muted/20 overflow-hidden flex flex-col group shadow-sm">
+                      <div className="h-48 w-full bg-muted/50 flex items-center justify-center p-2">
+                        <img 
+                          src={`${API.BASE_URL}${API.PATHS.IMAGE_BY_ID(img.id)}`} 
+                          alt="Occurrence Image" 
+                          className="w-full h-full object-contain"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 24 24" fill="none" stroke="%23888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>';
+                          }}
+                        />
+                      </div>
+                      <div className="p-3 text-xs bg-background">
+                        {img.photographer && (
+                          <span className="block font-medium mb-1 truncate text-foreground">
+                            Fotógrafo: {img.photographer}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   ))}
-                </ul>
+                </div>
               ) : (
                 <p className="text-sm text-muted-foreground">
                   Esta ocurrencia no tiene imágenes asociadas.

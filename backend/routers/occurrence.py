@@ -28,6 +28,7 @@ from backend.schemas.occurrence import (
     OccurrenceBriefItem,
     DynamicPropsIn,
     OccurrenceFilters,
+    OccurrenceCreateIn,
 )
 
 from backend.services.occurrence_filters import (
@@ -166,6 +167,95 @@ def _page_meta(total: int, limit: int, offset: int) -> tuple[int, int, int]:
 # =========================
 # Endpoints
 # =========================
+
+@router.post(
+    "",
+    response_model=OccurrenceOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Crea una nueva ocurrencia",
+)
+def create_occurrence(
+    payload: OccurrenceCreateIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # Verificamos que la colección exista y el usuario pueda editarla
+    collection = db.scalar(select(Collection).where(Collection.id == payload.collectionId))
+    if not collection:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found"
+        )
+    
+    if not _user_can_edit_collection(db, current_user, collection):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para añadir ocurrencias en esta colección"
+        )
+
+    # Preparamos los datos del modelo Occurrence
+    occ_data = payload.model_dump(
+        exclude={"taxonId", "scientificName", "collectionId"}, 
+        exclude_unset=True
+    )
+    
+    # Manejamos el UUID custom que envió el frontend si existe
+    occ_data.pop("occurrenceID", None)
+    
+    occ = Occurrence(**occ_data)
+    occ.collectionId = payload.collectionId
+    occ.digitizerUserId = current_user.id
+    
+    db.add(occ)
+    db.flush()
+
+    # Manejar recordedBy simple si se desea (o dejarlo solo como texto, 
+    # en la vista de carga de csv creaba un OccurrenceAgent. Como es opcional, 
+    # podemos simplificarlo y solo mantener recordedBy en texto. El modelo lo tiene como string)
+    
+    # Manejamos Identificación y Taxón si viene
+    if payload.scientificName or payload.taxonId:
+        taxon_id = payload.taxonId
+        # validamos el taxón si se pasó ID
+        if taxon_id:
+            taxon_obj = db.scalar(select(Taxon).where(Taxon.id == taxon_id))
+            if not taxon_obj:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND, detail="Taxon no encontrado"
+                )
+        
+        ident = Identification(
+            occurrenceId=occ.id,
+            taxonId=taxon_id,
+            scientificName=payload.scientificName,
+            isCurrent=True,
+            isVerified=False
+        )
+        db.add(ident)
+        db.flush()
+        
+        occ.currentIdentificationId = ident.id
+        db.add(occ)
+        db.flush()
+
+    # Hacemos load de relaciones
+    db.commit()
+    db.refresh(occ)
+
+    # Lo volvemos a traer completo para que responda OccurrenceOut
+    stmt = (
+        select(Occurrence)
+        .options(
+            selectinload(Occurrence.collection),
+            selectinload(Occurrence.agents),
+            selectinload(Occurrence.identifications)
+            .selectinload(Identification.identifiers),
+            selectinload(Occurrence.identifications)
+            .selectinload(Identification.taxon),
+        )
+        .where(Occurrence.id == occ.id)
+    )
+    occ = db.scalar(stmt)
+    
+    return OccurrenceOut.model_validate(occ, from_attributes=True)
 
 
 @router.get(
@@ -433,3 +523,4 @@ def set_dynamic_properties(
     db.refresh(occ)
 
     return OccurrenceOut.model_validate(occ, from_attributes=True)
+

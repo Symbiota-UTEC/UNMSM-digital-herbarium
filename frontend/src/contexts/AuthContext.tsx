@@ -137,7 +137,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const apiFetch: AuthContextType["apiFetch"] = async (input, init = {}) => {
     const headers = new Headers(init.headers || {});
     if (token) headers.set("Authorization", `Bearer ${token}`);
-    headers.set("Content-Type", headers.get("Content-Type") || "application/json");
+    
+    // Si la data es FormData, omitir establecer el Content-Type para que el navegador genere su boundary naturalmente
+    if (init.body instanceof FormData) {
+      headers.delete("Content-Type");
+    } else {
+      headers.set("Content-Type", headers.get("Content-Type") || "application/json");
+    }
 
     const res = await fetch(input, { ...init, headers });
 

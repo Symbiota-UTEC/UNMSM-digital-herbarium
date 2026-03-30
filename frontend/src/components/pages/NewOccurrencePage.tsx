@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -24,9 +24,16 @@ import {
   Leaf,
   Camera,
 } from "lucide-react";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 import { Alert, AlertDescription } from "../ui/alert";
 import { API } from "@constants/api";
+import { useAuth } from "../../contexts/AuthContext";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../ui/tooltip";
 
 interface NewOccurrencePageProps {
   onNavigate: (page: string, params?: Record<string, any>) => void;
@@ -94,6 +101,7 @@ interface ScientificNameSuggestion {
 }
 
 interface TaxonDetail {
+  id: number | null;
   taxonID?: string | null;
   scientificName?: string | null;
   scientificNameAuthorship?: string | null;
@@ -131,7 +139,9 @@ export function NewOccurrencePage({
   collectionName: collectionNameProp,
   isOwner,
 }: NewOccurrencePageProps) {
+  const { apiFetch } = useAuth();
   const [activeTab, setActiveTab] = useState<TabKey>("occurrence");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   /* ── OCCURRENCE ── */
   const [occurrenceID, setOccurrenceID] = useState(generateUUID());
@@ -384,9 +394,105 @@ export function NewOccurrencePage({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    toast.info("Funcionalidad en Desarrollo", { description: "El guardado de ocurrencias estará disponible próximamente." });
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    console.log(selectedTaxonID);
+    if (!catalogNumber || !selectedTaxonID) {
+      toast.error("Faltan campos obligatorios", { description: "Por favor, completa el número de catálogo y asocia un taxón antes de guardar." });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      // 1. Crear Ocurrencia
+      const dynamicProperties: Record<string, any> = {};
+      dynamicProps.forEach((p) => { dynamicProperties[p.key] = p.value; });
+      // Agregar campos propios que no coinciden con DwC exacto al dinámico
+      if (recordEnteredBy) dynamicProperties.recordEnteredBy = recordEnteredBy;
+      if (occurrenceStatus) dynamicProperties.occurrenceStatus = occurrenceStatus;
+      if (preparations) dynamicProperties.preparations = preparations;
+      if (disposition) dynamicProperties.disposition = disposition;
+      if (license) dynamicProperties.license = license;
+      if (rightsHolder) dynamicProperties.rightsHolder = rightsHolder;
+      if (accessRights) dynamicProperties.accessRights = accessRights;
+      if (individualCount) dynamicProperties.individualCount = individualCount;
+
+      const payload = {
+        collectionId: Number(collectionId),
+        occurrenceID,
+        catalogNumber,
+        recordNumber: recordNumber || null,
+        recordedBy: recordedBy.length > 0 ? recordedBy.join(", ") : null,
+        
+        eventDate: eventDate || null,
+        verbatimEventDate: verbatimEventDate || null,
+        year: year ? parseInt(year) : null,
+        month: month ? parseInt(month) : null,
+        day: day ? parseInt(day) : null,
+        habitat: habitat || null,
+        eventRemarks: eventRemarks || null,
+
+        stateProvince: stateProvince || null,
+        county: county || null,
+        municipality: municipality || null,
+        locality: locality || null,
+        verbatimLocality: verbatimLocality || null,
+        decimalLatitude: decimalLatitude ? parseFloat(decimalLatitude) : null,
+        decimalLongitude: decimalLongitude ? parseFloat(decimalLongitude) : null,
+        verbatimElevation: verbatimElevation || null,
+        minimumElevationInMeters: minimumElevationInMeters ? parseFloat(minimumElevationInMeters) : null,
+        maximumElevationInMeters: maximumElevationInMeters ? parseFloat(maximumElevationInMeters) : null,
+        
+        taxonId: taxonDetail?.id || null,
+        scientificName: scientificNameInput || null,
+
+        dynamicProperties: Object.keys(dynamicProperties).length > 0 ? dynamicProperties : null,
+      };
+
+      let createdOccId: string | number | null = null;
+
+      if (mode === "create") {
+         const res = await apiFetch(`${API.BASE_URL}${API.PATHS.CREATE_OCCURRENCE}`, {
+             method: "POST",
+             body: JSON.stringify(payload)
+         });
+         const data = await res.json();
+         createdOccId = data.id;
+         toast.success("Ocurrencia creada correctamente");
+      } else {
+         toast.info("Funcionalidad de actualización en Desarrollo");
+         // placeholder if you want to implement PUT here...
+         setIsSubmitting(false);
+         return;
+      }
+
+      // 2. Subir imagen si existe
+      if (selectedImage && createdOccId) {
+          try {
+            const formData = new FormData();
+            formData.append("occurrence_id", createdOccId.toString());
+            console.log("Occurrence id: ", createdOccId);
+            formData.append("file", selectedImage);
+            
+            await apiFetch(`${API.BASE_URL}${API.PATHS.UPLOAD_IMAGE}`, {
+                method: "POST",
+                body: formData
+            });
+            toast.success("Imagen asociada correctamente");
+          } catch (err: any) {
+            toast.error("Error al subir la imagen", { description: err.message });
+            // remove headers override issue inside apiFetch:
+            // if apiFetch forces json, we might have to use plain fetch for multipart
+          }
+      }
+
+      // Navegar devuelta
+      handleCancel();
+    } catch (err: any) {
+      toast.error("Error al guardar ocurrencia", { description: err.message });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   /* ══════════════════════════════════════════════════
@@ -916,11 +1022,35 @@ export function NewOccurrencePage({
               />
             ))}
           </div>
-          <div className="flex gap-3 ml-auto">
+          <div className="flex gap-3 ml-auto items-center">
             <Button type="button" variant="outline" onClick={handleCancel}>Cancelar</Button>
-            <Button type="submit" form="occ-form" className="bg-[rgb(117,26,29)] hover:bg-[rgb(97,16,19)]">
-              {mode === "edit" ? "Actualizar ocurrencia" : "Guardar ocurrencia"}
-            </Button>
+            {!catalogNumber || !selectedTaxonID ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span tabIndex={0} className="inline-block cursor-not-allowed">
+                      <Button type="button" disabled className="bg-[rgb(117,26,29)]/50 text-white/70">
+                        <CheckCircle2 className="h-4 w-4 mr-2" />
+                        {mode === "edit" ? "Actualizar ocurrencia" : "Guardar ocurrencia"}
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent className="bg-destructive text-destructive-foreground z-[100] mb-2 shadow-md">
+                    <p>Falta completar campos requeridos (Número de catálogo o Taxón)</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={(e) => handleSubmit(e)}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+                {mode === "edit" ? "Actualizar ocurrencia" : "Guardar ocurrencia"}
+              </Button>
+            )}
           </div>
         </div>
       </div>
