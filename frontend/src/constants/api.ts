@@ -12,7 +12,10 @@ export const API = {
         COLLECTIONS_ACCESS_USERS: (collectionId: number | string) => `/collections/${collectionId}/access-users`,
         COLLECTIONS_OCCURRENCES_BRIEF: (collectionId: number | string) => `/collections/${collectionId}/occurrences/brief`,
         COLLECTIONS_ADD_USER: (collectionId: number | string) => `/collections/${collectionId}/permissions/add-user`,
+        CREATE_OCCURRENCE: "/occurrences",
         OCCURRENCE_BY_ID: (occurrenceId: number | string) => `/occurrences/${occurrenceId}`,
+        UPLOAD_IMAGE: "/upload/image",
+        IMAGE_BY_ID: (imageId: number | string) => `/upload/image/${imageId}`,
     },
 };
 

@@ -181,6 +181,48 @@ class OccurrenceBriefItem(ORMBaseModel):
 # Inputs
 # -----------------------------
 
+class OccurrenceCreateIn(StrictBaseModel):
+    collectionId: int
+
+    occurrenceID: Optional[str] = None
+    catalogNumber: str
+    recordNumber: Optional[str] = None
+    recordedBy: Optional[str] = None
+    
+    # Event
+    eventDate: Optional[str] = None
+    verbatimEventDate: Optional[str] = None
+    year: Optional[int] = None
+    month: Optional[int] = None
+    day: Optional[int] = None
+    habitat: Optional[str] = None
+    eventRemarks: Optional[str] = None
+
+    # Location
+    country: Optional[str] = None
+    stateProvince: Optional[str] = None
+    county: Optional[str] = None
+    municipality: Optional[str] = None
+    locality: Optional[str] = None
+    verbatimLocality: Optional[str] = None
+    decimalLatitude: Optional[float] = None
+    decimalLongitude: Optional[float] = None
+    verbatimElevation: Optional[str] = None
+    minimumElevationInMeters: Optional[float] = None
+    maximumElevationInMeters: Optional[float] = None
+
+    # Extra mapped directly (if exist in models)
+    organismQuantity: Optional[str] = None
+    organismQuantityType: Optional[str] = None
+
+    # Taxon / Identification (we only need TaxonID to link, or full string)
+    taxonId: Optional[int] = None
+    scientificName: Optional[str] = None
+    
+    # Dynamic properties dictionary mapped by frontend
+    dynamicProperties: Optional[Dict[str, Any]] = None
+
+
 
 class DynamicPropsIn(StrictBaseModel):
     dynamicProperties: Optional[Dict[str, Any] | str] = None
