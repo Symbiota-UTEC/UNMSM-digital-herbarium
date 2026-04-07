@@ -34,6 +34,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "../ui/tooltip";
+import { env } from "@config/env";
 
 interface NewOccurrencePageProps {
   onNavigate: (page: string, params?: Record<string, any>) => void;
@@ -126,8 +127,6 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "taxon", label: "Taxonomía" },
   { key: "images", label: "Imagen" },
 ];
-
-const CAMERA_BASE = "http://172.31.99.9:8000";
 
 /* ────────────────────────────────────────────────────────────────── */
 export function NewOccurrencePage({
@@ -353,7 +352,7 @@ export function NewOccurrencePage({
     setCaptureLoading(true);
     setCameraError(null);
     try {
-      const res = await fetch(`${CAMERA_BASE}/api/camera/capture-image`, {
+      const res = await fetch(`${env.CAMERA_BASE_URL}/api/camera/capture-image`, {
         method: "POST",
         signal: AbortSignal.timeout(15000),
       });

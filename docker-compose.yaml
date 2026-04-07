@@ -24,6 +24,10 @@ services:
     container_name: herbarium_backend
     env_file:
       - backend/config/.env
+    environment:
+      - BACKEND_CORS_ALLOW_ORIGINS=http://localhost:3000,http://localhost:5173
+      - SEAWEEDFS_INTERNAL_URL=http://herbarium_seaweedfs:8888
+      - SEAWEEDFS_PUBLIC_URL=http://localhost:8888
     depends_on:
       db:
         condition: service_healthy
@@ -40,6 +44,7 @@ services:
       - /app/node_modules
     environment:
       - VITE_API_URL=http://localhost:8000/api
+      - VITE_CAMERA_BASE_URL=http://172.31.99.9:8000
     ports:
       - "5173:5173"
     depends_on:
@@ -54,6 +59,7 @@ services:
       args:
         # If your React code reads import.meta.env.VITE_API_URL, you can point it at /api
         VITE_API_URL: /api
+        VITE_CAMERA_BASE_URL: http://172.31.99.9:8000
     container_name: herbarium_frontend
     depends_on:
       backend:

@@ -14,7 +14,9 @@ RUN if [ -f package-lock.json ]; then \
 # Copy source and build
 COPY . .
 ARG VITE_API_URL
+ARG VITE_CAMERA_BASE_URL
 ENV VITE_API_URL=${VITE_API_URL}
+ENV VITE_CAMERA_BASE_URL=${VITE_CAMERA_BASE_URL}
 RUN npm run build
 
 # Normalize build output to /out (supports Vite 'dist/' or CRA 'build/')

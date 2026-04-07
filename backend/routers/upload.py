@@ -18,6 +18,7 @@ from sqlalchemy.inspection import inspect
 from datetime import datetime
 
 from backend.config.database import get_db, SessionLocal
+from backend.config.settings import seaweedfs_internal_url, seaweedfs_public_url
 from backend.auth.jwt import get_current_user, require_superuser
 from backend.models.models import (
     User,
@@ -1016,7 +1017,7 @@ def upload_image_seaweedfs(
         unique_filename = f"{uuid.uuid4()}_{safe_filename}"
         
         image_path = f"/images/{institution_name_safe}/{collection_code_safe}/{catalog_number_safe}/{unique_filename}"
-        upload_url = f"http://herbarium_seaweedfs:8888{image_path}"
+        upload_url = f"{seaweedfs_internal_url}{image_path}"
         
         files = {"file": (file.filename, file.file, file.content_type)}
         upload_res = requests.post(upload_url, files=files)
@@ -1050,7 +1051,7 @@ def upload_image_seaweedfs(
         "occurrenceId": occurrence.id,
         "imagePath": image_path,
         "size": file_size,
-        "publicUrl": f"http://localhost:8888{image_path}"
+        "publicUrl": f"{seaweedfs_public_url}{image_path}"
     }
 
 
