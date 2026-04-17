@@ -87,10 +87,6 @@ const AUTO_MAP_RULES: Array<{ pattern: RegExp; target: string }> = [
     target: "Occurrence.georeferenceVerificationStatus",
   },
   {
-    pattern: /\b(other catalog numbers?|otros codigos|otros catalogos)\b/,
-    target: "Occurrence.otherCatalogNumbers",
-  },
-  {
     pattern: /\b(life stage|etapa de vida|estado fenologico|fenologia)\b/,
     target: "Occurrence.lifeStage",
   },
@@ -137,37 +133,9 @@ const AUTO_MAP_RULES: Array<{ pattern: RegExp; target: string }> = [
     target: "Event.eventRemarks",
   },
   {
-    pattern: /\b(project title|titulo del proyecto|campana de muestreo|campana)\b/,
-    target: "Event.projectTitle",
-  },
-  {
-    pattern:
-      /\b(sample size value|tamano de muestra|tamano muestra|cantidad de muestras)\b/,
-    target: "Event.sampleSizeValue",
-  },
-  {
-    pattern:
-      /\b(sample size unit|unidad de muestra|unidad tamano muestra|unidad de tamano de muestra)\b/,
-    target: "Event.sampleSizeUnit",
-  },
-  {
     pattern: /\b(field notes?|notas de campo)\b/,
     target: "Event.fieldNotes",
   },
-  {
-    pattern: /\b(project id|id proyecto|codigo proyecto)\b/,
-    target: "Event.projectID",
-  },
-  {
-    pattern: /\b(funding attribution|financiamiento|proyecto financiado por)\b/,
-    target: "Event.fundingAttribution",
-  },
-  {
-    pattern:
-      /\b(funding attribution id|id financiamiento|codigo financiamiento)\b/,
-    target: "Event.fundingAttributionID",
-  },
-
   // --------- Location ----------
   { pattern: /\b(pais|country)\b/, target: "Location.country" },
   { pattern: /\b(departamento|region|state province)\b/, target: "Location.stateProvince" },
@@ -194,26 +162,8 @@ const AUTO_MAP_RULES: Array<{ pattern: RegExp; target: string }> = [
   { pattern: /\b(latitud|lat)\b/, target: "Location.decimalLatitude" },
   { pattern: /\b(longitud|lon|lng|long)\b/, target: "Location.decimalLongitude" },
   {
-    pattern:
-      /\b(georeferenced by|georreferenciado por|georreferenciacion por)\b/,
-    target: "Location.georeferencedBy",
-  },
-  {
-    pattern:
-      /\b(georeference remarks?|notas de georreferenciacion|comentarios georreferenciacion)\b/,
-    target: "Location.georeferenceRemarks",
-  },
-  {
     pattern: /\b(country code|codigo pais|codigo de pais)\b/,
     target: "Location.countryCode",
-  },
-  {
-    pattern: /\b(elevacion minima|altitud minima|min elevation)\b/,
-    target: "Location.minimumElevationInMeters",
-  },
-  {
-    pattern: /\b(elevacion maxima|altitud maxima|max elevation)\b/,
-    target: "Location.maximumElevationInMeters",
   },
   {
     pattern:

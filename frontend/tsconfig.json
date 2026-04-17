@@ -6,7 +6,8 @@
       "@config/*": ["config/*"],
       "@interfaces/*": ["interfaces/*"],
       "@contexts/*": ["contexts/*"],
-      "@utils/*": ["utils/*"]
+      "@utils/*": ["utils/*"],
+      "@services/*": ["services/*"]
     },
     "jsx": "react"
   }

@@ -104,7 +104,6 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
 
   // New institution form
   const [newInstitutionName, setNewInstitutionName] = useState("");
-  const [newInstitutionCode, setNewInstitutionCode] = useState("");
   const [newInstitutionCountry, setNewInstitutionCountry] = useState("");
   const [newInstitutionCity, setNewInstitutionCity] = useState("");
   const [newInstitutionAddress, setNewInstitutionAddress] = useState("");
@@ -119,7 +118,6 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
   }>({ isValid: null, message: "" });
 
   const [editForm, setEditForm] = useState({
-    institutionCode: "",
     institutionName: "",
     country: "",
     city: "",
@@ -212,7 +210,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
         }
 
         const res = await apiFetch(
-          `${API.BASE_URL}${API.PATHS.REG_REQUESTS}?${params.toString()}`,
+          `${API.BASE_URL}${API.PATHS.AUTH.REG_REQUESTS}?${params.toString()}`,
           {
             headers: {
               "Content-Type": "application/json",
@@ -260,7 +258,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     const fetchMetrics = async () => {
       try {
         setIsLoadingMetrics(true);
-        const res = await apiFetch(`${API.BASE_URL}${API.PATHS.ADMIN_METRICS}`, {
+        const res = await apiFetch(`${API.BASE_URL}${API.PATHS.ADMIN.METRICS}`, {
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
@@ -296,7 +294,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       setIsLoadingInstitutions(true);
 
       if (isInstitutionAdmin && user?.institutionId) {
-        const endpoint = `${API.BASE_URL}${API.PATHS.INSTITUTIONS}/${user.institutionId}`;
+        const endpoint = `${API.BASE_URL}${API.PATHS.INSTITUTIONS.BY_ID(user.institutionId)}`;
         const res = await apiFetch(endpoint, {
           headers: {
             "Content-Type": "application/json",
@@ -316,7 +314,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       // Exact selection from autocomplete
       if (instSelectedId != null) {
         const res = await apiFetch(
-          `${API.BASE_URL}${API.PATHS.INSTITUTIONS}/${instSelectedId}`,
+          `${API.BASE_URL}${API.PATHS.INSTITUTIONS.BY_ID(instSelectedId)}`,
           {
             headers: {
               "Content-Type": "application/json",
@@ -340,7 +338,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
         offset: String(offset),
       });
 
-      const endpoint = `${API.BASE_URL}${API.PATHS.INSTITUTIONS}?${params.toString()}`;
+      const endpoint = `${API.BASE_URL}${API.PATHS.INSTITUTIONS.BASE}?${params.toString()}`;
       const res = await apiFetch(endpoint, {
         headers: {
           "Content-Type": "application/json",
@@ -376,19 +374,19 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     if (token) fetchInstitutions();
   }, [token, fetchInstitutions]);
 
-  // Sincroniza el modal de detalles con la lista actualizada de instituciones
+  // Sincroniza el modal de detalles si la lista de instituciones se actualizó
   useEffect(() => {
     if (!viewInstitutionDetails) return;
-
     const updated = institutions.find(
-      (inst) => inst.id === viewInstitutionDetails.id
+      (inst) =>
+        inst.institutionId != null &&
+        String(inst.institutionId) === String(viewInstitutionDetails.institutionId)
     );
-
-    if (updated) {
+    if (updated && updated !== viewInstitutionDetails) {
       setViewInstitutionDetails(updated);
-      console.log("Updated institution details:", updated);
     }
-  }, [institutions, viewInstitutionDetails]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [institutions]);
 
   // Reset right-column institution filter when text is cleared
   useEffect(() => {
@@ -415,7 +413,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     setRequestsPage((p) => Math.max(1, p - 1));
 
   const patchMetrics = (opts: {
-    institutionId: number;
+    institutionId: string;
     deltaUsers?: number;
     deltaPending?: number;
   }) => {
@@ -447,7 +445,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
   ) => {
     setInstitutions((prev) =>
       prev.map((inst) =>
-        String(inst.id) === String(institutionId)
+        String(inst.institutionId) === String(institutionId)
           ? {
               ...inst,
               usersCount: Math.max(0, (inst.usersCount ?? 0) + delta),
@@ -458,18 +456,18 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
   };
 
   const handleApproveRequest = async (
-    requestId: number,
-    institutionId: number
+    requestId: string,
+    institutionId: string
   ) => {
     const prevMetrics = metrics;
     const prevRequests = registrationRequests;
-    const request = registrationRequests.find((r) => r.id === requestId);
+    const request = registrationRequests.find((r) => r.registrationRequestId === requestId);
 
     patchMetrics({ institutionId, deltaUsers: 1, deltaPending: -1 });
 
     if (request) bumpInstitutionUsers(request.institutionId, +1);
 
-    setRegistrationRequests((prev) => prev.filter((r) => r.id !== requestId));
+    setRegistrationRequests((prev) => prev.filter((r) => r.registrationRequestId !== requestId));
 
     const totalAfter = Math.max(0, requestsTotal - 1);
     const pagesAfter = Math.max(1, Math.ceil(totalAfter / requestsPerPage));
@@ -479,7 +477,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     setRequestsPage(targetPage);
 
     try {
-      const res = await apiFetch(`${API.BASE_URL}${API.PATHS.REG_REQUEST}`, {
+      const res = await apiFetch(`${API.BASE_URL}${API.PATHS.AUTH.REG_REQUEST}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -531,14 +529,14 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
   };
 
   const handleRejectRequest = async (
-    requestId: number,
-    institutionId: number
+    requestId: string,
+    institutionId: string
   ) => {
     const prevMetrics = metrics;
     const prevRequests = registrationRequests;
 
     patchMetrics({ institutionId, deltaPending: -1 });
-    setRegistrationRequests((prev) => prev.filter((r) => r.id !== requestId));
+    setRegistrationRequests((prev) => prev.filter((r) => r.registrationRequestId !== requestId));
 
     const totalAfter = Math.max(0, requestsTotal - 1);
     const pagesAfter = Math.max(1, Math.ceil(totalAfter / requestsPerPage));
@@ -548,7 +546,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     setRequestsPage(targetPage);
 
     try {
-      const res = await apiFetch(`${API.BASE_URL}${API.PATHS.REG_REQUEST}`, {
+      const res = await apiFetch(`${API.BASE_URL}${API.PATHS.AUTH.REG_REQUEST}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -606,7 +604,6 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     }
 
     const institution: Institution = {
-      institutionCode: newInstitutionCode,
       institutionName: newInstitutionName,
       country: newInstitutionCountry,
       city: newInstitutionCity,
@@ -617,7 +614,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     };
 
     try {
-      const res = await apiFetch(`${API.BASE_URL}${API.PATHS.INSTITUTIONS}`, {
+      const res = await apiFetch(`${API.BASE_URL}${API.PATHS.INSTITUTIONS.BASE}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -635,7 +632,6 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
 
       setInstSearchText("");
       setNewInstitutionName("");
-      setNewInstitutionCode("");
       setNewInstitutionCountry("");
       setNewInstitutionCity("");
       setNewInstitutionAddress("");
@@ -667,7 +663,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
   const handleDeleteInstitution = () => {
     if (selectedInstitution) {
       setInstitutions((institutions) =>
-        institutions.filter((inst) => inst.id !== selectedInstitution.id)
+        institutions.filter((inst) => inst.institutionId !== selectedInstitution.institutionId)
       );
       toast.success(
         `Institución "${selectedInstitution.institutionName}" eliminada en la vista.`
@@ -680,7 +676,6 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
   const handleEditInstitution = (institution: Institution) => {
     setEditInstitution(institution);
     setEditForm({
-      institutionCode: institution.institutionCode || "",
       institutionName: institution.institutionName || "",
       country: institution.country || "",
       city: institution.city || "",
@@ -695,7 +690,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
 
   const validateAdminEmail = async (
     email: string,
-    institutionId?: number
+    institutionId?: string
   ): Promise<User | null> => {
     if (!email.trim()) {
       setAdminEmailValidation({
@@ -720,7 +715,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       const params = new URLSearchParams({ email: emailTrimmed });
 
       const response = await apiFetch(
-        `${API.BASE_URL}${API.PATHS.USER_BY_EMAIL}?${params.toString()}`,
+        `${API.BASE_URL}${API.PATHS.USERS.BY_EMAIL}?${params.toString()}`,
         {
           method: "GET",
           headers: {
@@ -757,9 +752,9 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       const usr = result.user!;
 
       if (
-        typeof institutionId === "number" &&
-        usr.institutionId !== null &&
-        usr.institutionId !== institutionId
+        institutionId != null &&
+        usr.institutionId != null &&
+        String(usr.institutionId) !== String(institutionId)
       ) {
         if (usr.role === Role.InstitutionAdmin) {
           setAdminEmailValidation({
@@ -803,7 +798,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       return;
     }
 
-    let newAdminUserId: number | null = null;
+    let newAdminUserId: string | null = null;
 
     const emailTrimmed = (editForm.adminEmail ?? "").trim().toLowerCase();
     const currentAdminEmail = (
@@ -817,23 +812,22 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     if (!editForm.adminEmail?.trim()) {
       newAdminUserId = null;
     } else if (adminEmailUnchanged) {
-      newAdminUserId = editInstitution?.institutionAdminUser?.id ?? null;
+      newAdminUserId = editInstitution?.institutionAdminUser?.userId ?? null;
     } else {
-      const usr = await validateAdminEmail(emailTrimmed, editInstitution.id);
+      const usr = await validateAdminEmail(emailTrimmed, editInstitution.institutionId);
       if (!usr) return;
 
       if (
         usr.role === Role.InstitutionAdmin &&
-        String(usr.institutionId ?? "") !== String(editInstitution.id)
+        String(usr.institutionId ?? "") !== String(editInstitution.institutionId)
       ) {
         toast.error("Este usuario ya es administrador de otra institución");
         return;
       }
-      newAdminUserId = usr.id;
+      newAdminUserId = usr.userId;
     }
 
     const payload = {
-      institutionCode: editForm.institutionCode,
       institutionName: editForm.institutionName,
       country: editForm.country,
       city: editForm.city,
@@ -846,7 +840,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
 
     try {
       const res = await apiFetch(
-        `${API.BASE_URL}${API.PATHS.INSTITUTIONS}/${editInstitution.id}`,
+        `${API.BASE_URL}${API.PATHS.INSTITUTIONS.BY_ID(editInstitution.institutionId)}`,
         {
           method: "PATCH",
           headers: {
@@ -868,7 +862,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
 
       setInstitutions((institutions) =>
         institutions.map((inst) =>
-          inst.id === updatedInstitution.id
+          String(inst.institutionId) === String(updatedInstitution.institutionId)
             ? { ...inst, ...updatedInstitution }
             : inst
         )
@@ -1032,18 +1026,6 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="newInstitutionCode">
-                        Código de la Institución
-                      </Label>
-                      <Input
-                        id="newInstitutionCode"
-                        value={newInstitutionCode}
-                        onChange={(e) => setNewInstitutionCode(e.target.value)}
-                        placeholder="Ej: UNCB"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
                       <Label htmlFor="newInstitutionCountry">País</Label>
                       <Input
                         id="newInstitutionCountry"
@@ -1141,8 +1123,8 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
                   setInstitutionsPage(1);
                 }}
                 onSelect={(item) => {
-                  setInstSearchText(item.institutionName);
-                  setInstSelectedId(item.id);
+                  setInstSearchText(item.institutionName ?? "");
+                  setInstSelectedId(item.institutionId ?? null);
                   setInstitutionsPage(1);
                 }}
               />
@@ -1180,7 +1162,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
               ) : (
                 institutions.map((institution) => (
                   <div
-                    key={institution.id}
+                    key={String(institution.institutionId)}
                     className="flex items-center gap-3 p-3 border rounded-lg"
                   >
                     <Building2 className="h-5 w-5 text-primary flex-shrink-0" />
@@ -1304,8 +1286,8 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
                   setRequestsPage(1);
                 }}
                 onSelect={(item) => {
-                  setReqInstSearchText(item.institutionName);
-                  setReqSelectedInstitutionId(item.id);
+                  setReqInstSearchText(item.institutionName ?? "");
+                  setReqSelectedInstitutionId(item.institutionId ?? "all");
                   setRequestsPage(1);
                 }}
               />
@@ -1339,7 +1321,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
               ) : (
                 registrationRequests.map((request) => (
                   <div
-                    key={request.id}
+                    key={request.registrationRequestId}
                     className="flex items-center gap-3 p-3 border rounded-lg"
                   >
                     <Users className="h-5 w-5 text-primary flex-shrink-0" />
@@ -1366,7 +1348,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
                         size="sm"
                         onClick={() =>
                           handleApproveRequest(
-                            request.id,
+                            request.registrationRequestId,
                             request.institutionId
                           )
                         }
@@ -1447,19 +1429,9 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
                     ID de Institución
                   </Label>
                   <p className="text-sm">
-                    {viewInstitutionDetails.id != null ? (
-                      viewInstitutionDetails.id
+                    {viewInstitutionDetails.institutionId != null ? (
+                      viewInstitutionDetails.institutionId
                     ) : (
-                      <span className="text-muted-foreground italic">
-                        No especificado
-                      </span>
-                    )}
-                  </p>
-                </div>
-                <div>
-                  <Label className="text-sm text-muted-foreground">Código</Label>
-                  <p className="text-sm">
-                    {viewInstitutionDetails.institutionCode || (
                       <span className="text-muted-foreground italic">
                         No especificado
                       </span>
@@ -1608,23 +1580,8 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
                   <Label htmlFor="edit-internal-id">ID de Institución</Label>
                   <Input
                     id="edit-internal-id"
-                    value={editInstitution.id ?? ""}
+                    value={editInstitution.institutionId ?? ""}
                     disabled
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="edit-institutionCode">Código</Label>
-                  <Input
-                    id="edit-institutionCode"
-                    value={editForm.institutionCode}
-                    onChange={(e) =>
-                      setEditForm({
-                        ...editForm,
-                        institutionCode: e.target.value,
-                      })
-                    }
-                    placeholder="Ej: UNB"
                   />
                 </div>
               </div>
@@ -1735,7 +1692,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
                     setAdminEmailValidation({ isValid: null, message: "" });
                   }}
                   onBlur={(e) => {
-                    validateAdminEmail(e.target.value, editInstitution?.id);
+                    validateAdminEmail(e.target.value, editInstitution?.institutionId);
                   }}
                   placeholder="admin@email.com"
                   disabled={
@@ -1803,7 +1760,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
               onClick={() => {
                 const r = selectedRequest;
                 if (r) {
-                  handleRejectRequest(r.id, r.institutionId);
+                  handleRejectRequest(r.registrationRequestId, r.institutionId);
                 }
                 setShowRejectRequestDialog(false);
                 setSelectedRequest(null);

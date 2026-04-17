@@ -48,17 +48,14 @@ def create_access_token(
 
 def create_user_token(
     *,
-    user_id: int,
+    user_id: Any,
     email: str,
-    agent_id: Optional[int] = None,
     expires_delta: Optional[timedelta] = None,
 ) -> str:
     """
-    Helper for auth: encodes user_id, email (sub), and optional agent_id.
+    Helper for auth: encodes user_id (serialized to str) and email (sub).
     """
-    payload = {"sub": email, "user_id": user_id}
-    if agent_id is not None:
-        payload["agent_id"] = agent_id
+    payload = {"sub": email, "user_id": str(user_id)}
     return create_access_token(payload, expires_delta=expires_delta)
 
 
@@ -93,7 +90,7 @@ def get_current_user(
     db: Session = Depends(get_db),
 ) -> User:
     user = (
-        db.execute(select(User).where(User.id == payload["user_id"]))
+        db.execute(select(User).where(User.userId == payload["user_id"]))
         .scalar_one_or_none()
     )
     if not user or not user.isActive:

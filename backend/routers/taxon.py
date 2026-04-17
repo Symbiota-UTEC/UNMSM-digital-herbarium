@@ -25,7 +25,7 @@ def get_taxon_tree(
     parent_id: Optional[str] = Query(
         default=None,
         description=(
-            "taxonID del padre. Si se omite, devuelve los taxones raíz "
+            "wfoTaxonId del padre (ej: 'wfo-4100001250'). Si se omite, devuelve los taxones raíz "
             "(aquellos con taxonRank = 'kingdom')."
         ),
     ),
@@ -108,7 +108,7 @@ def get_taxon_tree(
 
     # ------------------------- Calcular hasChildren ------------------------
 
-    parent_ids = [t.taxonID for t in taxa if t.taxonID]
+    parent_ids = [str(t.wfoTaxonId) for t in taxa if t.wfoTaxonId]
 
     children_counts: dict[str, int] = {}
     if parent_ids:
@@ -130,7 +130,7 @@ def get_taxon_tree(
     if parent_ids:
         syn_filters = [
             Taxon.acceptedNameUsageID.in_(parent_ids),
-            Taxon.acceptedNameUsageID != Taxon.taxonID,  # excluir el aceptado en sí
+            Taxon.acceptedNameUsageID != Taxon.wfoTaxonId,  # excluir el aceptado en sí
         ]
         if only_current:
             syn_filters.append(Taxon.isCurrent.is_(True))
@@ -142,8 +142,8 @@ def get_taxon_tree(
             if accepted_id in synonyms_map:
                 synonyms_map[accepted_id].append(
                     TaxonSynonym(
-                        id=syn.id,
-                        taxonID=syn.taxonID,
+                        id=syn.taxonId,
+                        taxonId=syn.taxonId,
                         scientificName=syn.scientificName,
                         scientificNameAuthorship=syn.scientificNameAuthorship,
                         taxonomicStatus=syn.taxonomicStatus,
@@ -154,7 +154,7 @@ def get_taxon_tree(
 
     items: List[TaxonTreeNode] = []
     for t in taxa:
-        tid = t.taxonID
+        wid = t.wfoTaxonId  # used for tree lookups (children, synonyms)
         full_name = (
             f"{t.scientificName} {t.scientificNameAuthorship}".strip()
             if t.scientificName
@@ -163,8 +163,9 @@ def get_taxon_tree(
 
         items.append(
             TaxonTreeNode(
-                id=t.id,
-                taxonID=tid,
+                id=t.taxonId,
+                taxonId=t.taxonId,
+                wfoTaxonId=wid,
                 scientificName=t.scientificName,
                 scientificNameAuthorship=t.scientificNameAuthorship,
                 fullName=full_name,
@@ -173,8 +174,8 @@ def get_taxon_tree(
                 acceptedNameUsageID=t.acceptedNameUsageID,
                 taxonomicStatus=t.taxonomicStatus,
                 isCurrent=t.isCurrent,
-                hasChildren=bool(tid and children_counts.get(tid, 0) > 0),
-                synonyms=synonyms_map.get(tid, []),
+                hasChildren=bool(wid and children_counts.get(wid, 0) > 0),
+                synonyms=synonyms_map.get(wid, []),
             )
         )
 
@@ -209,7 +210,7 @@ def get_taxon_detail(
             selectinload(Taxon.identifications)
             .selectinload(Identification.identifiers)
         )
-        .where(Taxon.taxonID == taxon_id)
+        .where(Taxon.taxonId == taxon_id)
     )
 
     if taxon is None:

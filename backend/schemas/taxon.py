@@ -1,5 +1,6 @@
-# backend/schemas/taxon.py
 from __future__ import annotations
+from uuid import UUID
+# backend/schemas/taxon.py
 
 from datetime import date, datetime
 from typing import List, Optional
@@ -10,8 +11,8 @@ from pydantic import BaseModel, Field
 class TaxonSynonym(BaseModel):
     """Sinónimo de un taxón aceptado (solo datos mínimos para mostrar en el árbol)."""
 
-    id: int
-    taxonID: Optional[str] = None
+    taxonId: UUID
+    wfoTaxonId: Optional[str] = None
     scientificName: Optional[str] = None
     scientificNameAuthorship: Optional[str] = None
     taxonomicStatus: Optional[str] = None
@@ -25,11 +26,14 @@ class TaxonTreeNode(BaseModel):
     Nodo del árbol taxonómico para visualización.
 
     children no se incluye para evitar respuestas gigantes; el front
-    vuelve a llamar al endpoint usando taxonID como parent_id.
+    vuelve a llamar al endpoint usando taxonId como parent_id.
     """
 
-    id: int
-    taxonID: Optional[str] = None
+    taxonId: UUID
+    wfoTaxonId: Optional[str] = Field(
+        None,
+        description="ID externo del backbone WFO. Usar como parent_id para navegar el árbol.",
+    )
     scientificName: Optional[str] = None
     scientificNameAuthorship: Optional[str] = None
     fullName: Optional[str] = Field(
@@ -42,7 +46,7 @@ class TaxonTreeNode(BaseModel):
     taxonomicStatus: Optional[str] = None
     isCurrent: bool
     hasChildren: bool = Field(
-        False, description="True si existen taxones con parentNameUsageID = este taxonID."
+        False, description="True si existen taxones con parentNameUsageID = este wfoTaxonId."
     )
     synonyms: List[TaxonSynonym] = Field(
         default_factory=list,
@@ -61,7 +65,7 @@ class TaxonTreeNode(BaseModel):
 class TaxonIdentifierOut(BaseModel):
     """Persona que intervino en una identificación de este taxón."""
 
-    id: int
+    identifierId: UUID
     fullName: Optional[str] = None
     orcID: Optional[str] = None
 
@@ -72,11 +76,9 @@ class TaxonIdentifierOut(BaseModel):
 class TaxonIdentificationOut(BaseModel):
     """Identificación taxonómica que usa este taxón."""
 
-    id: int
-    occurrenceId: int
+    taxonId: UUID
+    occurrenceId: UUID
 
-    # Texto DwC
-    identifiedBy: Optional[str] = None
     dateIdentified: Optional[str] = None
     isCurrent: bool
     isVerified: bool
@@ -100,9 +102,7 @@ class TaxonDetailOut(BaseModel):
     las identificaciones que lo usan.
     """
 
-    id: int
-
-    taxonID: Optional[str] = None
+    taxonId: UUID
     scientificNameID: Optional[str] = None
     localID: Optional[str] = None
     scientificName: Optional[str] = None

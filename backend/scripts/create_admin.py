@@ -36,7 +36,7 @@ def upsert_institution(db: Session) -> Institution:
     Crea o devuelve la institución objetivo. Usa variables de entorno con
     valores por defecto de la UNMSM.
     """
-    institution_code = os.getenv("INSTITUTION_CODE", "UNMSM")
+    institution_id = os.getenv("INSTITUTION_ID", "ae3fa7bc-6437-4ffb-8e33-ec8935295289")
     institution_name = os.getenv("INSTITUTION_NAME", "Universidad Nacional Mayor de San Marcos")
     website = os.getenv("INSTITUTION_WEBSITE", "https://www.unmsm.edu.pe/")
     country = os.getenv("INSTITUTION_COUNTRY", "Perú")
@@ -49,7 +49,7 @@ def upsert_institution(db: Session) -> Institution:
     phone = os.getenv("INSTITUTION_PHONE")
 
     inst = db.scalar(
-        select(Institution).where(Institution.institutionCode == institution_code)
+        select(Institution).where(Institution.institutionId == institution_id)
     )
 
     if inst:
@@ -78,11 +78,11 @@ def upsert_institution(db: Session) -> Institution:
             db.commit()
             db.refresh(inst)
 
-        print(f"[bootstrap] Institution '{institution_code}' ready (id={inst.id}).")
+        print(f"[bootstrap] Institution '{institution_name}' ready (id={inst.institutionId}).")
         return inst
 
     inst = Institution(
-        institutionCode=institution_code,
+        institutionId=institution_id,
         institutionName=institution_name,
         country=country,
         city=city,
@@ -94,7 +94,7 @@ def upsert_institution(db: Session) -> Institution:
     db.add(inst)
     db.commit()
     db.refresh(inst)
-    print(f"[bootstrap] Created institution '{institution_code}' (id={inst.id}).")
+    print(f"[bootstrap] Created institution '{institution_name}' (id={inst.institutionId}).")
     return inst
 
 
@@ -102,6 +102,7 @@ def upsert_admin(db: Session, institution: Institution) -> User:
     """
     Crea (o actualiza) un usuario admin global para la institución dada.
     """
+    admin_id = os.getenv("ADMIN_ID", "ae3fa7bc-6437-4ffb-8e33-ec8935295280")
     admin_username = os.getenv("ADMIN_USERNAME", "admin")
     admin_email = os.getenv("ADMIN_EMAIL", "admin@gmail.com")
     admin_password = os.getenv("ADMIN_PASSWORD", "admin")
@@ -124,8 +125,8 @@ def upsert_admin(db: Session, institution: Institution) -> User:
             user.isActive = True
             changed = True
 
-        if user.institutionId != institution.id:
-            user.institutionId = institution.id
+        if user.institutionId != institution.institutionId:
+            user.institutionId = institution.institutionId
             changed = True
 
         if not user.isInstitutionAdmin:
@@ -138,13 +139,14 @@ def upsert_admin(db: Session, institution: Institution) -> User:
             db.refresh(user)
     else:
         user = User(
+            userId=admin_id,
             username=admin_username,
             email=admin_email,
             hashedPassword=hash_password(admin_password),
             isActive=True,
             isSuperuser=True,
             isInstitutionAdmin=True,
-            institutionId=institution.id,
+            institutionId=institution.institutionId,
         )
         db.add(user)
         db.commit()
@@ -158,8 +160,8 @@ def upsert_admin(db: Session, institution: Institution) -> User:
     # Mantener consistencia del admin asignado en Institution
     prev_inst = db.scalar(
         select(Institution).where(
-            Institution.institutionAdminUserId == user.id,
-            Institution.id != institution.id,
+            Institution.institutionAdminUserId == user.userId,
+            Institution.institutionId != institution.institutionId,
         )
     )
 
@@ -169,13 +171,13 @@ def upsert_admin(db: Session, institution: Institution) -> User:
         db.commit()
         db.refresh(prev_inst)
 
-    if institution.institutionAdminUserId != user.id:
-        institution.institutionAdminUserId = user.id
+    if institution.institutionAdminUserId != user.userId:
+        institution.institutionAdminUserId = user.userId
         db.add(institution)
         db.commit()
         db.refresh(institution)
 
-    print(f"[bootstrap] Admin user '{admin_username}' ready (id={user.id}).")
+    print(f"[bootstrap] Admin user '{admin_username}' ready (id={user.userId}).")
     return user
 
 

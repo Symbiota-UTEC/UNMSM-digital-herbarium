@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from pydantic import BaseModel
 from typing import List, Optional
 
@@ -8,7 +10,8 @@ class SuggestionList(BaseModel):
 
 class ScientificNameSuggestion(BaseModel):
     scientificName: str
-    taxonID: Optional[str] = None
+    taxonId: Optional[UUID] = None
+    wfoTaxonId: Optional[str] = None
     scientificNameAuthorship: Optional[str] = None
 
 

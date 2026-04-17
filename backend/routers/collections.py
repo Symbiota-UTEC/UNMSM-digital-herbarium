@@ -1,3 +1,4 @@
+from uuid import UUID
 # backend/routers/collections.py
 from typing import List, Optional, Literal
 
@@ -33,11 +34,10 @@ router = APIRouter(prefix="/collections", tags=["Collections"])
 
 def _paginate_total(db: Session, ids_query):
     """
-    Calcula el total a partir de una query de IDs (select(Collection.id) ...).
-    Usa DISTINCT por robustez ante cualquier duplicado accidental.
+    Calcula el total a partir de una query de IDs (select(Collection.collectionId) ...).
     """
     subq = ids_query.subquery()
-    total = db.execute(select(func.count(func.distinct(subq.c.id)))).scalar_one()
+    total = db.execute(select(func.count()).select_from(subq)).scalar_one()
     return total
 
 
@@ -87,7 +87,7 @@ def get_collections_allowed(
     occ_counts = (
         select(
             Occurrence.collectionId.label("collection_id"),
-            func.count(Occurrence.id).label("occ_count"),
+            func.count(Occurrence.occurrenceId).label("occ_count"),
         )
         .group_by(Occurrence.collectionId)
         .subquery()
@@ -95,21 +95,21 @@ def get_collections_allowed(
 
     # --- IDs base según tipo de usuario ---
     if current_user.isSuperuser:
-        ids_q = select(Collection.id)
+        ids_q = select(Collection.collectionId)
     elif current_user.isInstitutionAdmin and current_user.institutionId is not None:
-        ids_q = select(Collection.id).where(
+        ids_q = select(Collection.collectionId).where(
             Collection.institutionId == current_user.institutionId
         )
     else:
         # Usuario normal: requiere permiso explícito
         ids_q = (
-            select(Collection.id)
+            select(Collection.collectionId)
             .join(
                 CollectionPermission,
-                CollectionPermission.collectionId == Collection.id,
+                CollectionPermission.collectionId == Collection.collectionId,
             )
-            .where(CollectionPermission.userId == current_user.id)
-            .group_by(Collection.id)
+            .where(CollectionPermission.userId == current_user.userId)
+            .group_by(Collection.collectionId)
         )
 
     total = _paginate_total(db, ids_q)
@@ -121,7 +121,7 @@ def get_collections_allowed(
             CollectionPermission.collectionId.label("cid"),
             func.max(CollectionPermission.role).label("role"),
         )
-        .where(CollectionPermission.userId == current_user.id)
+        .where(CollectionPermission.userId == current_user.userId)
         .group_by(CollectionPermission.collectionId)
         .subquery()
     )
@@ -133,9 +133,9 @@ def get_collections_allowed(
             cp_role_sq.c.role,  # rol explícito si existe (dedupe)
             occ_counts.c.occ_count,
         )
-        .join(ids_subq, ids_subq.c.id == Collection.id)
-        .join(occ_counts, occ_counts.c.collection_id == Collection.id, isouter=True)
-        .join(cp_role_sq, cp_role_sq.c.cid == Collection.id, isouter=True)
+        .join(ids_subq, ids_subq.c.collectionId == Collection.collectionId)
+        .join(occ_counts, occ_counts.c.collection_id == Collection.collectionId, isouter=True)
+        .join(cp_role_sq, cp_role_sq.c.cid == Collection.collectionId, isouter=True)
         .options(
             selectinload(Collection.institution),
             selectinload(Collection.creator),
@@ -162,8 +162,7 @@ def get_collections_allowed(
 
         items.append(
             CollectionOut(
-                id=col.id,
-                collectionCode=col.collectionCode,
+                collectionId=col.collectionId,
                 collectionName=col.collectionName,
                 description=col.description,
                 institution=col.institution,
@@ -197,7 +196,7 @@ def get_collections_allowed(
     ),
 )
 def get_collections_by_user(
-    user_id: int,
+    user_id: UUID,
     limit: int = Query(20, ge=1, le=200, description="Límite de ítems por página"),
     offset: int = Query(0, ge=0, description="Desplazamiento (items a saltar)"),
     db: Session = Depends(get_db),
@@ -212,7 +211,7 @@ def get_collections_by_user(
     limit, offset = _bounds(limit, offset)
 
     # Autorización básica
-    if not current_user.isSuperuser and current_user.id != user_id:
+    if not current_user.isSuperuser and current_user.userId != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Solo puedes listar las colecciones que tú mismo has creado.",
@@ -222,14 +221,14 @@ def get_collections_by_user(
     occ_counts = (
         select(
             Occurrence.collectionId.label("collection_id"),
-            func.count(Occurrence.id).label("occ_count"),
+            func.count(Occurrence.occurrenceId).label("occ_count"),
         )
         .group_by(Occurrence.collectionId)
         .subquery()
     )
 
     # IDs: colecciones cuyo creador es user_id
-    ids_q = select(Collection.id).where(Collection.creatorUserId == user_id)
+    ids_q = select(Collection.collectionId).where(Collection.creatorUserId == user_id)
     total = _paginate_total(db, ids_q)
     ids_subq = ids_q.subquery()
 
@@ -239,7 +238,7 @@ def get_collections_by_user(
             CollectionPermission.collectionId.label("cid"),
             func.max(CollectionPermission.role).label("role"),
         )
-        .where(CollectionPermission.userId == current_user.id)
+        .where(CollectionPermission.userId == current_user.userId)
         .group_by(CollectionPermission.collectionId)
         .subquery()
     )
@@ -250,9 +249,9 @@ def get_collections_by_user(
             cp_role_sq.c.role,
             occ_counts.c.occ_count,
         )
-        .join(ids_subq, ids_subq.c.id == Collection.id)
-        .join(occ_counts, occ_counts.c.collection_id == Collection.id, isouter=True)
-        .join(cp_role_sq, cp_role_sq.c.cid == Collection.id, isouter=True)
+        .join(ids_subq, ids_subq.c.collectionId == Collection.collectionId)
+        .join(occ_counts, occ_counts.c.collection_id == Collection.collectionId, isouter=True)
+        .join(cp_role_sq, cp_role_sq.c.cid == Collection.collectionId, isouter=True)
         .options(
             selectinload(Collection.institution),
             selectinload(Collection.creator),
@@ -279,8 +278,7 @@ def get_collections_by_user(
 
         items.append(
             CollectionOut(
-                id=col.id,
-                collectionCode=col.collectionCode,
+                collectionId=col.collectionId,
                 collectionName=col.collectionName,
                 description=col.description,
                 institution=col.institution,
@@ -335,22 +333,21 @@ def create_collection(
 
     # Crear la colección (creador = current_user)
     col = Collection(
-        collectionCode=payload.collectionCode,
         collectionName=payload.collectionName,
         description=payload.description,
         institutionId=institution_id,
-        creatorUserId=current_user.id,
+        creatorUserId=current_user.userId,
     )
     db.add(col)
-    db.flush()  # para obtener col.id
+    db.flush()  # para obtener col.collectionId
 
     # Conceder permiso 'owner' al creador (usuario actual)
     db.add(
         CollectionPermission(
-            collectionId=col.id,
-            userId=current_user.id,
+            collectionId=col.collectionId,
+            userId=current_user.userId,
             role="owner",
-            grantedByUserId=current_user.id,
+            grantedByUserId=current_user.userId,
         )
     )
 
@@ -360,7 +357,7 @@ def create_collection(
     col = (
         db.execute(
             select(Collection)
-            .where(Collection.id == col.id)
+            .where(Collection.collectionId == col.collectionId)
             .options(
                 selectinload(Collection.institution),
                 selectinload(Collection.creator),
@@ -371,8 +368,7 @@ def create_collection(
 
     # Recién creada: sin ocurrencias
     return CollectionOut(
-        id=col.id,
-        collectionCode=col.collectionCode,
+        collectionId=col.collectionId,
         collectionName=col.collectionName,
         description=col.description,
         institution=col.institution,
@@ -383,7 +379,7 @@ def create_collection(
 
 
 def _current_user_role_in_collection(
-    db: Session, collection_id: int, user_id: int
+    db: Session, collection_id: UUID, user_id: UUID
 ) -> Optional[str]:
     return db.execute(
         select(CollectionPermission.role).where(
@@ -399,7 +395,7 @@ def _current_user_role_in_collection(
     summary="Usuarios con acceso a una colección (paginado)",
 )
 def list_collection_access_users(
-    collection_id: int,
+    collection_id: UUID,
     q: Optional[str] = Query(None, description="Texto a buscar en nombre o correo"),
     role: Optional[Literal["viewer", "editor", "owner"]] = Query(
         None, description="Filtrar por rol exacto"
@@ -411,7 +407,7 @@ def list_collection_access_users(
 ):
     # 1) Validar colección
     collection = db.execute(
-        select(Collection).where(Collection.id == collection_id)
+        select(Collection).where(Collection.collectionId == collection_id)
     ).scalar_one_or_none()
     if not collection:
         raise HTTPException(status_code=404, detail="Colección no encontrada")
@@ -427,9 +423,9 @@ def list_collection_access_users(
             )
     else:
         has_permission = db.execute(
-            select(CollectionPermission.id).where(
+            select(CollectionPermission.collectionPermissionId).where(
                 CollectionPermission.collectionId == collection_id,
-                CollectionPermission.userId == current_user.id,
+                CollectionPermission.userId == current_user.userId,
             )
         ).scalar_one_or_none()
         if not has_permission:
@@ -459,9 +455,9 @@ def list_collection_access_users(
         )
 
     total_subq = (
-        select(User.id)
-        .join(CollectionPermission, CollectionPermission.userId == User.id)
-        .outerjoin(Institution, Institution.id == User.institutionId)
+        select(User.userId)
+        .join(CollectionPermission, CollectionPermission.userId == User.userId)
+        .outerjoin(Institution, Institution.institutionId == User.institutionId)
         .where(*base_where)
         .subquery()
     )
@@ -474,8 +470,8 @@ def list_collection_access_users(
             Institution.institutionName.label("institution_name"),
             CollectionPermission.role.label("role"),
         )
-        .join(CollectionPermission, CollectionPermission.userId == User.id)
-        .outerjoin(Institution, Institution.id == User.institutionId)
+        .join(CollectionPermission, CollectionPermission.userId == User.userId)
+        .outerjoin(Institution, Institution.institutionId == User.institutionId)
         .where(*base_where)
         .order_by(role_order, func.lower(name_expr))
         .limit(limit)
@@ -513,7 +509,7 @@ def list_collection_access_users(
     summary="Ocurrencias por ID de colección (breve, paginado)",
 )
 def list_occurrences_brief_by_collection_id(
-    collection_id: int,
+    collection_id: UUID,
     q: Optional[str] = Query(
         None,
         description=(
@@ -527,7 +523,7 @@ def list_occurrences_brief_by_collection_id(
 ):
     # 1) Colección
     collection = db.execute(
-        select(Collection).where(Collection.id == collection_id)
+        select(Collection).where(Collection.collectionId == collection_id)
     ).scalar_one_or_none()
     if not collection:
         raise HTTPException(status_code=404, detail="Colección no encontrada")
@@ -543,9 +539,9 @@ def list_occurrences_brief_by_collection_id(
             )
     else:
         has_perm = db.execute(
-            select(CollectionPermission.id).where(
+            select(CollectionPermission.collectionPermissionId).where(
                 CollectionPermission.collectionId == collection_id,
-                CollectionPermission.userId == current_user.id,
+                CollectionPermission.userId == current_user.userId,
             )
         ).scalar_one_or_none()
         if not has_perm:
@@ -583,15 +579,15 @@ def list_occurrences_brief_by_collection_id(
 
     # 4) Total (join con Identification isCurrent=True y Taxon)
     total_subq = (
-        select(Occurrence.id)
+        select(Occurrence.occurrenceId)
         .outerjoin(
             Identification,
             and_(
-                Identification.occurrenceId == Occurrence.id,
+                Identification.occurrenceId == Occurrence.occurrenceId,
                 Identification.isCurrent.is_(True),
             ),
         )
-        .outerjoin(Taxon, Taxon.id == Identification.taxonId)
+        .outerjoin(Taxon, Taxon.taxonId == Identification.taxonId)
         .where(*filters)
         .subquery()
     )
@@ -600,7 +596,7 @@ def list_occurrences_brief_by_collection_id(
     # 5) Items paginados
     items_stmt = (
         select(
-            Occurrence.id.label("id"),
+            Occurrence.occurrenceId.label("occurrence_id"),
             code_expr.label("code"),
             sci_name_expr.label("scientific_name"),
             family_expr.label("family"),
@@ -611,11 +607,11 @@ def list_occurrences_brief_by_collection_id(
         .outerjoin(
             Identification,
             and_(
-                Identification.occurrenceId == Occurrence.id,
+                Identification.occurrenceId == Occurrence.occurrenceId,
                 Identification.isCurrent.is_(True),
             ),
         )
-        .outerjoin(Taxon, Taxon.id == Identification.taxonId)
+        .outerjoin(Taxon, Taxon.taxonId == Identification.taxonId)
         .where(*filters)
         .order_by(
             Occurrence.year.desc().nulls_last(),
@@ -630,7 +626,7 @@ def list_occurrences_brief_by_collection_id(
     rows = db.execute(items_stmt).all()
     items = [
         OccurrenceBriefItem(
-            id=r.id,
+            occurrenceId=r.occurrence_id,
             code=r.code,
             scientificName=r.scientific_name,
             family=r.family,
@@ -665,14 +661,14 @@ def list_occurrences_brief_by_collection_id(
     summary="Agregar usuario (por email) a una colección con rol viewer/editor",
 )
 def add_user_to_collection(
-    collection_id: int,
+    collection_id: UUID,
     payload: AddUserToCollectionBody,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     # 1) Colección
     collection = db.execute(
-        select(Collection).where(Collection.id == collection_id)
+        select(Collection).where(Collection.collectionId == collection_id)
     ).scalar_one_or_none()
     if not collection:
         raise HTTPException(status_code=404, detail="Colección no encontrada")
@@ -687,7 +683,7 @@ def add_user_to_collection(
                 detail="No puedes gestionar permisos de una colección de otra institución",
             )
     else:
-        my_role = _current_user_role_in_collection(db, collection_id, current_user.id)
+        my_role = _current_user_role_in_collection(db, collection_id, current_user.userId)
         if my_role != "owner":
             raise HTTPException(
                 status_code=403,
@@ -708,9 +704,9 @@ def add_user_to_collection(
     # 4) Insertar permiso con rol viewer/editor (409 si ya existe cualquier rol)
     perm = CollectionPermission(
         collectionId=collection_id,
-        userId=target.id,
+        userId=target.userId,
         role=payload.role,
-        grantedByUserId=current_user.id,
+        grantedByUserId=current_user.userId,
     )
     try:
         db.add(perm)
@@ -720,7 +716,7 @@ def add_user_to_collection(
         existing_role = db.execute(
             select(CollectionPermission.role).where(
                 CollectionPermission.collectionId == collection_id,
-                CollectionPermission.userId == target.id,
+                CollectionPermission.userId == target.userId,
             )
         ).scalar_one_or_none()
         if existing_role:
@@ -735,7 +731,7 @@ def add_user_to_collection(
 
     return CollectionPermissionOut(
         collectionId=collection_id,
-        userId=target.id,
+        userId=target.userId,
         email=target.email,
         role=payload.role,
     )

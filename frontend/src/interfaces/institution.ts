@@ -1,21 +1,26 @@
-import { BasicUserInfo } from "@interfaces/auth";
 import { PaginatedResponse } from "@interfaces/utils/pagination";
 
 export interface BasicInstitutionInfo {
-    id?: number;
+    institutionId?: string;
     institutionName?: string;
 }
 
+export interface InstitutionAdminUser {
+    userId: string;
+    username?: string | null;
+    email: string;
+    fullName?: string | null;
+}
+
 export interface Institution extends BasicInstitutionInfo {
-    institutionCode?: string | null;
     country?: string | null;
     city?: string | null;
     address?: string | null;
     email?: string | null;
     phone?: string | null;
     webSite?: string | null;
-    institutionAdminUserId?: number | null;
-    adminUser?: BasicUserInfo | null;
+    institutionAdminUserId?: string | null;
+    institutionAdminUser?: InstitutionAdminUser | null;
     usersCount?: number;
 }
 
@@ -23,7 +28,7 @@ export type InstitutionPage = PaginatedResponse<Institution>;
 
 export function toBasicInstitutionInfo(inst: Institution | any): BasicInstitutionInfo {
     return {
-        id: inst.id,
+        institutionId: inst.institutionId,
         institutionName: inst.institutionName,
     };
 }

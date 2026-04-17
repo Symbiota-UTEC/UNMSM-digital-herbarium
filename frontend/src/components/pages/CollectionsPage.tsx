@@ -9,13 +9,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { Plus, Folder, Upload, Users, ChevronLeft, ChevronRight, Shield } from "lucide-react";
 import { toast } from "sonner@2.0.3";
 import { useAuth } from "@contexts/AuthContext";
-import { API, PAGE_SIZE } from "@constants/api";
+import { PAGE_SIZE } from "@constants/api";
 import { AutocompleteInstitution } from "../AutocompleteInstitution";
-import { PaginatedResponse } from "@interfaces/utils/pagination";
 import { Role } from "@constants/roles";
+import { collectionsService } from "@services/collections.service";
 
 import {
-  CollectionOut,
   CollectionCreate,
   CollectionListItem,
   toCollectionListItem,
@@ -41,7 +40,7 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
   const collectionsPerPage = PAGE_SIZE.COLLECTIONS;
 
   // Usamos siempre el id de usuario (agentId ya no viene del backend)
-  const userId = user?.id ?? null;
+  const userId = user?.userId ?? null;
 
   // ------- Estado: colecciones por agente (mis colecciones) -------
   const [myItems, setMyItems] = useState<CollectionListItem[]>([]);
@@ -61,16 +60,13 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
 
   // Selección de institución (usamos AutocompleteInstitution para obtener el id)
   const [instSearchText, setInstSearchText] = useState("");
-  const [selectedInstitutionId, setSelectedInstitutionId] = useState<number | null>(null);
+  const [selectedInstitutionId, setSelectedInstitutionId] = useState<string | null>(null);
 
   // Form de creación (solo campos que POST acepta)
   // collectionID ya no se manda: lo genera el ORM
   const [form, setForm] = useState<CollectionCreate>({
-    collectionCode: "",
     collectionName: "",
     description: "",
-    institution_id: null,
-    creator_agent_id: null,
   });
 
   const canManageCollection = (c: CollectionListItem) => {
@@ -114,29 +110,12 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
   // ------- Fetchers -------
   const fetchMyCollections = useCallback(
     async (page: number) => {
-      if (!token || !userId) return;
+      if (!userId) return;
       try {
         setMyLoading(true);
-        const limit = collectionsPerPage;
-        const offset = (page - 1) * limit;
-        const url = `${API.BASE_URL}/collections/by-user/${userId}?limit=${limit}&offset=${offset}`;
-
-        const res = await apiFetch(url, {
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) {
-          const txt = await res.text();
-          console.error("by-user error:", txt);
-          throw new Error("No se pudieron cargar tus colecciones");
-        }
-
-        const data = (await res.json()) as PaginatedResponse<CollectionOut> | CollectionOut[];
-        const items = Array.isArray(data) ? data : data.items ?? [];
-        const list = items.map(toCollectionListItem);
-        console.log("list, ", list);
-
-        setMyItems(list);
-        setMyTotalPages(Array.isArray(data) ? 1 : data.total_pages ?? 1);
+        const data = await collectionsService.getByUser(apiFetch, userId, page, collectionsPerPage);
+        setMyItems(data.items.map(toCollectionListItem));
+        setMyTotalPages(data.totalPages ?? 1);
       } catch (e) {
         console.error(e);
         toast.error("No se pudieron cargar tus colecciones");
@@ -146,34 +125,16 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
         setMyLoading(false);
       }
     },
-    [apiFetch, token, userId]
+    [apiFetch, userId, collectionsPerPage]
   );
 
   const fetchAllowedCollections = useCallback(
     async (page: number) => {
-      if (!token) return;
       try {
         setAllowedLoading(true);
-        const limit = collectionsPerPage;
-        const offset = (page - 1) * limit;
-        const url = `${API.BASE_URL}/collections/allowed?limit=${limit}&offset=${offset}`;
-
-        const res = await apiFetch(url, {
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) {
-          const txt = await res.text();
-          console.error("allowed error:", txt);
-          throw new Error("No se pudieron cargar las colecciones permitidas");
-        }
-
-        const data = (await res.json()) as PaginatedResponse<CollectionOut> | CollectionOut[];
-        const items = Array.isArray(data) ? data : data.items ?? [];
-        const list = items.map(toCollectionListItem);
-        console.log("list, ", list);
-
-        setAllowedItems(list);
-        setAllowedTotalPages(Array.isArray(data) ? 1 : data.total_pages ?? 1);
+        const data = await collectionsService.getAllowed(apiFetch, page, collectionsPerPage);
+        setAllowedItems(data.items.map(toCollectionListItem));
+        setAllowedTotalPages(data.totalPages ?? 1);
       } catch (e) {
         console.error(e);
         toast.error("No se pudieron cargar las colecciones permitidas");
@@ -183,17 +144,14 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
         setAllowedLoading(false);
       }
     },
-    [apiFetch, token]
+    [apiFetch, collectionsPerPage]
   );
 
   // ------- Crear colección -------
   const resetForm = () => {
     setForm({
-      collectionCode: "",
       collectionName: "",
       description: "",
-      institution_id: null,
-      creator_agent_id: userId ?? null,
     });
     setCsvFile(null);
 
@@ -207,11 +165,6 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
       setInstSearchText("");
     }
   };
-
-  useEffect(() => {
-    // set default creator from user (usando user.id)
-    setForm((f) => ({ ...f, creator_agent_id: userId ?? null }));
-  }, [userId]);
 
   useEffect(() => {
     if (isRestrictedInstitutionPick) {
@@ -249,8 +202,6 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
     }
 
     const payload: CollectionCreate = {
-      // collectionID ya no se envía; lo genera el ORM
-      collectionCode: form.collectionCode?.trim() || null,
       collectionName: form.collectionName?.trim() || null,
       description: form.description?.trim() || null,
       institutionId: selectedInstitutionId,
@@ -259,19 +210,7 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
 
     try {
       setCreating(true);
-      const res = await apiFetch(`${API.BASE_URL}/collections`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const txt = await res.text();
-        console.error("POST /api/collections error:", txt);
-        toast.error("No se pudo crear la colección");
-        return;
-      }
-
+      await collectionsService.create(apiFetch, payload);
       toast.success("Colección creada correctamente");
       setOpen(false);
       resetForm();
@@ -310,7 +249,7 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
   // ------- Navegación tarjetas -------
   const goToCollectionDetail = (c: CollectionListItem) => {
     onNavigate("collection-detail", {
-      collectionId: c.id,
+      collectionId: c.collectionId,
       collectionName: c.name,
       collectionInstitutionId: Number(c.institutionId),
       isOwner: canManageCollection(c),
@@ -359,19 +298,6 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
                 <div className="text-sm">{creatorDisplayName}</div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                {/* collectionID eliminado: lo genera el ORM */}
-                <div className="space-y-2">
-                  <Label htmlFor="collectionCode">Código de la colección</Label>
-                  <Input
-                    id="collectionCode"
-                    value={form.collectionCode ?? ""}
-                    onChange={(e) => setForm((f) => ({ ...f, collectionCode: e.target.value }))}
-                    placeholder="Opcional, p.ej. UNMSM-BOT"
-                  />
-                </div>
-              </div>
-
               <div className="space-y-2">
                 <Label htmlFor="collectionName">Nombre de la colección</Label>
                 <Input
@@ -415,8 +341,8 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
                   }}
                   onSelect={(item) => {
                     if (isRestrictedInstitutionPick) return; // bloquear selección
-                    setInstSearchText(item.institutionName);
-                    setSelectedInstitutionId(Number(item.id));
+                    setInstSearchText(item.institutionName ?? "");
+                    setSelectedInstitutionId(item.institutionId ?? null);
                   }}
                   minChars={1}
                 />
@@ -482,7 +408,7 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {myItems.map((c) => (
                 <Card
-                  key={c.id}
+                  key={c.collectionId}
                   className="hover:shadow-lg transition-all cursor-pointer h-full border-2 hover:border-primary/50"
                   onClick={() => goToCollectionDetail(c)}
                 >
@@ -576,7 +502,7 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {allowedItems.map((c) => (
               <Card
-                key={c.id}
+                key={c.collectionId}
                 className="hover:shadow-lg transition-all cursor-pointer h-full border-2 hover:border-primary/50"
                 onClick={() => goToCollectionDetail(c)}
               >

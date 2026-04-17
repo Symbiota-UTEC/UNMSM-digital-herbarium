@@ -55,7 +55,7 @@ export function AutocompleteInstitution({
             const params = new URLSearchParams({ namePrefix: q, limit: String(PAGE_SIZE.INSTITUTIONS) });
 
             const res = await apiFetch(
-                `${API.BASE_URL}${API.PATHS.INSTITUTIONS}?${params.toString()}`,
+                `${API.BASE_URL}${API.PATHS.INSTITUTIONS.BASE}?${params.toString()}`,
                 { headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` } }
             );
 

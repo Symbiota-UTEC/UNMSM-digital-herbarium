@@ -5,13 +5,10 @@ from .models import (
     RegistrationRequest,
     Collection,
     CollectionPermission,
-    Agent,
     Identifier,
     Taxon,
     Occurrence,
     Identification,
-    OccurrenceAgent,
-    IdentificationIdentifier,
 )
 
 __all__ = [
@@ -21,11 +18,8 @@ __all__ = [
     "RegistrationRequest",
     "Collection",
     "CollectionPermission",
-    "Agent",
     "Identifier",
     "Taxon",
     "Occurrence",
     "Identification",
-    "OccurrenceAgent",
-    "IdentificationIdentifier",
 ]

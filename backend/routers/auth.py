@@ -1,3 +1,4 @@
+from uuid import UUID
 # backend/routers/auth.py
 
 from datetime import timedelta, datetime
@@ -35,9 +36,8 @@ def list_registration_requests(
     limit: int = Query(10, ge=1, le=100),
     offset: int = Query(0, ge=0),
     statusFilter: Optional[Literal["pending", "approved", "rejected"]] = Query(None),
-    institutionId: Optional[int] = Query(
+    institutionId: Optional[UUID] = Query(
         None,
-        ge=1,
         description="ID de institución (obligatorio para institutionAdmin)",
     ),
     fullNamePrefix: Optional[str] = Query(
@@ -86,7 +86,7 @@ def list_registration_requests(
 
     base_stmt = (
         select(RegistrationRequest)
-        .join(Institution, Institution.id == RegistrationRequest.institutionId)
+        .join(Institution, Institution.institutionId == RegistrationRequest.institutionId)
     )
     if where_clauses:
         base_stmt = base_stmt.where(and_(*where_clauses))
@@ -94,7 +94,7 @@ def list_registration_requests(
     count_stmt = (
         select(func.count())
         .select_from(RegistrationRequest)
-        .join(Institution, Institution.id == RegistrationRequest.institutionId)
+        .join(Institution, Institution.institutionId == RegistrationRequest.institutionId)
     )
     if where_clauses:
         count_stmt = count_stmt.where(and_(*where_clauses))
@@ -112,7 +112,7 @@ def list_registration_requests(
 
     items: List[RegistrationRequestItem] = [
         RegistrationRequestItem(
-            id=r.id,
+            registrationRequestId=r.registrationRequestId,
             username=r.username,
             email=r.email,
             institutionId=r.institutionId,
@@ -158,7 +158,7 @@ def register_user(
     username: str = Body(..., embed=True),
     email: str = Body(..., embed=True),
     password: str = Body(..., embed=True),
-    institutionId: int = Body(..., embed=True, ge=1),
+    institutionId: UUID = Body(..., embed=True),
     givenName: Optional[str] = Body(..., embed=True),
     familyName: Optional[str] = Body(..., embed=True),
     orcid: Optional[str] = Body(None, embed=True),
@@ -168,7 +168,7 @@ def register_user(
 ):
     # 1) Institución obligatoria
     institution = db.execute(
-        select(Institution).where(Institution.id == institutionId)
+        select(Institution).where(Institution.institutionId == institutionId)
     ).scalar_one_or_none()
     if not institution:
         raise HTTPException(
@@ -244,7 +244,7 @@ def register_user(
     return {
         "message": "Se creó una solicitud de registro. Un administrador la revisará.",
         "request": {
-            "id": req.id,
+            "id": req.registrationRequestId,
             "status": req.status,
             "username": req.username,
             "email": req.email,
@@ -271,7 +271,7 @@ def update_registration_request_status(
     # 1) Cargar solicitud
     registration_request = db.execute(
         select(RegistrationRequest).where(
-            RegistrationRequest.id == payload.registrationRequestId
+            RegistrationRequest.registrationRequestId == payload.registrationRequestId
         )
     ).scalar_one_or_none()
 
@@ -293,7 +293,7 @@ def update_registration_request_status(
         current_user.isSuperuser
         or (
             current_user.isInstitutionAdmin
-            and current_user.institutionId == institution.id
+            and current_user.institutionId == institution.institutionId
         )
     ):
         raise HTTPException(
@@ -304,7 +304,7 @@ def update_registration_request_status(
     # 4) Rechazo (no crea usuario)
     if payload.newStatus == "rejected":
         registration_request.status = "rejected"
-        registration_request.reviewedByUserId = current_user.id
+        registration_request.reviewedByUserId = current_user.userId
         registration_request.reviewedAt = datetime.utcnow()
         db.add(registration_request)
         db.commit()
@@ -313,7 +313,7 @@ def update_registration_request_status(
         return {
             "message": "Solicitud de registro rechazada correctamente.",
             "request": {
-                "id": registration_request.id,
+                "registrationRequestId": registration_request.registrationRequestId,
                 "status": registration_request.status,
                 "username": registration_request.username,
                 "email": registration_request.email,
@@ -358,20 +358,20 @@ def update_registration_request_status(
             address=registration_request.address,
         )
         db.add(user)
-        db.flush()  # obtener user.id
+        db.flush()  # obtener user.userId
 
         # b) Incremento atómico de usersCount (+1) en Institution
         db.execute(
             sa_update(Institution)
-            .where(Institution.id == registration_request.institutionId)
+            .where(Institution.institutionId == registration_request.institutionId)
             .values(usersCount=func.coalesce(Institution.usersCount, 0) + 1)
         )
 
         # c) Marcar solicitud como aprobada
         registration_request.status = "approved"
-        registration_request.reviewedByUserId = current_user.id
+        registration_request.reviewedByUserId = current_user.userId
         registration_request.reviewedAt = datetime.utcnow()
-        registration_request.resultingUserId = user.id
+        registration_request.resultingUserId = user.userId
         db.add(registration_request)
 
         # d) Commit único
@@ -388,7 +388,7 @@ def update_registration_request_status(
     return {
         "message": "Solicitud de registro actualizada correctamente.",
         "request": {
-            "id": registration_request.id,
+            "registrationRequestId": registration_request.registrationRequestId,
             "status": registration_request.status,
             "username": registration_request.username,
             "email": registration_request.email,
@@ -399,7 +399,7 @@ def update_registration_request_status(
             "resultingUserId": registration_request.resultingUserId,
         },
         "user": {
-            "id": user.id,
+            "userId": user.userId,
             "username": user.username,
             "email": user.email,
             "institutionId": user.institutionId,
@@ -432,12 +432,12 @@ def login_user(
     institution = None
     if user.institutionId:
         institution = db.execute(
-            select(Institution).where(Institution.id == user.institutionId)
+            select(Institution).where(Institution.institutionId == user.institutionId)
         ).scalar_one_or_none()
 
     token_expires = timedelta(minutes=access_token_expire_minutes)
     access_token = create_user_token(
-        user_id=user.id,
+        user_id=user.userId,
         email=user.email,
         expires_delta=token_expires,
     )
@@ -449,7 +449,7 @@ def login_user(
         "access_token": access_token, 
         "token_type": "bearer",
         "user": {
-            "id": user.id,
+            "userId": user.userId,
             "name": user.fullName,
             "username": user.username,
             "email": user.email,

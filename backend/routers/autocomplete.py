@@ -24,13 +24,13 @@ def autocomplete_scientific_name(
     pattern = f"{term.lower()}%"  # prefijo
 
     stmt = (
-        select(Taxon.scientificName, Taxon.taxonID, Taxon.scientificNameAuthorship)
+        select(Taxon.scientificName, Taxon.taxonId, Taxon.wfoTaxonId, Taxon.scientificNameAuthorship)
         .where(
             func.unaccent_immutable(
                 func.lower(Taxon.scientificName)
             ).like(func.unaccent_immutable(pattern))
         )
-        .distinct(Taxon.scientificName, Taxon.taxonID, Taxon.scientificNameAuthorship)
+        .distinct(Taxon.scientificName, Taxon.taxonId, Taxon.wfoTaxonId, Taxon.scientificNameAuthorship)
         .order_by(Taxon.scientificName)
         .limit(limit)
     )
@@ -38,8 +38,9 @@ def autocomplete_scientific_name(
     items = [
         ScientificNameSuggestion(
             scientificName=row[0],
-            taxonID=row[1],
-            scientificNameAuthorship=row[2],
+            taxonId=row[1],
+            wfoTaxonId=row[2],
+            scientificNameAuthorship=row[3],
         )
         for row in rows
         if row[0]
@@ -125,7 +126,7 @@ def autocomplete_location(
     stmt = select(func.distinct(location_expr)).select_from(Occurrence)
 
     # Join con Collection para poder filtrar por permisos / institución
-    stmt = stmt.join(Collection, Occurrence.collectionId == Collection.id, isouter=True)
+    stmt = stmt.join(Collection, Occurrence.collectionId == Collection.collectionId, isouter=True)
 
     where_clauses = [
         location_expr.isnot(None),
@@ -139,13 +140,13 @@ def autocomplete_location(
         access_conditions = []
 
         # 1) Colecciones creadas por el usuario
-        access_conditions.append(Collection.creatorUserId == current_user.id)
+        access_conditions.append(Collection.creatorUserId == current_user.userId)
 
         # 2) Colecciones donde el usuario tiene permiso explícito
         access_conditions.append(
             exists()
             .where(CollectionPermission.collectionId == Occurrence.collectionId)
-            .where(CollectionPermission.userId == current_user.id)
+            .where(CollectionPermission.userId == current_user.userId)
         )
 
         # 3) Si es admin de institución: colecciones de su institución

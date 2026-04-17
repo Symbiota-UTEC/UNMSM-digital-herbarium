@@ -17,6 +17,7 @@ Referencias claves (no importadas aquí): DwC Quick Reference Guide.
 """
 from __future__ import annotations
 
+import uuid
 from typing import List, Optional, Literal, Any
 
 from sqlalchemy import (
@@ -31,6 +32,7 @@ from sqlalchemy import (
     Index,
     Enum,
     Date,
+    Uuid,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -43,30 +45,34 @@ from datetime import datetime, date
 class Institution(Base):
     __tablename__ = "institution"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    # institutionID: Mapped[Optional[str]] = mapped_column(
-    #     "institution_id", String(255), unique=True
-    # )
-    institutionCode: Mapped[Optional[str]] = mapped_column(
-        "institution_code", String(100), index=True
+    institutionId: Mapped[uuid.UUID] = mapped_column(
+        "institution_id", Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     institutionName: Mapped[Optional[str]] = mapped_column(
         "institution_name", String(255)
     )
     country: Mapped[Optional[str]] = mapped_column("country", String(100))
     city: Mapped[Optional[str]] = mapped_column("city", String(100))
-    address: Mapped[Optional[Text]] = mapped_column("address", Text())
+    address: Mapped[Optional[str]] = mapped_column("address", Text())
     email: Mapped[Optional[str]] = mapped_column("email", String(255))
     phone: Mapped[Optional[str]] = mapped_column("phone", String(50))
     webSite: Mapped[Optional[str]] = mapped_column("web_site", String(255))
 
-    institutionAdminUserId: Mapped[Optional[int]] = mapped_column(
-        "institution_admin_user_id", ForeignKey("users.id"), nullable=True, unique=True
+    institutionAdminUserId: Mapped[Optional[uuid.UUID]] = mapped_column(
+        "institution_admin_user_id",
+        ForeignKey(
+            "users.user_id", 
+            use_alter=True,
+            name="fk_institution_admin_user"
+        ),
+        nullable=True,
+        unique=True,
     )
     institutionAdminUser: Mapped[Optional["User"]] = relationship(
         "User",
         foreign_keys=[institutionAdminUserId],
         lazy="joined",
+        post_update=True,
     )
 
     usersCount: Mapped[int] = mapped_column(
@@ -76,7 +82,7 @@ class Institution(Base):
         "User",
         back_populates="institution",
         foreign_keys="[User.institutionId]",
-        primaryjoin="User.institutionId == Institution.id",
+        primaryjoin="User.institutionId == Institution.institutionId",
         cascade="all, delete-orphan",
         passive_deletes=False,
     )
@@ -87,40 +93,29 @@ class Institution(Base):
 
 
 class Collection(Base):
-    """Colección física o virtual que alberga especímenes/registros.
-
-    En DwC, Occurrence suele llevar collectionCode; aquí lo normalizamos y
-    relacionamos opcionalmente.
-    """
+    """Colección física o virtual que alberga especímenes/registros."""
 
     __tablename__ = "collection"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    # collectionID: Mapped[Optional[String]] = mapped_column(
-    #     "collection_id", String(255), unique=True
-    # )
-    # Identificador estable (URI/UUID) de la colección
-    collectionCode: Mapped[Optional[String]] = mapped_column(
-        "collection_code", String(100), index=True
+    collectionId: Mapped[uuid.UUID] = mapped_column(
+        "collection_id", Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    # Código (p.ej., "BOT", "ORN")
-    collectionName: Mapped[Optional[String]] = mapped_column(
+    collectionName: Mapped[Optional[str]] = mapped_column(
         "collection_name", String(255)
     )
-    description: Mapped[Optional[Text]] = mapped_column("description", Text())
-    # webSite: Mapped[Optional[String]] = mapped_column("web_site", String(255))
+    description: Mapped[Optional[str]] = mapped_column("description", Text())
 
-    institutionId: Mapped[Optional[int]] = mapped_column(
-        "institution_id", ForeignKey("institution.id")
+    institutionId: Mapped[Optional[uuid.UUID]] = mapped_column(
+        "institution_id", ForeignKey("institution.institution_id")
     )
     institution: Mapped[Optional["Institution"]] = relationship(
         "Institution", back_populates="collections"
     )
 
     # El creador es un User, no un Agent
-    creatorUserId: Mapped[int] = mapped_column(
+    creatorUserId: Mapped[uuid.UUID] = mapped_column(
         "creator_user_id",
-        ForeignKey("users.id", ondelete="RESTRICT"),
+        ForeignKey("users.user_id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
     )
@@ -142,34 +137,12 @@ class Collection(Base):
     )
 
 
-class Agent(Base):
-    """Persona asociada a la recolección de especímenes (colector de campo, etc.).
-    NO está acoplada a las cuentas de usuario del sistema.
-    """
-
-    __tablename__ = "agent"
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-
-    # Campos básicos de identidad del colector
-    fullName: Mapped[Optional[String]] = mapped_column("full_name", String(255))
-    orcID: Mapped[Optional[String]] = mapped_column(
-        "agent_id", String(255), unique=True
-    )  # p.ej. ORCID u otro identificador estable
-
-    # Ocurrencias en las que esta persona fue colectora (muchos-a-muchos)
-    occurrences: Mapped[List["Occurrence"]] = relationship(
-        "Occurrence",
-        secondary="occurrence_agent",
-        back_populates="agents",
-        lazy="selectin",
-    )
-
-
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    userId: Mapped[uuid.UUID] = mapped_column(
+        "user_id", Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
     username: Mapped[str] = mapped_column("username", String(100), unique=True, index=True)
     email: Mapped[str] = mapped_column("email", String(255), unique=True, index=True)
     hashedPassword: Mapped[str] = mapped_column("hashed_password", String(255))
@@ -183,18 +156,18 @@ class User(Base):
     )
 
     # Datos personales del usuario (curador/digitalizador)
-    givenName: Mapped[Optional[String]] = mapped_column("given_name", String(100))
-    familyName: Mapped[Optional[String]] = mapped_column("family_name", String(100))
-    fullName: Mapped[Optional[String]] = mapped_column("full_name", String(255))
-    orcid: Mapped[Optional[String]] = mapped_column("orcid", String(50))
-    phone: Mapped[Optional[String]] = mapped_column("phone", String(50))
-    address: Mapped[Optional[Text]] = mapped_column("address", Text())
+    givenName: Mapped[Optional[str]] = mapped_column("given_name", String(100))
+    familyName: Mapped[Optional[str]] = mapped_column("family_name", String(100))
+    fullName: Mapped[Optional[str]] = mapped_column("full_name", String(255))
+    orcid: Mapped[Optional[str]] = mapped_column("orcid", String(50))
+    phone: Mapped[Optional[str]] = mapped_column("phone", String(50))
+    address: Mapped[Optional[str]] = mapped_column("address", Text())
 
     # Importante: User y Agent están desacoplados (no hay agentId aquí)
 
-    institutionId: Mapped[int] = mapped_column(
+    institutionId: Mapped[uuid.UUID] = mapped_column(
         "institution_id",
-        ForeignKey("institution.id"),
+        ForeignKey("institution.institution_id"),
         nullable=False,
         index=True,
     )
@@ -202,7 +175,7 @@ class User(Base):
         "Institution",
         back_populates="users",
         foreign_keys=[institutionId],
-        primaryjoin="User.institutionId == Institution.id",
+        primaryjoin="User.institutionId == Institution.institutionId",
     )
 
     # Colecciones creadas por este usuario
@@ -231,16 +204,18 @@ class User(Base):
 class CollectionPermission(Base):
     __tablename__ = "collection_permission"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    collectionId: Mapped[int] = mapped_column(
+    collectionPermissionId: Mapped[uuid.UUID] = mapped_column(
+        "collection_permission_id", Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    collectionId: Mapped[uuid.UUID] = mapped_column(
         "collection_id",
-        ForeignKey("collection.id", ondelete="CASCADE"),
+        ForeignKey("collection.collection_id", ondelete="CASCADE"),
         index=True,
         nullable=False,
     )
-    userId: Mapped[int] = mapped_column(
+    userId: Mapped[uuid.UUID] = mapped_column(
         "user_id",
-        ForeignKey("users.id", ondelete="CASCADE"),
+        ForeignKey("users.user_id", ondelete="CASCADE"),
         index=True,
         nullable=False,
     )
@@ -251,8 +226,8 @@ class CollectionPermission(Base):
         nullable=False,
         index=True,
     )
-    grantedByUserId: Mapped[Optional[int]] = mapped_column(
-        "granted_by_user_id", ForeignKey("users.id"), nullable=True
+    grantedByUserId: Mapped[Optional[uuid.UUID]] = mapped_column(
+        "granted_by_user_id", ForeignKey("users.user_id"), nullable=True
     )
     createdAt: Mapped[datetime] = mapped_column(
         "created_at", DateTime, default=datetime.utcnow, nullable=False
@@ -278,7 +253,9 @@ class CollectionPermission(Base):
 class RegistrationRequest(Base):
     __tablename__ = "registration_request"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    registrationRequestId: Mapped[uuid.UUID] = mapped_column(
+        "registration_request_id", Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
 
     # Datos de acceso solicitados
     username: Mapped[str] = mapped_column("username", String(100), index=True)
@@ -286,8 +263,8 @@ class RegistrationRequest(Base):
     hashedPassword: Mapped[str] = mapped_column("hashed_password", String(255))
 
     # Institución
-    institutionId: Mapped[int] = mapped_column(
-        "institution_id", ForeignKey("institution.id"), nullable=False
+    institutionId: Mapped[uuid.UUID] = mapped_column(
+        "institution_id", ForeignKey("institution.institution_id"), nullable=False
     )
     institution: Mapped["Institution"] = relationship("Institution")
 
@@ -297,7 +274,7 @@ class RegistrationRequest(Base):
     familyName: Mapped[Optional[str]] = mapped_column("family_name", String(100))
     orcid: Mapped[Optional[str]] = mapped_column("orcid", String(50))
     phone: Mapped[Optional[str]] = mapped_column("phone", String(50))
-    address: Mapped[Optional[Text]] = mapped_column("address", Text())
+    address: Mapped[Optional[str]] = mapped_column("address", Text())
 
     status: Mapped[Literal["pending", "approved", "rejected"]] = mapped_column(
         "status",
@@ -312,15 +289,15 @@ class RegistrationRequest(Base):
         "reviewed_at", DateTime, nullable=True
     )
 
-    reviewedByUserId: Mapped[Optional[int]] = mapped_column(
-        "reviewed_by_user_id", ForeignKey("users.id"), nullable=True
+    reviewedByUserId: Mapped[Optional[uuid.UUID]] = mapped_column(
+        "reviewed_by_user_id", ForeignKey("users.user_id"), nullable=True
     )
     reviewedBy: Mapped[Optional["User"]] = relationship(
         "User", foreign_keys=[reviewedByUserId]
     )
 
-    resultingUserId: Mapped[Optional[int]] = mapped_column(
-        "resulting_user_id", ForeignKey("users.id"), nullable=True, unique=True
+    resultingUserId: Mapped[Optional[uuid.UUID]] = mapped_column(
+        "resulting_user_id", ForeignKey("users.user_id"), nullable=True, unique=True
     )
     resultingUser: Mapped[Optional["User"]] = relationship(
         "User", foreign_keys=[resultingUserId]
@@ -342,77 +319,80 @@ class Taxon(Base):
 
     __tablename__ = "taxon"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-
-    taxonID: Mapped[Optional[String]] = mapped_column(
-        "taxon_id", String(255), unique=True, index=True
+    taxonId: Mapped[uuid.UUID] = mapped_column(
+        "taxon_id", Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    scientificNameID: Mapped[Optional[String]] = mapped_column(
+
+    # Identificador externo del backbone WFO (p.ej. "wfo-xxxxxxxx")
+    wfoTaxonId: Mapped[Optional[str]] = mapped_column(
+        "wfo_taxon_id", String(255), unique=True, index=True
+    )
+    scientificNameID: Mapped[Optional[str]] = mapped_column(
         "scientific_name_id", String(255)
     )
-    localID: Mapped[Optional[String]] = mapped_column(
+    localID: Mapped[Optional[str]] = mapped_column(
         "local_id", String(255)
     )
-    scientificName: Mapped[Optional[String]] = mapped_column(
+    scientificName: Mapped[Optional[str]] = mapped_column(
         "scientific_name", String(500), index=True
     )
-    taxonRank: Mapped[Optional[String]] = mapped_column(
+    taxonRank: Mapped[Optional[str]] = mapped_column(
         "taxon_rank", String(50)
     )
-    parentNameUsageID: Mapped[Optional[String]] = mapped_column(
+    parentNameUsageID: Mapped[Optional[str]] = mapped_column(
         "parent_name_usage_id", String(255)
     )
 
-    scientificNameAuthorship: Mapped[Optional[String]] = mapped_column(
+    scientificNameAuthorship: Mapped[Optional[str]] = mapped_column(
         "scientific_name_authorship", String(255)
     )
-    family: Mapped[Optional[String]] = mapped_column(
+    family: Mapped[Optional[str]] = mapped_column(
         "family", String(100)
     )
-    subfamily: Mapped[Optional[String]] = mapped_column(
+    subfamily: Mapped[Optional[str]] = mapped_column(
         "subfamily", String(100)
     )
-    tribe: Mapped[Optional[String]] = mapped_column(
+    tribe: Mapped[Optional[str]] = mapped_column(
         "tribe", String(100)
     )
-    subtribe: Mapped[Optional[String]] = mapped_column(
+    subtribe: Mapped[Optional[str]] = mapped_column(
         "subtribe", String(100)
     )
-    genus: Mapped[Optional[String]] = mapped_column(
+    genus: Mapped[Optional[str]] = mapped_column(
         "genus", String(100)
     )
-    subgenus: Mapped[Optional[String]] = mapped_column(
+    subgenus: Mapped[Optional[str]] = mapped_column(
         "subgenus", String(100)
     )
-    specificEpithet: Mapped[Optional[String]] = mapped_column(
+    specificEpithet: Mapped[Optional[str]] = mapped_column(
         "specific_epithet", String(100)
     )
-    infraspecificEpithet: Mapped[Optional[String]] = mapped_column(
+    infraspecificEpithet: Mapped[Optional[str]] = mapped_column(
         "infraspecific_epithet", String(100)
     )
-    verbatimTaxonRank: Mapped[Optional[String]] = mapped_column(
+    verbatimTaxonRank: Mapped[Optional[str]] = mapped_column(
         "verbatim_taxon_rank", String(50)
     )
-    nomenclaturalStatus: Mapped[Optional[String]] = mapped_column(
+    nomenclaturalStatus: Mapped[Optional[str]] = mapped_column(
         "nomenclatural_status", String(100)
     )
 
-    namePublishedIn: Mapped[Optional[String]] = mapped_column(
+    namePublishedIn: Mapped[Optional[str]] = mapped_column(
         "name_published_in", String(500)
     )
-    taxonomicStatus: Mapped[Optional[String]] = mapped_column(
+    taxonomicStatus: Mapped[Optional[str]] = mapped_column(
         "taxonomic_status", String(100)
     )
-    acceptedNameUsageID: Mapped[Optional[String]] = mapped_column(
+    acceptedNameUsageID: Mapped[Optional[str]] = mapped_column(
         "accepted_name_usage_id", String(255)
     )
-    originalNameUsageID: Mapped[Optional[String]] = mapped_column(
+    originalNameUsageID: Mapped[Optional[str]] = mapped_column(
         "original_name_usage_id", String(255)
     )
-    nameAccordingToID: Mapped[Optional[String]] = mapped_column(
+    nameAccordingToID: Mapped[Optional[str]] = mapped_column(
         "name_according_to_id", String(255)
     )
-    taxonRemarks: Mapped[Optional[Text]] = mapped_column(
+    taxonRemarks: Mapped[Optional[str]] = mapped_column(
         "taxon_remarks", Text()
     )
 
@@ -420,16 +400,16 @@ class Taxon(Base):
     modified: Mapped[Optional[date]] = mapped_column("modified", Date)
 
     # Flora fields
-    references: Mapped[Optional[Text]] = mapped_column(
+    references: Mapped[Optional[str]] = mapped_column(
         "references", Text()
     )
-    source: Mapped[Optional[String]] = mapped_column(
+    source: Mapped[Optional[str]] = mapped_column(
         "source", String(255)
     )
-    majorGroup: Mapped[Optional[String]] = mapped_column(
+    majorGroup: Mapped[Optional[str]] = mapped_column(
         "major_group", String(100)
     )
-    tplID: Mapped[Optional[String]] = mapped_column(
+    tplID: Mapped[Optional[str]] = mapped_column(
         "tpl_id", String(100)
     )
 
@@ -462,24 +442,26 @@ class Occurrence(Base):
 
     __tablename__ = "occurrence"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    occurrenceId: Mapped[uuid.UUID] = mapped_column(
+        "occurrence_id", Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
 
     # ------------------------------------------------------------------
     # OBLIGATORIOS (Occurrence + Event + Location)
     # ------------------------------------------------------------------
 
     # ---- Occurrence core ----
-    recordNumber: Mapped[Optional[String]] = mapped_column(
+    recordNumber: Mapped[Optional[str]] = mapped_column(
         "record_number",
         String(100),
         doc="DwC recordNumber: número / código de colecta asignado por el colector.",
     )
-    recordedBy: Mapped[Optional[String]] = mapped_column(
+    recordedBy: Mapped[Optional[str]] = mapped_column(
         "recorded_by",
         String(255),
         doc="DwC recordedBy: nombres de colectores, en orden de importancia.",
     )
-    catalogNumber: Mapped[Optional[String]] = mapped_column(
+    catalogNumber: Mapped[Optional[str]] = mapped_column(
         "catalog_number",
         String(100),
         index=True,
@@ -487,24 +469,24 @@ class Occurrence(Base):
     )
 
     # ---- Event mínimo ----
-    verbatimEventDate: Mapped[Optional[String]] = mapped_column(
+    verbatimEventDate: Mapped[Optional[str]] = mapped_column(
         "verbatim_event_date",
         String(100),
         doc="DwC verbatimEventDate: fecha del evento tal como aparece en la etiqueta.",
     )
 
     # ---- Location mínimos (según tu tabla: OBLIGATORIOS) ----
-    country: Mapped[Optional[String]] = mapped_column(
+    country: Mapped[Optional[str]] = mapped_column(
         "country",
         String(100),
         doc="DwC country: nombre del país (p.ej. 'Peru').",
     )
-    stateProvince: Mapped[Optional[String]] = mapped_column(
+    stateProvince: Mapped[Optional[str]] = mapped_column(
         "state_province",
         String(100),
         doc="DwC stateProvince: departamento/región.",
     )
-    verbatimLocality: Mapped[Optional[Text]] = mapped_column(
+    verbatimLocality: Mapped[Optional[str]] = mapped_column(
         "verbatim_locality",
         Text(),
         doc="DwC verbatimLocality: descripción textual tal como en la etiqueta (más informal/dinámico).",
@@ -515,133 +497,121 @@ class Occurrence(Base):
     # ------------------------------------------------------------------
 
     # ---- Occurrence deseable ----
-    organismQuantity: Mapped[Optional[String]] = mapped_column(
+    organismQuantity: Mapped[Optional[str]] = mapped_column(
         "organism_quantity",
         String(100),
         doc="DwC organismQuantity: cantidad de organismos (número o descriptor).",
     )
-    organismQuantityType: Mapped[Optional[String]] = mapped_column(
+    organismQuantityType: Mapped[Optional[str]] = mapped_column(
         "organism_quantity_type",
         String(100),
         doc="DwC organismQuantityType: tipo de unidad (individuos, ramas, colonias, etc.).",
     )
-    georeferenceVerificationStatus: Mapped[Optional[String]] = mapped_column(
+    georeferenceVerificationStatus: Mapped[Optional[str]] = mapped_column(
         "georeference_verification_status",
         String(100),
         doc="DwC georeferenceVerificationStatus: estado de verificación de la georreferenciación.",
     )
-    otherCatalogNumbers: Mapped[Optional[String]] = mapped_column(
-        "other_catalog_numbers",
-        String(255),
-        doc="DwC otherCatalogNumbers: otros identificadores de catálogo asociados.",
-    )
-
     # ---- Event deseable ----
-    eventDate: Mapped[Optional[String]] = mapped_column(
+    eventDate: Mapped[Optional[str]] = mapped_column(
         "event_date",
         String(100),
         doc="DwC eventDate: fecha/rango ISO8601 normalizado del evento.",
     )
-    habitat: Mapped[Optional[Text]] = mapped_column(
+    habitat: Mapped[Optional[str]] = mapped_column(
         "habitat",
         Text(),
         doc="DwC habitat: descripción del hábitat.",
     )
-    eventRemarks: Mapped[Optional[Text]] = mapped_column(
+    eventRemarks: Mapped[Optional[str]] = mapped_column(
         "event_remarks",
         Text(),
         doc="DwC eventRemarks: notas adicionales sobre el evento de muestreo.",
     )
 
-    year: Mapped[Optional[Integer]] = mapped_column(
+    year: Mapped[Optional[int]] = mapped_column(
         "year",
         Integer,
         doc="Año del evento de colecta.",
     )
-    month: Mapped[Optional[Integer]] = mapped_column(
+    month: Mapped[Optional[int]] = mapped_column(
         "month",
         Integer,
         doc="Mes del evento de colecta (1-12).",
     )
-    day: Mapped[Optional[Integer]] = mapped_column(
+    day: Mapped[Optional[int]] = mapped_column(
         "day",
         Integer,
         doc="Día del mes del evento de colecta.",
     )
 
     # Location: deseable
-    verbatimElevation: Mapped[Optional[String]] = mapped_column(
+    verbatimElevation: Mapped[Optional[str]] = mapped_column(
         "verbatim_elevation",
         String(100),
         doc="DwC verbatimElevation: elevación tal como en la etiqueta (con unidades, rangos, etc.).",
     )
-    county: Mapped[Optional[String]] = mapped_column(
+    county: Mapped[Optional[str]] = mapped_column(
         "county",
         String(100),
         doc="DwC county: provincia (nice to have).",
     )
-    municipality: Mapped[Optional[String]] = mapped_column(
+    municipality: Mapped[Optional[str]] = mapped_column(
         "municipality",
         String(100),
         doc="DwC municipality: distrito/municipio (nice to have).",
     )
-    locality: Mapped[Optional[Text]] = mapped_column(
+    locality: Mapped[Optional[str]] = mapped_column(
         "locality",
         Text(),
         doc="DwC locality: localidad oficial (centro poblado, caserío, etc.) (nice to have).",
     )
-    locationRemarks: Mapped[Optional[Text]] = mapped_column(
+    locationRemarks: Mapped[Optional[str]] = mapped_column(
         "location_remarks",
         Text(),
         doc="DwC locationRemarks: comentarios adicionales sobre la ubicación (nice to have).",
     )
-    decimalLatitude: Mapped[Optional[Float]] = mapped_column(
+    decimalLatitude: Mapped[Optional[float]] = mapped_column(
         "decimal_latitude",
         Float,
         index=True,
         doc="DwC decimalLatitude: latitud en grados decimales (WGS84) (nice to have).",
     )
-    decimalLongitude: Mapped[Optional[Float]] = mapped_column(
+    decimalLongitude: Mapped[Optional[float]] = mapped_column(
         "decimal_longitude",
         Float,
         index=True,
         doc="DwC decimalLongitude: longitud en grados decimales (WGS84) (nice to have).",
     )
-    georeferencedBy: Mapped[Optional[String]] = mapped_column(
-        "georeferenced_by",
-        String(255),
-        doc="DwC georeferencedBy: persona(s) que georreferenciaron el registro (nice to have).",
-    )
-    georeferenceRemarks: Mapped[Optional[Text]] = mapped_column(
-        "georeference_remarks",
-        Text(),
-        doc="DwC georeferenceRemarks: notas sobre cómo se obtuvo la georreferenciación (nice to have).",
-    )
-
     # OPCIONALES
 
     # ---- Occurrence opcionales ----
-    occurrenceRemarks: Mapped[Optional[Text]] = mapped_column(
+    occurrenceStatus: Mapped[Optional[str]] = mapped_column(
+        "occurrence_status",
+        String(100),
+        doc="DwC occurrenceStatus: estado de la ocurrencia (Presente, Ausente, En préstamo, etc.).",
+    )
+    occurrenceRemarks: Mapped[Optional[str]] = mapped_column(
         "occurrence_remarks",
         Text(),
         doc="DwC occurrenceRemarks: notas sobre la ocurrencia (fenología, sustrato, microhábitat, etc.).",
     )
-    lifeStage: Mapped[Optional[String]] = mapped_column(
+    lifeStage: Mapped[Optional[str]] = mapped_column(
         "life_stage",
         String(100),
         doc="DwC lifeStage: etapa de vida del organismo (plántula, adulto, flor, fruto, etc.).",
     )
-    establishmentMeans: Mapped[Optional[String]] = mapped_column(
+    establishmentMeans: Mapped[Optional[str]] = mapped_column(
         "establishment_means",
         String(100),
         doc="DwC establishmentMeans: nativo, introducido, cultivado, etc.",
     )
-    associatedReferences: Mapped[Optional[Text]] = mapped_column(
+    associatedReferences: Mapped[Optional[str]] = mapped_column(
         "associated_references",
         Text(),
         doc="DwC associatedReferences: referencias bibliográficas ligadas a esta ocurrencia.",
     )
-    associatedTaxa: Mapped[Optional[Text]] = mapped_column(
+    associatedTaxa: Mapped[Optional[str]] = mapped_column(
         "associated_taxa",
         Text(),
         doc="DwC associatedTaxa: taxa asociados (huésped, parásito, simbionte, etc.).",
@@ -655,62 +625,16 @@ class Occurrence(Base):
     )
 
     # ---- Event opcionales ----
-    projectTitle: Mapped[Optional[String]] = mapped_column(
-        "project_title",
-        String(255),
-        doc="Título o nombre del proyecto/campaña de muestreo.",
-    )
-    sampleSizeValue: Mapped[Optional[Float]] = mapped_column(
-        "sample_size_value",
-        Float,
-        doc="DwC sampleSizeValue: tamaño de muestra numérico (número de unidades muestreadas).",
-    )
-    sampleSizeUnit: Mapped[Optional[String]] = mapped_column(
-        "sample_size_unit",
-        String(100),
-        doc="DwC sampleSizeUnit: unidad del tamaño de muestra (parcels, plots, traps, etc.).",
-    )
-    fieldNotes: Mapped[Optional[Text]] = mapped_column(
+    fieldNotes: Mapped[Optional[str]] = mapped_column(
         "field_notes",
         Text(),
         doc="DwC fieldNotes: notas de campo tal como en la libreta.",
     )
-    projectID: Mapped[Optional[String]] = mapped_column(
-        "project_id",
-        String(255),
-        doc="Identificador interno o externo del proyecto (código de proyecto, grant, etc.).",
-    )
-    fundingAttribution: Mapped[Optional[Text]] = mapped_column(
-        "funding_attribution",
-        Text(),
-        doc="Texto de atribución de financiamiento (como se debe citar a financiadores).",
-    )
-    fundingAttributionID: Mapped[Optional[String]] = mapped_column(
-        "funding_attribution_id",
-        String(255),
-        doc="ID o código del registro de financiamiento (contrato, grant ID, etc.).",
-    )
-
     # ---- Location opcionales ----
-    countryCode: Mapped[Optional[String]] = mapped_column(
+    countryCode: Mapped[Optional[str]] = mapped_column(
         "country_code",
         String(10),
         doc="DwC countryCode: código ISO 3166-1 alfa-2 (p.ej. 'PE') (opcional).",
-    )
-    minimumElevationInMeters: Mapped[Optional[Float]] = mapped_column(
-        "minimum_elevation_in_meters",
-        Float,
-        doc="DwC minimumElevationInMeters: elevación mínima en metros (opcional).",
-    )
-    maximumElevationInMeters: Mapped[Optional[Float]] = mapped_column(
-        "maximum_elevation_in_meters",
-        Float,
-        doc="DwC maximumElevationInMeters: elevación máxima en metros (opcional).",
-    )
-    verbatimCoordinateSystem: Mapped[Optional[String]] = mapped_column(
-        "verbatim_coordinate_system",
-        String(100),
-        doc="DwC verbatimCoordinateSystem: sistema de coordenadas tal como se reportó (opcional).",
     )
     hydrographicContext: Mapped[Optional[str]] = mapped_column(
         "hydrographic_context",
@@ -720,7 +644,7 @@ class Occurrence(Base):
             "archipiélago o isla específica (campo unificado del DwC: waterBody, islandGroup, island)."
         ),
     )
-    footprintWKT: Mapped[Optional[Text]] = mapped_column(
+    footprintWKT: Mapped[Optional[str]] = mapped_column(
         "footprint_wkt",
         Text(),
         doc="DwC footprintWKT: polígono/área de la ocurrencia en WKT (opcional).",
@@ -745,25 +669,17 @@ class Occurrence(Base):
     # Relaciones (Collection, Agents, User, Identification)
     # ------------------------------------------------------------------
 
-    collectionId: Mapped[Optional[int]] = mapped_column(
-        "collection_id", ForeignKey("collection.id")
+    collectionId: Mapped[Optional[uuid.UUID]] = mapped_column(
+        "collection_id", ForeignKey("collection.collection_id")
     )
     collection: Mapped[Optional["Collection"]] = relationship(
         "Collection", back_populates="occurrences"
     )
 
-    # Colectores de campo (uno o varios Agent)
-    agents: Mapped[List["Agent"]] = relationship(
-        "Agent",
-        secondary="occurrence_agent",
-        back_populates="occurrences",
-        lazy="selectin",
-    )
-
     # Usuario que digitalizó la ocurrencia
-    digitizerUserId: Mapped[Optional[int]] = mapped_column(
+    digitizerUserId: Mapped[Optional[uuid.UUID]] = mapped_column(
         "digitizer_user_id",
-        ForeignKey("users.id"),
+        ForeignKey("users.user_id"),
         nullable=True,
         index=True,
         doc="Usuario del sistema que digitalizó esta ocurrencia.",
@@ -781,13 +697,18 @@ class Occurrence(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
         foreign_keys=lambda: [Identification.occurrenceId],
-        primaryjoin=lambda: Occurrence.id == Identification.occurrenceId,
+        primaryjoin=lambda: Occurrence.occurrenceId == Identification.occurrenceId,
     )
 
     # Identificación vigente
-    currentIdentificationId: Mapped[Optional[int]] = mapped_column(
+    currentIdentificationId: Mapped[Optional[uuid.UUID]] = mapped_column(
         "current_identification_id",
-        ForeignKey("identification.id", ondelete="SET NULL"),
+        ForeignKey(
+            "identification.identification_id", 
+            ondelete="SET NULL",
+            use_alter=True, # Rompe el ciclo en la creación/borrado
+            name="fk_occurrence_current_id"
+        ),
         nullable=True,
         index=True,
         doc=(
@@ -798,7 +719,7 @@ class Occurrence(Base):
     currentIdentification: Mapped[Optional["Identification"]] = relationship(
         "Identification",
         foreign_keys=lambda: [Occurrence.currentIdentificationId],
-        primaryjoin=lambda: Occurrence.currentIdentificationId == Identification.id,
+        primaryjoin=lambda: Occurrence.currentIdentificationId == Identification.identificationId,
         lazy="joined",
         post_update=True,
     )
@@ -820,77 +741,43 @@ class Occurrence(Base):
     # )
 
 
-class OccurrenceAgent(Base):
-    """
-    Tabla de enlace muchos-a-muchos entre Occurrence y Agent
-    (colectores de una ocurrencia).
-    """
-
-    __tablename__ = "occurrence_agent"
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-
-    occurrenceId: Mapped[int] = mapped_column(
-        "occurrence_id",
-        ForeignKey("occurrence.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-
-    agentId: Mapped[int] = mapped_column(
-        "agent_id",
-        ForeignKey("agent.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-
-    agentOrder: Mapped[Optional[int]] = mapped_column(
-        "agent_order",
-        Integer,
-        doc="Orden de aparición en la cita de colectores (1 = primero).",
-    )
-
-    __table_args__ = (
-        UniqueConstraint(
-            "occurrence_id",
-            "agent_id",
-            name="uq_occurrence_agent",
-        ),
-    )
-
-
 class Identifier(Base):
     """
-    Persona que se dedica a identificar especímenes (asociar taxonId-occurrenceId).
+    Persona que identifica un espécimen en el contexto de una Identification concreta.
+    Cada registro es una instancia de "esta persona participó en esta identificación".
     Desacoplado de User (cuentas del sistema) y de Agent (colectores de campo).
     """
 
     __tablename__ = "identifier"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    identifierId: Mapped[uuid.UUID] = mapped_column(
+        "identifier_id", Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
 
-    fullName: Mapped[Optional[String]] = mapped_column("full_name", String(255))
-    orcID: Mapped[Optional[String]] = mapped_column(
-        "identifier_id",
+    identificationId: Mapped[uuid.UUID] = mapped_column(
+        "identification_id",
+        ForeignKey("identification.identification_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    fullName: Mapped[Optional[str]] = mapped_column("full_name", String(255))
+    orcID: Mapped[Optional[str]] = mapped_column(
+        "orc_id",
         String(255),
-        unique=True,
         nullable=True,
-        doc="Identificador estable del identificador (URI/UUID interno/externo).",
-    )  # p.ej. ORCID
-
-    # Identificaciones en las que participa esta persona (muchos-a-muchos)
-    identifications: Mapped[List["Identification"]] = relationship(
+        doc="ORCID u otro identificador estable del identificador.",
+    )
+    identification: Mapped["Identification"] = relationship(
         "Identification",
-        secondary="identification_identifier",
         back_populates="identifiers",
-        lazy="selectin",
     )
 
 
 class Identification(Base):
     """
     DwC Identification (versión mínima):
-    - Quién identificó (Identifier + identifiedBy texto)
+    - Quién identificó (lista de Identifier)
     - Cuándo
     - A qué taxón
     - Si es la identificación vigente
@@ -900,14 +787,16 @@ class Identification(Base):
 
     __tablename__ = "identification"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    identificationId: Mapped[uuid.UUID] = mapped_column(
+        "identification_id", Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
 
     # ------------------------------
     # Vínculos básicos
     # ------------------------------
-    occurrenceId: Mapped[int] = mapped_column(
+    occurrenceId: Mapped[uuid.UUID] = mapped_column(
         "occurrence_id",
-        ForeignKey("occurrence.id", ondelete="CASCADE"),
+        ForeignKey("occurrence.occurrence_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
         doc="FK a Occurrence: registro al que se aplica esta identificación.",
@@ -916,12 +805,12 @@ class Identification(Base):
         "Occurrence",
         back_populates="identifications",
         foreign_keys=lambda: [Identification.occurrenceId],
-        primaryjoin=lambda: Identification.occurrenceId == Occurrence.id,
+        primaryjoin=lambda: Identification.occurrenceId == Occurrence.occurrenceId,
     )
 
-    taxonId: Mapped[Optional[int]] = mapped_column(
+    taxonId: Mapped[Optional[uuid.UUID]] = mapped_column(
         "taxon_id",
-        ForeignKey("taxon.id", ondelete="RESTRICT"),
+        ForeignKey("taxon.taxon_id", ondelete="RESTRICT"),
         nullable=True,
         index=True,
         doc=(
@@ -934,12 +823,12 @@ class Identification(Base):
         back_populates="identifications",
     )
 
-    # Personas que identifican (uno o varios Identifier)
+    # Personas que identificaron (uno o varios Identifier, relación directa)
     identifiers: Mapped[List["Identifier"]] = relationship(
         "Identifier",
-        secondary="identification_identifier",
-        back_populates="identifications",
+        back_populates="identification",
         lazy="selectin",
+        cascade="all, delete-orphan",
     )
 
     # El campo que se llenó en la etiqueta
@@ -962,13 +851,7 @@ class Identification(Base):
     # ------------------------------
     # Campos DwC esenciales
     # ------------------------------
-    identifiedBy: Mapped[Optional[String]] = mapped_column(
-        "identified_by",
-        String(255),
-        doc="DwC identifiedBy: quién(es) identificaron el espécimen (texto libre tal como en la etiqueta).",
-    )
-
-    dateIdentified: Mapped[Optional[String]] = mapped_column(
+    dateIdentified: Mapped[Optional[str]] = mapped_column(
         "date_identified",
         String(100),
         doc="DwC dateIdentified: fecha o rango de fechas de identificación (ISO8601 o formato de etiqueta).",
@@ -994,7 +877,7 @@ class Identification(Base):
     )
 
     # Estado de tipo nomenclatural
-    typeStatus: Mapped[Optional[String]] = mapped_column(
+    typeStatus: Mapped[Optional[str]] = mapped_column(
         "type_status",
         String(100),
         doc="DwC typeStatus: holotype, isotype, paratype, etc., si aplica.",
@@ -1016,45 +899,6 @@ class Identification(Base):
     )
 
 
-class IdentificationIdentifier(Base):
-    """
-    Tabla de enlace muchos-a-muchos entre Identification e Identifier
-    (co-identificadores de una determinación taxonómica).
-    """
-
-    __tablename__ = "identification_identifier"
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-
-    identificationId: Mapped[int] = mapped_column(
-        "identification_id",
-        ForeignKey("identification.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-
-    identifierId: Mapped[int] = mapped_column(
-        "identifier_id",
-        ForeignKey("identifier.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-
-    identifierOrder: Mapped[Optional[int]] = mapped_column(
-        "identifier_order",
-        Integer,
-        doc="Orden de aparición en la cita de identificadores.",
-    )
-
-    __table_args__ = (
-        UniqueConstraint(
-            "identification_id",
-            "identifier_id",
-            name="uq_identification_identifier",
-        ),
-    )
-
-
 class OccurrenceImage(Base):
     """
     Imagen asociada a una ocurrencia.
@@ -1068,14 +912,16 @@ class OccurrenceImage(Base):
 
     __tablename__ = "occurrence_image"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    occurrenceImageId: Mapped[uuid.UUID] = mapped_column(
+        "occurrence_image_id", Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
 
     # ------------------------------
     # Vínculo a Occurrence
     # ------------------------------
-    occurrenceId: Mapped[int] = mapped_column(
+    occurrenceId: Mapped[uuid.UUID] = mapped_column(
         "occurrence_id",
-        ForeignKey("occurrence.id", ondelete="CASCADE"),
+        ForeignKey("occurrence.occurrence_id", ondelete="CASCADE"),
         nullable=False,
         index=True,
         doc="FK a Occurrence: registro al que pertenece esta imagen.",

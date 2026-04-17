@@ -59,11 +59,13 @@ import {
 } from "lucide-react";
 import { toast } from "sonner@2.0.3";
 import { useAuth } from "@contexts/AuthContext";
-import { API } from "@constants/api";
+import { collectionsService } from "@services/collections.service";
+import { usersService } from "@services/users.service";
+import { ApiError } from "@services/api.error";
 import { Role } from "@constants/roles";
-import { OccurrenceBriefItem } from "@interfaces/occurrence";
-import { PaginatedResponse } from "@interfaces/utils/pagination";
-import { CollectionUserAccessItem } from "@interfaces/collection";
+import type { OccurrenceBriefItem } from "@interfaces/occurrence";
+import type { PaginatedResponse } from "@interfaces/utils/pagination";
+import type { CollectionUserAccessItem } from "@interfaces/collection";
 import {
   ApiUserLookupResponse,
   mapApiLookupToResult,
@@ -73,22 +75,9 @@ import {
 interface CollectionDetailPageProps {
   collectionId: string;
   collectionName: string;
-  collectionInstitutionId: number;
+  collectionInstitutionId?: string;
   isOwner: boolean;
   onNavigate: (page: string, params?: Record<string, any>) => void;
-}
-
-// ================== API helper ==================
-async function apiFetch(input: RequestInfo, init?: RequestInit) {
-  const res = await fetch(input, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers || {}),
-    },
-    credentials: "include",
-  });
-  return res;
 }
 
 // Formateo seguro de fecha del brief (puede no ser ISO perfecto)
@@ -106,7 +95,7 @@ export function CollectionDetailPage({
   isOwner,
   onNavigate,
 }: CollectionDetailPageProps) {
-  const { token } = useAuth();
+  const { token, apiFetch } = useAuth();
 
   // ================== Estado: usuarios ==================
   const [usersResp, setUsersResp] =
@@ -161,51 +150,29 @@ export function CollectionDetailPage({
   const fetchUsers = useCallback(
     async (opts?: { limit?: number; offset?: number }) => {
       if (!token) return;
-
       try {
         const limit = opts?.limit ?? usersLimit;
         const offset = opts?.offset ?? usersOffset;
-        const url = `${API.BASE_URL}${API.PATHS.COLLECTIONS_ACCESS_USERS(
-          collectionId,
-        )}?limit=${limit}&offset=${offset}`;
-
-        const res = await apiFetch(url, {
-          headers: {
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-        });
-        if (!res.ok) throw new Error(await res.text());
-        const data: PaginatedResponse<CollectionUserAccessItem> =
-          await res.json();
+        const data = await collectionsService.getAccessUsers(apiFetch, collectionId, offset, limit);
         setUsersResp(data);
       } catch (err) {
         console.error("fetch access-users error:", err);
         toast.error("No se pudieron cargar los usuarios con acceso");
       }
     },
-    [collectionId, usersLimit, usersOffset, token],
+    [apiFetch, collectionId, usersLimit, usersOffset, token],
   );
 
   const fetchOccurrences = useCallback(async () => {
     if (!token) return;
-
     try {
-      const url = `${API.BASE_URL}${API.PATHS.COLLECTIONS_OCCURRENCES_BRIEF(
-        collectionId,
-      )}?limit=${occLimit}&offset=${occOffset}`;
-      const res = await apiFetch(url, {
-        headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const data: PaginatedResponse<OccurrenceBriefItem> = await res.json();
+      const data = await collectionsService.getOccurrencesBrief(apiFetch, collectionId, occOffset, occLimit);
       setOccResp(data);
     } catch (err) {
       console.error("fetch occurrences error:", err);
       toast.error("No se pudieron cargar las ocurrencias");
     }
-  }, [collectionId, occLimit, occOffset, token]);
+  }, [apiFetch, collectionId, occLimit, occOffset, token]);
 
   useEffect(() => {
     if (!token) return;
@@ -231,28 +198,14 @@ export function CollectionDetailPage({
         setEmailStatus("checking");
         setEmailHelp("Verificando usuario...");
 
-        const params = new URLSearchParams({ email });
-        const res = await apiFetch(
-          `${API.BASE_URL}${API.PATHS.USER_BY_EMAIL}?${params.toString()}`,
-          {
-            headers: {
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-          },
-        );
-
-        if (res.status === 404) {
+        let payload: ApiUserLookupResponse;
+        try {
+          payload = await usersService.getByEmail(apiFetch, email);
+        } catch {
           setEmailStatus("error");
           setEmailHelp("No existe un usuario con ese correo.");
           return null;
         }
-        if (!res.ok) {
-          setEmailStatus("error");
-          setEmailHelp("No se pudo verificar el usuario.");
-          return null;
-        }
-
-        const payload: ApiUserLookupResponse = await res.json();
         const r = mapApiLookupToResult(payload);
 
         if (!r.found) {
@@ -325,43 +278,23 @@ export function CollectionDetailPage({
         return;
       }
       try {
-        const res = await apiFetch(
-          `${API.BASE_URL}${API.PATHS.COLLECTIONS_ADD_USER(collectionId)}`,
-          {
-            method: "POST",
-            headers: {
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-            body: JSON.stringify({ email: emailInput.trim() }),
-          },
-        );
-
-        if (res.status === 201) {
-          toast.success("Usuario agregado como visualizador");
-          setShowAddUserDialog(false);
-          setEmailInput("");
-          setEmailStatus("idle");
-          setEmailHelp("");
-          setUsersOffset(0);
-          await fetchUsers({ offset: 0, limit: usersLimit });
-        } else if (res.status === 409) {
-          const txt = await res.text();
-          toast.warning(
-            txt || "El usuario ya tiene algún rol en esta colección",
-          );
-        } else if (res.status === 404) {
-          toast.error("Colección o usuario no encontrado");
-        } else if (res.status === 403) {
-          toast.error(
-            "No tienes permisos para agregar usuarios a esta colección",
-          );
-        } else {
-          const txt = await res.text();
-          toast.error(txt || "No se pudo agregar el usuario");
-        }
+        await collectionsService.addUser(apiFetch, collectionId, emailInput.trim());
+        toast.success("Usuario agregado como visualizador");
+        setShowAddUserDialog(false);
+        setEmailInput("");
+        setEmailStatus("idle");
+        setEmailHelp("");
+        setUsersOffset(0);
+        await fetchUsers({ offset: 0, limit: usersLimit });
       } catch (err) {
-        console.error(err);
-        toast.error("Error de red al agregar usuario");
+        if (err instanceof ApiError) {
+          if (err.status === 409) toast.warning(err.detail || "El usuario ya tiene algún rol en esta colección");
+          else if (err.status === 404) toast.error("Colección o usuario no encontrado");
+          else if (err.status === 403) toast.error("No tienes permisos para agregar usuarios a esta colección");
+          else toast.error(err.detail || "No se pudo agregar el usuario");
+        } else {
+          toast.error("Error de red al agregar usuario");
+        }
       }
     },
     [
@@ -419,9 +352,9 @@ export function CollectionDetailPage({
   const usersCount = usersTotal;
   const occCount = occTotal;
 
-  const goToOccurrenceDetail = (occId: number) => {
+  const goToOccurrenceDetail = (occId: string) => {
     onNavigate("occurrence-detail", {
-      occurrenceId: String(occId),
+      occurrenceId: occId,
       collectionId,
       collectionName,
       isOwner,
@@ -859,7 +792,7 @@ export function CollectionDetailPage({
                   </TableRow>
                 ) : (
                   occResp.items.map((occ) => (
-                    <TableRow key={occ.id}>
+                    <TableRow key={occ.occurrenceId}>
                       <TableCell>{occ.code ?? "—"}</TableCell>
                       <TableCell className="italic">
                         {occ.scientificName ?? "—"}
@@ -874,7 +807,7 @@ export function CollectionDetailPage({
                             variant="outline"
                             size="sm"
                             className="h-9 w-9 p-0"
-                            onClick={() => goToOccurrenceDetail(occ.id)}
+                            onClick={() => goToOccurrenceDetail(occ.occurrenceId)}
                             title="Ver detalle"
                           >
                             <Eye className="h-4 w-4" />
@@ -884,9 +817,17 @@ export function CollectionDetailPage({
                               <Button
                                 variant="outline"
                                 size="sm"
-                                disabled
-                                title="Próximamente"
                                 className="h-9 w-9 p-0"
+                                title="Editar ocurrencia"
+                                onClick={() =>
+                                  onNavigate("edit-occurrence", {
+                                    occurrenceId: occ.occurrenceId,
+                                    collectionId,
+                                    collectionName,
+                                    isOwner,
+                                    returnTo: "collection",
+                                  })
+                                }
                               >
                                 <Pencil className="h-4 w-4" />
                               </Button>

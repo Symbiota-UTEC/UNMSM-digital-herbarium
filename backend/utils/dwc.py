@@ -14,13 +14,12 @@ ALLOWED_FIELDS: Dict[str, Set[str]] = {
         "catalogNumber",
         "recordNumber",
         "recordedBy",
-        "recordedByID",  # IDs de colectores (ORCID/URI), alineados con recordedBy
 
         # Nice to have
         "organismQuantity",
         "organismQuantityType",
         "georeferenceVerificationStatus",
-        "otherCatalogNumbers",
+        "occurrenceStatus",
         "occurrenceRemarks",
         "lifeStage",
         "establishmentMeans",
@@ -29,10 +28,6 @@ ALLOWED_FIELDS: Dict[str, Set[str]] = {
 
         # Extras / extensión
         "dynamicProperties",
-        "projectTitle",
-        "projectID",
-        "fundingAttribution",
-        "fundingAttributionID",
     },
 
     # ------------------------------------------------------------------
@@ -44,16 +39,9 @@ ALLOWED_FIELDS: Dict[str, Set[str]] = {
         "month",
         "day",
         "verbatimEventDate",
-        "fieldNumber",
-        "samplingProtocol",
-        "samplingEffort",
         "habitat",
         "eventRemarks",
-        "sampleSizeValue",
-        "sampleSizeUnit",
         "fieldNotes",
-        "projectID",
-        "projectTitle",
     },
 
     # ------------------------------------------------------------------
@@ -70,12 +58,7 @@ ALLOWED_FIELDS: Dict[str, Set[str]] = {
         "decimalLatitude",
         "decimalLongitude",
         "countryCode",
-        "georeferencedBy",
-        "georeferenceRemarks",
-        "minimumElevationInMeters",
-        "maximumElevationInMeters",
         "verbatimElevation",
-        "verbatimCoordinateSystem",
         "hydrographicContext",
         "footprintWKT",
     },

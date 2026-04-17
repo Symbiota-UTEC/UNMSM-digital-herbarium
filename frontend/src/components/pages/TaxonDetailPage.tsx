@@ -6,21 +6,20 @@ import { Badge } from "../ui/badge";
 import { Separator } from "../ui/separator";
 import { ArrowLeft, Leaf, CheckCircle, XCircle, AlertCircle } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
-import { API } from "@constants/api";
+import { taxonService } from "@services/taxon.service";
 
 /* ---------------------- Tipos según el backend ---------------------- */
 
 interface IdentifierOut {
-  id: number;
+  identifierId: string;
   fullName: string | null;
   orcID: string | null;
 }
 
 interface TaxonIdentificationOut {
-  id: number;
+  identificationId: string;
   scientificName: string | null;
   scientificNameAuthorship: string | null;
-  identifiedBy: string | null;
   dateIdentified: string | null;
   isCurrent: boolean;
   isVerified: boolean;
@@ -31,9 +30,8 @@ interface TaxonIdentificationOut {
 }
 
 interface TaxonDetailOut {
-  id: number;
+  taxonId: string;
   // Modelo Taxon
-  taxonID: string | null;
   scientificNameID: string | null;
   localID: string | null;
   scientificName: string | null;
@@ -80,7 +78,7 @@ interface TaxonDetailPageProps {
 }
 
 export function TaxonDetailPage({ taxonId, onNavigate }: TaxonDetailPageProps) {
-  const { token } = useAuth();
+  const { apiFetch } = useAuth();
   const [taxon, setTaxon] = useState<TaxonDetailOut | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -89,33 +87,15 @@ export function TaxonDetailPage({ taxonId, onNavigate }: TaxonDetailPageProps) {
     try {
       setLoading(true);
       setError(null);
-
-      const res = await fetch(
-        `${API.BASE_URL}/taxon/${encodeURIComponent(taxonId)}`,
-        {
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          credentials: "include",
-        }
-      );
-
-      if (!res.ok) {
-        if (res.status === 404) {
-          setTaxon(null);
-          setError("Taxón no encontrado");
-          return;
-        }
-
-        const txt = await res.text();
-        throw new Error(txt || "Error al obtener el taxón");
-      }
-
-      const data: TaxonDetailOut = await res.json();
-      setTaxon(data);
+      const data = await taxonService.getById(apiFetch, taxonId);
+      setTaxon(data as unknown as TaxonDetailOut);
     } catch (err: any) {
       console.error(err);
+      if (err?.status === 404) {
+        setTaxon(null);
+        setError("Taxón no encontrado");
+        return;
+      }
       setError(err?.message || "Ocurrió un error al cargar el taxón");
     } finally {
       setLoading(false);
@@ -126,7 +106,7 @@ export function TaxonDetailPage({ taxonId, onNavigate }: TaxonDetailPageProps) {
     if (!taxonId) return;
     fetchTaxon();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [taxonId, token]);
+  }, [taxonId]);
 
   const handleBack = () => {
     onNavigate("taxon");
@@ -287,7 +267,7 @@ export function TaxonDetailPage({ taxonId, onNavigate }: TaxonDetailPageProps) {
           <CardContent className="space-y-3">
             <div className="grid grid-cols-2 gap-2">
               <span className="text-muted-foreground">Taxon ID:</span>
-              <span className="break-all">{displayValue(taxon.taxonID)}</span>
+              <span className="break-all">{displayValue(taxon.taxonId)}</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <span className="text-muted-foreground">Scientific Name ID:</span>
@@ -435,7 +415,7 @@ export function TaxonDetailPage({ taxonId, onNavigate }: TaxonDetailPageProps) {
           <div className="space-y-3">
             {identifications.map((identification) => (
               <Card
-                key={identification.id}
+                key={identification.identificationId}
                 className="hover:shadow-md transition-shadow"
               >
                 <CardContent className="py-4">
@@ -455,9 +435,22 @@ export function TaxonDetailPage({ taxonId, onNavigate }: TaxonDetailPageProps) {
                       <p className="text-sm text-muted-foreground mb-1">
                         Identificado por:
                       </p>
-                      <p className="text-sm">
-                        {identification.identifiedBy || "No especificado"}
-                      </p>
+                      {identification.identifiers.length > 0 ? (
+                        <ul className="text-sm space-y-0.5">
+                          {identification.identifiers.map((id: IdentifierOut) => (
+                            <li key={id.identifierId}>
+                              {id.fullName || "Sin nombre"}
+                              {id.orcID && (
+                                <span className="text-muted-foreground ml-1">
+                                  (ORCID: {id.orcID})
+                                </span>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-sm">No especificado</p>
+                      )}
                     </div>
 
                     <div className="flex gap-2 md:col-span-2 flex-wrap">

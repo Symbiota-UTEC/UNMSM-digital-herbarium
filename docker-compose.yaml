@@ -35,6 +35,30 @@ services:
     command: ["sh", "-c", "python -m backend.scripts.create_models && python -m backend.scripts.create_admin && exec python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000"]
     networks: [appnet]
 
+  backend-dev:
+    image: python:3.10-slim
+    working_dir: /app
+    command: >
+      sh -c "pip install --no-cache-dir -r requirements.txt &&
+             apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev &&
+             python -m backend.scripts.create_models &&
+             python -m backend.scripts.create_admin &&
+             exec python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload"
+    volumes:
+      - ./backend/requirements.txt:/app/requirements.txt:ro
+      - ./backend:/app/backend
+    env_file:
+      - backend/config/.env
+    environment:
+      - BACKEND_CORS_ALLOW_ORIGINS=http://localhost:3000,http://localhost:5173
+      - SEAWEEDFS_INTERNAL_URL=http://herbarium_seaweedfs:8888
+      - SEAWEEDFS_PUBLIC_URL=http://localhost:8888
+    depends_on:
+      db:
+        condition: service_healthy
+    ports: ["8001:8000"]
+    networks: [appnet]
+
   frontend-dev:
     image: node:20-alpine
     working_dir: /app
@@ -43,12 +67,12 @@ services:
       - ./frontend:/app
       - /app/node_modules
     environment:
-      - VITE_API_URL=http://localhost:8000/api
+      - VITE_API_URL=http://localhost:8001/api
       - VITE_CAMERA_BASE_URL=http://172.31.99.9:8000
     ports:
       - "5173:5173"
     depends_on:
-      backend:
+      backend-dev:
         condition: service_started
     networks: [appnet]
 

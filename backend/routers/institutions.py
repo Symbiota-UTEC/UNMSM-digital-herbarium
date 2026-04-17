@@ -1,4 +1,5 @@
 # backend/routers/institutions.py
+from uuid import UUID
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -88,7 +89,7 @@ def list_institutions(
         total=total,
         limit=limit,
         offset=offset,
-        currentPage=current_page,      # <-- faltaba
+        currentPage=current_page,
         totalPages=total_pages,
         remainingPages=remaining_pages,
     )
@@ -100,10 +101,10 @@ def list_institutions(
     summary="Obtener institución por id",
 )
 def get_institution_by_id(
-    institution_id: int,
+    institution_id: UUID,
     db: Session = Depends(get_db),
 ):
-    stmt = select(Institution).where(Institution.id == institution_id)
+    stmt = select(Institution).where(Institution.institutionId == institution_id)
     inst = db.scalars(stmt).first()
     if not inst:
         raise HTTPException(
@@ -131,7 +132,6 @@ def create_institution(
         )
 
     new_institution = Institution(
-        institutionCode=institution.institutionCode,
         institutionName=institution.institutionName,
         country=institution.country,
         city=institution.city,
@@ -154,14 +154,14 @@ def create_institution(
     summary="Actualizar información de una institución (parcial)",
 )
 def update_institution(
-    institution_id: int,
+    institution_id: UUID,
     institution: InstitutionUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     # 1) Cargar institución
     institution_db = db.execute(
-        select(Institution).where(Institution.id == institution_id)
+        select(Institution).where(Institution.institutionId == institution_id)
     ).scalar_one_or_none()
 
     if not institution_db:
@@ -195,8 +195,6 @@ def update_institution(
     update_data = institution.model_dump(exclude_unset=True)
 
     # ---- Campos simples
-    if "institutionCode" in update_data:
-        institution_db.institutionCode = update_data["institutionCode"]
     if "institutionName" in update_data:
         institution_db.institutionName = update_data["institutionName"]
     if "country" in update_data:
@@ -229,7 +227,7 @@ def update_institution(
         # Regla: un institution admin no puede cambiar su propio adminId
         if (
             current_user.isInstitutionAdmin
-            and institution_db.institutionAdminUserId == current_user.id
+            and institution_db.institutionAdminUserId == current_user.userId
             and new_admin_id != old_admin_id
         ):
             raise HTTPException(
@@ -247,7 +245,7 @@ def update_institution(
             # a) Si hay un admin actual y se cambia o desasigna → degradar al anterior
             if old_admin_id is not None and old_admin_id != new_admin_id:
                 old_admin = db.execute(
-                    select(User).where(User.id == old_admin_id)
+                    select(User).where(User.userId == old_admin_id)
                 ).scalar_one_or_none()
                 if old_admin:
                     old_admin.isInstitutionAdmin = False
@@ -255,7 +253,7 @@ def update_institution(
             # b) Si se asigna un nuevo admin (entero)
             if new_admin_id is not None:
                 new_admin = db.execute(
-                    select(User).where(User.id == new_admin_id)
+                    select(User).where(User.userId == new_admin_id)
                 ).scalar_one_or_none()
                 if not new_admin:
                     raise HTTPException(
@@ -264,7 +262,7 @@ def update_institution(
                     )
 
                 new_admin.isInstitutionAdmin = True
-                new_admin.institutionId = institution_db.id
+                new_admin.institutionId = institution_db.institutionId
                 institution_db.institutionAdminUserId = new_admin_id
             else:
                 # c) Si se envía None -> quitar admin

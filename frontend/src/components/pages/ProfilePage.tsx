@@ -15,14 +15,13 @@ import type { CollectionOut } from "@interfaces/collection";
 type CollectionsResponse = PaginatedResponse<CollectionOut> | CollectionOut[];
 
 interface UserProfileResponse {
-  id: number;
+  userId: string;
   username: string;
   email: string;
   is_active: boolean;
   is_superuser: boolean;
   is_institution_admin: boolean;
-  agent_id: number | null;
-  institution_id: number | null;
+  institution_id: string | null;
   created_at: string | null;
 }
 
@@ -114,7 +113,7 @@ export function ProfilePage() {
       setIsLoading(true);
       setErrorMessage(null);
       try {
-        const profilePromise = apiFetch(`${API.BASE_URL}/users/${user.id}`).then((res) =>
+        const profilePromise = apiFetch(`${API.BASE_URL}/users/${user.userId}`).then((res) =>
           parseJson<UserProfileResponse>(res, "No se pudo recuperar tu perfil")
         );
 
@@ -128,8 +127,8 @@ export function ProfilePage() {
           }
         );
 
-        const ownedPromise = user.id
-          ? apiFetch(`${API.BASE_URL}/collections/by-user/${user.id}?limit=1&offset=0`).then(
+        const ownedPromise = user.userId
+          ? apiFetch(`${API.BASE_URL}/collections/by-user/${user.userId}?limit=1&offset=0`).then(
               async (res) => {
                 const data = await parseJson<CollectionsResponse>(
                   res,
@@ -254,7 +253,7 @@ export function ProfilePage() {
               >
                 Editar Perfil
               </Button>
-              <p className="mt-3 text-xs text-muted-foreground">ID usuario: {user.id}</p>
+              <p className="mt-3 text-xs text-muted-foreground">ID usuario: {user.userId}</p>
             </CardContent>
           </Card>
         </div>

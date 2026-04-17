@@ -6,20 +6,15 @@ import { Role } from '@constants/roles';
  * ======================= */
 
 export interface BasicUserInfo {
-  id: number;
+  userId: string;
   username?: string;
   email?: string;
 }
 
 export interface User extends BasicUserInfo {
   role: Role;
-  institutionId?: number | null;   // número, alineado al backend
+  institutionId?: string | null;   // UUID, alineado al backend
   institution?: string | null;     // opcional si luego mapeas el nombre
-  /**
-   * Alias de id para compatibilidad con código antiguo.
-   * El backend ya NO envía agentId.
-   */
-  agentId?: number | null;
 }
 
 /** Contexto de autenticación del front */
@@ -36,15 +31,15 @@ export interface AuthContextType {
  * API DTOs (Backend)
  * ======================= */
 
-/** Usuario “completo” devuelto por el backend cuando visibility='full' */
+/** Usuario "completo" devuelto por el backend cuando visibility='full' */
 export interface ApiUserOut {
-  id: number;
+  userId: string;
   username: string;
   email: string;
   isActive: boolean;
   isSuperuser: boolean;
   isInstitutionAdmin: boolean;
-  institutionId: number | null;
+  institutionId: string | null;
   institution?: string;
   createdAt: string;
 }
@@ -87,19 +82,16 @@ export interface UserLookupResult {
 export const mapApiUserToUser = (apiUser: ApiUserOut): User => {
   let role: Role = Role.User;
   if (apiUser.isSuperuser) {
-    // Si tienes Role.SuperAdmin, mapéalo aquí en lugar de Admin
     role = Role.Admin;
   } else if (apiUser.isInstitutionAdmin) {
     role = Role.InstitutionAdmin;
   }
 
   return {
-    id: apiUser.id,
+    userId: apiUser.userId,
     username: apiUser.username,
     email: apiUser.email,
     role,
-    // alias: ya no viene agentId del backend, usamos el id de usuario
-    agentId: apiUser.id,
     institutionId: apiUser.institutionId ?? null,
     institution: apiUser.institution ?? null,
   };

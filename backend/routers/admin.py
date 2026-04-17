@@ -27,7 +27,7 @@ def admin_metrics(
     if current_user.isSuperuser:
         coll_row = db.execute(
             select(
-                func.count(Collection.id).label("app"),
+                func.count(Collection.collectionId).label("app"),
                 func.sum(
                     case(
                         (Collection.institutionId == inst_id, 1),
@@ -39,7 +39,7 @@ def admin_metrics(
 
         users_row = db.execute(
             select(
-                func.count(User.id).label("app"),
+                func.count(User.userId).label("app"),
                 func.sum(
                     case(
                         (User.institutionId == inst_id, 1),
@@ -73,7 +73,7 @@ def admin_metrics(
         # --- Occurrences ---
         occ_row = db.execute(
             select(
-                func.count(Occurrence.id).label("app"),
+                func.count(Occurrence.occurrenceId).label("app"),
                 func.sum(
                     case(
                         (Collection.institutionId == inst_id, 1),
@@ -84,7 +84,7 @@ def admin_metrics(
             .select_from(Occurrence)
             .join(
                 Collection,
-                Occurrence.collectionId == Collection.id,
+                Occurrence.collectionId == Collection.collectionId,
                 isouter=True,
             )
         ).one()
@@ -97,7 +97,7 @@ def admin_metrics(
     else:
         collections_inst = (
             db.scalar(
-                select(func.count(Collection.id)).where(
+                select(func.count(Collection.collectionId)).where(
                     Collection.institutionId == inst_id
                 )
             )
@@ -105,13 +105,13 @@ def admin_metrics(
         )
         users_inst = (
             db.scalar(
-                select(func.count(User.id)).where(User.institutionId == inst_id)
+                select(func.count(User.userId)).where(User.institutionId == inst_id)
             )
             or 0
         )
         requests_inst = (
             db.scalar(
-                select(func.count(RegistrationRequest.id)).where(
+                select(func.count(RegistrationRequest.registrationRequestId)).where(
                     RegistrationRequest.status == "pending",
                     RegistrationRequest.institutionId == inst_id,
                 )
@@ -120,8 +120,8 @@ def admin_metrics(
         )
         occurrences_inst = (
             db.scalar(
-                select(func.count(Occurrence.id))
-                .join(Collection, Occurrence.collectionId == Collection.id)
+                select(func.count(Occurrence.occurrenceId))
+                .join(Collection, Occurrence.collectionId == Collection.collectionId)
                 .where(Collection.institutionId == inst_id)
             )
             or 0

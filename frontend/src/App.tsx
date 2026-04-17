@@ -21,13 +21,13 @@ import { Toaster } from "./components/ui/sonner";
 import { TaxonDetailPage } from "./components/pages/TaxonDetailPage";
 
 interface NavigationParams {
-  collectionId?: string | number;
+  collectionId?: string;
   collectionName?: string;
-  collectionInstitutionId?: number;
+  collectionInstitutionId?: string;
   isOwner?: boolean;
   occurrenceId?: string;
   returnTo?: "occurrences" | "collection";
-  taxonId?: string | number;
+  taxonId?: string;
 }
 
 interface RouteConfig {
@@ -202,11 +202,7 @@ function AppContent() {
       <CollectionDetailPage
         collectionId={collectionId}
         collectionName={state.collectionName || ""}
-        collectionInstitutionId={
-          typeof state.collectionInstitutionId === "number"
-            ? state.collectionInstitutionId
-            : Number(state.collectionInstitutionId ?? 0)
-        }
+        collectionInstitutionId={state.collectionInstitutionId}
         isOwner={Boolean(state.isOwner)}
         onNavigate={handleNavigation}
       />

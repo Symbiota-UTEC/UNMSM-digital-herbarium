@@ -4,7 +4,7 @@ export interface ScopedTotals {
 }
 
 export interface AdminMetrics {
-    institutionId: number;
+    institutionId: string;
     metrics: {
         users: ScopedTotals;
         collections: ScopedTotals;

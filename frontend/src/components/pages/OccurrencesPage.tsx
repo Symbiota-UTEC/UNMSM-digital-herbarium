@@ -29,29 +29,10 @@ import {
   ChevronUp,
   ChevronDown,
 } from "lucide-react";
-import { API } from "@constants/api";
 import { useAuth } from "@contexts/AuthContext";
-
-export interface OccurrenceListItem {
-  id: number;
-  code?: string | null;
-  scientificName?: string | null;
-  family?: string | null;
-  institutionName?: string | null;
-  location?: string | null;
-  collector?: string | null;
-  date?: string | null; // ISO string
-}
-
-export interface PaginatedResponse<T> {
-  items: T[];
-  total: number;
-  limit: number;
-  offset: number;
-  currentPage: number;
-  totalPages: number;
-  remainingPages: number;
-}
+import { autocompleteService } from "@services/autocomplete.service";
+import { occurrencesService } from "@services/occurrences.service";
+import type { OccurrenceListItem } from "@services/occurrences.service";
 
 interface OccurrencesPageProps {
   onNavigate: (page: string, params?: Record<string, any>) => void;
@@ -70,9 +51,6 @@ type FiltersSnapshot = {
   dateTo: string;
 };
 
-type SuggestionListResponse = {
-  items: string[];
-};
 
 // Clase base de inputs
 const filterInputClass =
@@ -82,7 +60,7 @@ const filterInputClass =
 // Hook genérico de autocomplete (con debounce + minChars)
 // ---------------------------------------------------------------------------
 function useAutocomplete(
-  token: string | null,
+  apiFetch: ((input: RequestInfo | URL, init?: RequestInit) => Promise<Response>),
   endpoint: string,
   query: string,
   options?: { minChars?: number; debounceMs?: number; limit?: number },
@@ -92,12 +70,6 @@ function useAutocomplete(
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!token) {
-      setItems([]);
-      setLoading(false);
-      return;
-    }
-
     const trimmed = query.trim();
     if (trimmed.length < minChars) {
       setItems([]);
@@ -105,51 +77,25 @@ function useAutocomplete(
       return;
     }
 
-    const controller = new AbortController();
+    let cancelled = false;
     const timeoutId = window.setTimeout(async () => {
       try {
         setLoading(true);
-        const params = new URLSearchParams({
-          q: trimmed,
-          limit: String(limit),
-        });
-
-        const res = await fetch(
-          `${API.BASE_URL}/autocomplete/${endpoint}?${params.toString()}`,
-          {
-            credentials: "include",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            signal: controller.signal,
-          },
-        );
-
-        if (!res.ok) {
-          console.error(
-            `Autocomplete ${endpoint} error:`,
-            res.status,
-            await res.text().catch(() => ""),
-          );
-          return;
-        }
-
-        const data: SuggestionListResponse = await res.json();
-        setItems(data.items ?? []);
+        const data = await autocompleteService.query(apiFetch, endpoint, trimmed, limit);
+        if (!cancelled) setItems(data);
       } catch (err: any) {
-        if (err?.name === "AbortError") return;
-        console.error(`Autocomplete ${endpoint} failed:`, err);
+        if (!cancelled) console.error(`Autocomplete ${endpoint} failed:`, err);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }, debounceMs);
 
     return () => {
+      cancelled = true;
       clearTimeout(timeoutId);
-      controller.abort();
     };
-  }, [token, endpoint, query, minChars, debounceMs, limit]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [endpoint, query, minChars, debounceMs, limit]);
 
   return { items, loading };
 }
@@ -253,7 +199,7 @@ function FilterAutocompleteInput({
 // Página principal
 // ---------------------------------------------------------------------------
 export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
-  const { token } = useAuth();
+  const { apiFetch, user } = useAuth();
 
   const [items, setItems] = useState<OccurrenceListItem[]>([]);
   const [page, setPage] = useState(1);
@@ -278,29 +224,29 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
   const {
     items: sciNameSuggestions,
     loading: sciNameLoading,
-  } = useAutocomplete(token ?? null, "scientific-name", scientificNameFilter);
+  } = useAutocomplete(apiFetch, "scientific-name", scientificNameFilter);
 
   const {
     items: familySuggestions,
     loading: familyLoading,
-  } = useAutocomplete(token ?? null, "family", familyFilter);
+  } = useAutocomplete(apiFetch, "family", familyFilter);
 
   const {
     items: institutionSuggestions,
     loading: institutionLoading,
-  } = useAutocomplete(token ?? null, "institution", institutionFilter, {
+  } = useAutocomplete(apiFetch, "institution", institutionFilter, {
     minChars: 1,
   });
 
   const {
     items: locationSuggestions,
     loading: locationLoading,
-  } = useAutocomplete(token ?? null, "location", locationFilter);
+  } = useAutocomplete(apiFetch, "location", locationFilter);
 
   const {
     items: collectorSuggestions,
     loading: collectorLoading,
-  } = useAutocomplete(token ?? null, "collector", collectorFilter);
+  } = useAutocomplete(apiFetch, "collector", collectorFilter);
 
   const totalPages = useMemo(
     () => Math.max(Math.ceil(total / pageSize), 1),
@@ -336,56 +282,20 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
     page: number;
     filters: FiltersSnapshot;
   }) => {
-    if (!token) return;
-
     setLoading(true);
     try {
-      const params = new URLSearchParams({
-        page: String(targetPage),
-        page_size: String(pageSize),
+      const data = await occurrencesService.list(apiFetch, {
+        page: targetPage,
+        pageSize,
+        code: filters.code,
+        scientificName: filters.scientificName,
+        family: filters.family,
+        institution: filters.institution,
+        location: filters.location,
+        collector: filters.collector,
+        dateFrom: filters.dateFrom,
+        dateTo: filters.dateTo,
       });
-
-      if (filters.code.trim()) {
-        params.set("code", filters.code.trim());
-      }
-      if (filters.scientificName.trim()) {
-        params.set("scientificName", filters.scientificName.trim());
-      }
-      if (filters.family.trim()) {
-        params.set("family", filters.family.trim());
-      }
-      if (filters.institution.trim()) {
-        params.set("institution", filters.institution.trim());
-      }
-      if (filters.location.trim()) {
-        params.set("location", filters.location.trim());
-      }
-      if (filters.collector.trim()) {
-        params.set("collector", filters.collector.trim());
-      }
-      if (filters.dateFrom) {
-        params.set("dateFrom", filters.dateFrom);
-      }
-      if (filters.dateTo) {
-        params.set("dateTo", filters.dateTo);
-      }
-
-      const res = await fetch(
-        `${API.BASE_URL}/occurrences?${params.toString()}`,
-        {
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      );
-
-      if (!res.ok) {
-        throw new Error(`Error ${res.status}`);
-      }
-
-      const data: PaginatedResponse<OccurrenceListItem> = await res.json();
       setItems(data.items ?? []);
       setTotal(data.total ?? 0);
     } catch (e) {
@@ -395,15 +305,14 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
     }
   };
 
-  // Carga inicial al tener token
+  // Carga inicial al tener usuario
   useEffect(() => {
-    if (!token) return;
-    const snapshot = buildFiltersSnapshot();
-    fetchOccurrences({ page, filters: snapshot });
+    if (!user) return;
+    fetchOccurrences({ page, filters: buildFiltersSnapshot() });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [user?.userId]);
 
-  const handleViewClick = (occurrenceId: number) => {
+  const handleViewClick = (occurrenceId: string) => {
     onNavigate("occurrence-detail", { occurrenceId });
   };
 
@@ -724,7 +633,7 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
                 )}
 
                 {items.map((occ) => (
-                  <TableRow key={occ.id}>
+                  <TableRow key={occ.occurrenceId}>
                     {/* Código */}
                     <TableCell className="align-middle">
                       <Badge
@@ -784,7 +693,7 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleViewClick(occ.id)}
+                        onClick={() => handleViewClick(occ.occurrenceId)}
                         title="Ver detalles de la ocurrencia"
                       >
                         <Eye className="h-4 w-4" />

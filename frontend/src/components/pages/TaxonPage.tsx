@@ -42,16 +42,16 @@ import type { PaginatedResponse } from "@interfaces/utils/pagination";
 /* ----------------------------- Tipos API ----------------------------- */
 
 interface TaxonSynonym {
-  id: number;
-  taxonID: string | null;
+  taxonId: string;
+  wfoTaxonId: string | null;
   scientificName: string | null;
   scientificNameAuthorship: string | null;
   taxonomicStatus: string | null;
 }
 
 interface TaxonTreeNode {
-  id: number;
-  taxonID: string | null;
+  taxonId: string;
+  wfoTaxonId: string | null;
   scientificName: string | null;
   scientificNameAuthorship: string | null;
   fullName: string | null;
@@ -163,7 +163,7 @@ function TaxonTreeRow({
           </div>
 
           {/* Botón ojito para ver detalle del taxón */}
-          {onViewDetail && node.taxonID && (
+          {onViewDetail && node.taxonId && (
             <Button
               variant="ghost"
               size="icon"
@@ -182,7 +182,7 @@ function TaxonTreeRow({
         childrenNodes &&
         childrenNodes.map((child) => (
           <TaxonTreeNodeContainer
-            key={child.taxonID ?? `id-${child.id}`}
+            key={child.taxonId}
             node={child}
             depth={depth + 1}
             onNavigate={onNavigate}
@@ -230,12 +230,12 @@ function TaxonTreeNodeContainer({ node, depth, onNavigate }: NodeContainerProps)
   const [totalPages, setTotalPages] = useState<number>(0);
 
   const fetchChildrenPage = async (page: number) => {
-    if (!node.taxonID || !node.hasChildren) return;
+    if (!node.wfoTaxonId || !node.hasChildren) return;
 
     try {
       setLoading(true);
       const params = new URLSearchParams({
-        parent_id: node.taxonID,
+        parent_id: node.wfoTaxonId,
         page: page.toString(),
         size: CHILDREN_PAGE_SIZE.toString(),
       });
@@ -292,16 +292,16 @@ function TaxonTreeNodeContainer({ node, depth, onNavigate }: NodeContainerProps)
     node.hasChildren && totalPages > 0 && currentPage < totalPages;
 
   const handleViewDetail = () => {
-    if (!node.taxonID) return;
+    if (!node.taxonId) return;
 
     // Si el App te pasó onNavigate, úsalo
     if (onNavigate) {
-      onNavigate("taxon-detail", { taxonId: node.taxonID });
+      onNavigate("taxon-detail", { taxonId: node.taxonId });
       return;
     }
 
-    // Fallback: navegación directa con taxonID en la URL
-    window.location.href = `/taxon/${encodeURIComponent(node.taxonID)}`;
+    // Fallback: navegación directa con taxonId en la URL
+    window.location.href = `/taxon/${encodeURIComponent(node.taxonId)}`;
   };
 
   return (
@@ -576,7 +576,7 @@ export function TaxonPage({ onNavigate }: TaxonPageProps) {
             <div className="space-y-1">
               {rootNodes.map((node) => (
                 <TaxonTreeNodeContainer
-                  key={node.taxonID ?? `id-${node.id}`}
+                  key={node.taxonId}
                   node={node}
                   depth={0}
                   onNavigate={onNavigate}

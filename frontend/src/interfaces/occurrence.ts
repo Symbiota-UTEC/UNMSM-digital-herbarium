@@ -1,5 +1,5 @@
 export interface OccurrenceBriefItem {
-  id: number;
+  occurrenceId: string;
   code: string | null;
   scientificName: string | null;
   family: string | null;
@@ -9,27 +9,19 @@ export interface OccurrenceBriefItem {
 }
 
 export interface CollectionSummary {
-  id: number;
-  collectionCode: string | null;
+  collectionId: string;
   collectionName: string | null;
-  institutionId: number | null;
-}
-
-export interface OccurrenceAgentOut {
-  id: number;
-  fullName: string | null;
-  orcID: string | null;
+  institutionId: string | null;
 }
 
 export interface OccurrenceIdentifierOut {
-  id: number;
+  identifierId: string;
   fullName: string | null;
   orcID: string | null;
 }
 
 export interface OccurrenceTaxonOut {
-  id: number;
-  taxonId: string | null;
+  taxonId: string;
   scientificName: string | null;
   scientificNameAuthorship: string | null;
   family: string | null;
@@ -40,8 +32,7 @@ export interface OccurrenceTaxonOut {
 }
 
 export interface OccurrenceIdentificationOut {
-  id: number;
-  identifiedBy: string | null;
+  identificationId: string;
   dateIdentified: string | null;
   isCurrent: boolean;
   isVerified: boolean;
@@ -58,7 +49,7 @@ export interface OccurrenceIdentificationOut {
 }
 
 export interface OccurrenceImageOut {
-  id: number;
+  occurrenceImageId: string;
   imagePath: string;
   fileSize: number | null;
   photographer: string | null;
@@ -69,12 +60,12 @@ export interface OccurrenceImageOut {
 // ---- Detalle de ocurrencia (flatten) ----
 
 export interface OccurrenceItem {
-  id: number;
+  occurrenceId: string;
 
   // Relaciones básicas
-  collectionId: number | null;
+  collectionId: string | null;
   collection: CollectionSummary | null;
-  digitizerUserId: number | null;
+  digitizerUserId: string | null;
 
   // Occurrence core
   recordNumber: string | null;
@@ -99,14 +90,9 @@ export interface OccurrenceItem {
 
   decimalLatitude: number | null;
   decimalLongitude: number | null;
-  georeferencedBy: string | null;
-  georeferenceRemarks: string | null;
   verbatimElevation: string | null;
-  minimumElevationInMeters: number | null;
-  maximumElevationInMeters: number | null;
 
   countryCode: string | null;
-  verbatimCoordinateSystem: string | null;
   hydrographicContext: string | null;
   footprintWKT: string | null;
 
@@ -114,10 +100,10 @@ export interface OccurrenceItem {
   organismQuantity: string | null;
   organismQuantityType: string | null;
   georeferenceVerificationStatus: string | null;
-  otherCatalogNumbers: string | null;
 
   habitat: string | null;
   eventRemarks: string | null;
+  occurrenceStatus: string | null;
   occurrenceRemarks: string | null;
   lifeStage: string | null;
   establishmentMeans: string | null;
@@ -127,22 +113,14 @@ export interface OccurrenceItem {
   dynamicProperties: Record<string, any> | null;
 
   // Proyecto / financiamiento
-  projectTitle: string | null;
-  sampleSizeValue: number | null;
-  sampleSizeUnit: string | null;
   fieldNotes: string | null;
-  projectID: string | null;
-  fundingAttribution: string | null;
-  fundingAttributionID: string | null;
-
   // Trazabilidad
   createdAt: string;
   updatedAt: string;
 
   // Relaciones
-  agents: OccurrenceAgentOut[];
   identifications: OccurrenceIdentificationOut[];
-  currentIdentificationId: number | null;
+  currentIdentificationId: string | null;
   currentIdentification: OccurrenceIdentificationOut | null;
   images: OccurrenceImageOut[];
 }

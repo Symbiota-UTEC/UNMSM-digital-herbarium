@@ -1,3 +1,4 @@
+from uuid import UUID
 from typing import Dict, Literal, Optional
 
 from pydantic import BaseModel
@@ -11,5 +12,5 @@ class ScopedTotals(BaseModel):
 
 
 class AdminMetricsOut(BaseModel):
-    institutionId: int
+    institutionId: UUID
     metrics: Dict[MetricKey, ScopedTotals]

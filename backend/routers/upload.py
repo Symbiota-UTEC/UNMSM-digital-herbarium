@@ -1,5 +1,6 @@
-# backend/routers/upload.py
 from __future__ import annotations
+from uuid import UUID
+# backend/routers/upload.py
 
 import csv
 import io
@@ -13,7 +14,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select, exists, or_, update
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.inspection import inspect
 from datetime import datetime
 
@@ -26,11 +27,8 @@ from backend.models.models import (
     CollectionPermission,
     Occurrence,
     Taxon,
-    Agent,
     Identifier,
     Identification,
-    OccurrenceAgent,
-    IdentificationIdentifier,
     OccurrenceImage,
 )
 
@@ -164,8 +162,8 @@ def _user_can_edit_collection(db: Session, user: User, collection: Collection) -
     perm_exists = db.scalar(
         select(
             exists().where(
-                (CollectionPermission.collectionId == collection.id)
-                & (CollectionPermission.userId == user.id)
+                (CollectionPermission.collectionId == collection.collectionId)
+                & (CollectionPermission.userId == user.userId)
                 & (CollectionPermission.role.in_(["editor", "owner"]))
             )
         )
@@ -272,7 +270,7 @@ def _resolve_unique_taxon_for_identification(
     summary="Sube un CSV DwC estricto y lo inserta a una colección",
 )
 def upload_dwc_csv(
-    collection_id: int = Form(..., description="ID de la colección destino"),
+    collection_id: UUID = Form(..., description="ID de la colección destino"),
     file: UploadFile = File(
         ..., description="Archivo CSV (DwC headers: dwc:Entity:field)"
     ),
@@ -287,10 +285,8 @@ def upload_dwc_csv(
         * scientificName y scientificNameAuthorship copiados del bloque Taxon (si vienen).
         * Un taxonId asignado SOLO si se puede resolver un Taxon único
           según la lógica de resolución (backbone ya cargado).
-    - Crea/recupera Identifier(s) según identifiedBy / identifiedByID (separados por comas) y
-      crea IdentificationIdentifier con el order, **solo si vienen nombres/IDs**.
-    - Crea/recupera Agent(s) según recordedBy / recordedByID (separados por comas) y
-      crea OccurrenceAgent con orden, **solo si vienen colectores**.
+    - Crea Identifier(s) según identifiedBy / identifiedByID (separados por comas),
+      vinculados directamente a la Identification, **solo si vienen nombres/IDs**.
     - Marca la Identification creada como isCurrent = True y la asigna como
       currentIdentification de la Occurrence.
     - A NIVEL DE CABECERA (no por fila) se exigen las columnas:
@@ -312,7 +308,7 @@ def upload_dwc_csv(
         )
 
     # -------- Colección + permisos --------
-    collection = db.scalar(select(Collection).where(Collection.id == collection_id))
+    collection = db.scalar(select(Collection).where(Collection.collectionId == collection_id))
     if not collection:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found"
@@ -377,14 +373,10 @@ def upload_dwc_csv(
 
     # -------- Caches de corrida y stats --------
     taxon_cache: Dict[Tuple[str, str], Optional[Taxon]] = {}
-    agent_cache: Dict[Tuple[str, str], Agent] = {}
-    identifier_cache: Dict[Tuple[str, str], Identifier] = {}
-
     stats = {
         "rows": 0,
         "occurrencesInserted": 0,
         "taxaMatched": 0,
-        "agentsInserted": 0,
         "identificationsInserted": 0,
         "identifiersInserted": 0,
     }
@@ -403,7 +395,6 @@ def upload_dwc_csv(
             occ_d: Dict[str, Any] = {}
             tax_d: Dict[str, Any] = {}
             ident_d: Dict[str, Any] = {}
-            recorded_by_id_raw: Optional[str] = None
 
             for (entity, field), idx in colmap.items():
                 val = _clean_value(row[idx] if idx < len(row) else "")
@@ -411,10 +402,7 @@ def upload_dwc_csv(
                     continue
 
                 if entity == "Occurrence":
-                    if field == "recordedByID":
-                        # No es campo del modelo; lo usamos solo para Agents
-                        recorded_by_id_raw = val
-                    elif field == "dynamicProperties":
+                    if field == "dynamicProperties":
                         occ_d[field] = _to_json_value(val)
                     else:
                         # Solo setea si el atributo existe en el modelo
@@ -425,9 +413,6 @@ def upload_dwc_csv(
                     if field in {"year", "month", "day"}:
                         if hasattr(Occurrence, field):
                             occ_d[field] = _to_int(val)
-                    elif field == "sampleSizeValue":
-                        if hasattr(Occurrence, "sampleSizeValue"):
-                            occ_d["sampleSizeValue"] = _to_float(val)
                     else:
                         if hasattr(Occurrence, field):
                             occ_d[field] = val
@@ -436,8 +421,6 @@ def upload_dwc_csv(
                     if field in {
                         "decimalLatitude",
                         "decimalLongitude",
-                        "minimumElevationInMeters",
-                        "maximumElevationInMeters",
                     }:
                         if hasattr(Occurrence, field):
                             occ_d[field] = _to_float(val)
@@ -481,82 +464,11 @@ def upload_dwc_csv(
             # -------- Crear Occurrence aplanado --------
             occ = Occurrence(**occ_d)
             occ.collectionId = collection_id
-            occ.digitizerUserId = current_user.id
+            occ.digitizerUserId = current_user.userId
 
             db.add(occ)
-            db.flush()  # obtener occ.id
+            db.flush()  # obtener occ.occurrenceId
             stats["occurrencesInserted"] += 1
-
-            # -------- Colectores: recordedBy / recordedByID -> Agents + OccurrenceAgent --------
-            collectors = _split_list(occ.recordedBy)
-            collectors_ids = _split_list(recorded_by_id_raw)
-
-            # Si no hay colectores ni IDs, simplemente no se crea ningún Agent/OccurrenceAgent
-            if collectors or collectors_ids:
-                max_len_collectors = max(len(collectors), len(collectors_ids))
-                for order, idx_c in enumerate(range(max_len_collectors), start=1):
-                    name = collectors[idx_c] if idx_c < len(collectors) else None
-                    id_value = (
-                        collectors_ids[idx_c] if idx_c < len(collectors_ids) else None
-                    )
-
-                    if not name and not id_value:
-                        continue
-
-                    cache_key = (name or "", id_value or "")
-                    agent = agent_cache.get(cache_key)
-
-                    if not agent:
-                        # 1) Buscar por nombre completo
-                        agent = None
-                        if name:
-                            agent = (
-                                db.execute(
-                                    select(Agent).where(Agent.fullName == name)
-                                )
-                                .scalars()
-                                .first()
-                            )
-
-                        # 2) Si no se encontró por nombre, buscar por ID (orcID)
-                        if not agent and id_value:
-                            agent = (
-                                db.execute(
-                                    select(Agent).where(Agent.orcID == id_value)
-                                )
-                                .scalars()
-                                .first()
-                            )
-
-                        # 3) Si no existe, crear nuevo
-                        if not agent:
-                            agent = Agent(
-                                fullName=name or None,
-                                orcID=id_value or None,
-                            )
-                            db.add(agent)
-                            db.flush()
-                            stats["agentsInserted"] += 1
-                        else:
-                            # Actualizar datos si vienen nuevos
-                            updated = False
-                            if name and not agent.fullName:
-                                agent.fullName = name
-                                updated = True
-                            if id_value and not agent.orcID:
-                                agent.orcID = id_value
-                                updated = True
-                            if updated:
-                                db.add(agent)
-
-                        agent_cache[cache_key] = agent
-
-                    oa = OccurrenceAgent(
-                        occurrenceId=occ.id,
-                        agentId=agent.id,
-                        agentOrder=order,
-                    )
-                    db.add(oa)
 
             # -------- Identificación + Identifiers --------
             is_verified = ident_d.get("isVerified")
@@ -564,27 +476,25 @@ def upload_dwc_csv(
                 is_verified = False
 
             identification_obj = Identification(
-                occurrenceId=occ.id,
-                taxonId=taxon_obj.id if taxon_obj is not None else None,
+                occurrenceId=occ.occurrenceId,
+                taxonId=taxon_obj.taxonId if taxon_obj is not None else None,
                 scientificName=sci_name,
                 scientificNameAuthorship=sci_auth,
-                identifiedBy=identified_by_text,  # puede ser None si venía vacío
                 dateIdentified=ident_d.get("dateIdentified"),
-                isCurrent=True,  # esta es la identificación vigente al momento de la carga
+                isCurrent=True,
                 isVerified=is_verified,
                 typeStatus=ident_d.get("typeStatus"),
             )
             db.add(identification_obj)
-            db.flush()  # necesitamos identification_obj.id
+            db.flush()
 
             # Marcarla como currentIdentification de la Occurrence
-            occ.currentIdentificationId = identification_obj.id
+            occ.currentIdentificationId = identification_obj.identificationId
             db.add(occ)
 
             stats["identificationsInserted"] += 1
 
-            # Identificadores (personas) con orden
-            # Si identified_by_text es None/"" => names_list = [] y no se crea nada
+            # Identificadores (personas) con orden — relación directa sin tabla intermedia
             names_list = _split_list(identified_by_text)
             ids_list = _split_list(ident_d.get("identifiedByID"))
 
@@ -597,64 +507,13 @@ def upload_dwc_csv(
                     if not name and not id_value:
                         continue
 
-                    cache_key = (name or "", id_value or "")
-                    identifier_obj = identifier_cache.get(cache_key)
-
-                    if not identifier_obj:
-                        # 1) Buscar por nombre completo
-                        identifier_obj = None
-                        if name:
-                            identifier_obj = (
-                                db.execute(
-                                    select(Identifier).where(
-                                        Identifier.fullName == name
-                                    )
-                                )
-                                .scalars()
-                                .first()
-                            )
-
-                        # 2) Si no se encontró por nombre, buscar por ID (orcID)
-                        if not identifier_obj and id_value:
-                            identifier_obj = (
-                                db.execute(
-                                    select(Identifier).where(
-                                        Identifier.orcID == id_value
-                                    )
-                                )
-                                .scalars()
-                                .first()
-                            )
-
-                        # 3) Si no existe, crear nuevo
-                        if not identifier_obj:
-                            identifier_obj = Identifier(
-                                fullName=name or None,
-                                orcID=id_value or None,
-                            )
-                            db.add(identifier_obj)
-                            db.flush()
-                            stats["identifiersInserted"] += 1
-                        else:
-                            # Actualizar si llegan datos nuevos
-                            updated = False
-                            if name and not identifier_obj.fullName:
-                                identifier_obj.fullName = name
-                                updated = True
-                            if id_value and not identifier_obj.orcID:
-                                identifier_obj.orcID = id_value
-                                updated = True
-                            if updated:
-                                db.add(identifier_obj)
-
-                        identifier_cache[cache_key] = identifier_obj
-
-                    link = IdentificationIdentifier(
-                        identificationId=identification_obj.id,
-                        identifierId=identifier_obj.id,
-                        identifierOrder=idx_i + 1,
+                    identifier_obj = Identifier(
+                        identificationId=identification_obj.identificationId,
+                        fullName=name or None,
+                        orcID=id_value or None,
                     )
-                    db.add(link)
+                    db.add(identifier_obj)
+                    stats["identifiersInserted"] += 1
 
             # ---- Commit por lotes ----
             rows_in_batch += 1
@@ -841,12 +700,12 @@ def _process_taxon_flora_csv_background(content: bytes, filename: str) -> None:
                     v = (raw_val or "").strip()
                     field_values[field] = v if v != "" else None
 
-                # Forzamos taxonID en el dict (aunque ya esté mapeado)
-                field_values["taxonID"] = taxon_id_value
+                # Mapeamos el taxonID del CSV al atributo wfoTaxonId del modelo
+                field_values["wfoTaxonId"] = taxon_id_value
 
-                # Buscar directamente en BD (taxonID es único a nivel de modelo)
+                # Buscar directamente en BD (wfoTaxonId es único a nivel de modelo)
                 taxon_obj = (
-                    db.execute(select(Taxon).where(Taxon.taxonID == taxon_id_value))
+                    db.execute(select(Taxon).where(Taxon.wfoTaxonId == taxon_id_value))
                     .scalars()
                     .first()
                 )
@@ -976,7 +835,7 @@ async def upload_taxon_flora_csv(
     summary="Subir una imagen y asociarla a una Occurrence a través de SeaweedFS",
 )
 def upload_image_seaweedfs(
-    occurrence_id: int = Form(..., description="ID de la Ocurrencia destino"),
+    occurrence_id: UUID = Form(..., description="ID de la Ocurrencia destino"),
     file: UploadFile = File(..., description="Archivo de imagen"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -985,7 +844,7 @@ def upload_image_seaweedfs(
     Sube una imagen al cluster de SeaweedFS y crea un OccurrenceImage.
     """
 
-    occurrence = db.scalar(select(Occurrence).where(Occurrence.id == occurrence_id))
+    occurrence = db.scalar(select(Occurrence).where(Occurrence.occurrenceId == occurrence_id))
     if not occurrence:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Occurrence not found"
@@ -1000,23 +859,23 @@ def upload_image_seaweedfs(
     # 1. Subir imagen a SeaweedFS Filer (en herbarium_seaweedfs:8888)
     try:
         institution_name = "UnknownInstitution"
-        collection_code = "UnknownCollection"
+        collection_id = "UnknownCollection"
         catalog_number = occurrence.catalogNumber or "UnknownCatalog"
 
         if occurrence.collection:
-            collection_code = occurrence.collection.collectionCode or "UnknownCollection"
+            collection_id = str(occurrence.collection.collectionId) if occurrence.collection.collectionId else "UnknownCollection"
             if occurrence.collection.institution:
                 institution_name = occurrence.collection.institution.institutionName or "UnknownInstitution"
 
         # Sanitizar rutas para URL
         institution_name_safe = institution_name.replace(" ", "_").replace("/", "-")
-        collection_code_safe = collection_code.replace(" ", "_").replace("/", "-")
+        collection_id_safe = collection_id.replace(" ", "_").replace("/", "-")
         catalog_number_safe = catalog_number.replace(" ", "_").replace("/", "-")
         
         safe_filename = file.filename.replace(" ", "_")
         unique_filename = f"{uuid.uuid4()}_{safe_filename}"
         
-        image_path = f"/images/{institution_name_safe}/{collection_code_safe}/{catalog_number_safe}/{unique_filename}"
+        image_path = f"/images/{institution_name_safe}/{collection_id_safe}/{catalog_number_safe}/{unique_filename}"
         upload_url = f"{seaweedfs_internal_url}{image_path}"
         
         files = {"file": (file.filename, file.file, file.content_type)}
@@ -1035,7 +894,7 @@ def upload_image_seaweedfs(
 
     # 2. Guardar en Base de Datos
     occ_img = OccurrenceImage(
-        occurrenceId=occurrence.id,
+        occurrenceId=occurrence.occurrenceId,
         imagePath=image_path,
         fileSize=file_size,
         photographer=current_user.fullName or current_user.username
@@ -1047,12 +906,48 @@ def upload_image_seaweedfs(
 
     return {
         "status": "ok",
-        "occurrenceImageId": occ_img.id,
-        "occurrenceId": occurrence.id,
+        "occurrenceImageId": occ_img.occurrenceImageId,
+        "occurrenceId": occurrence.occurrenceId,
         "imagePath": image_path,
         "size": file_size,
         "publicUrl": f"{seaweedfs_public_url}{image_path}"
     }
+
+
+@router.delete(
+    "/image/{image_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Eliminar una imagen por su ID",
+)
+def delete_image(
+    image_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    image = db.scalar(select(OccurrenceImage).where(OccurrenceImage.occurrenceImageId == image_id))
+    if not image:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image not found")
+
+    # Load occurrence + collection for permission check
+    occurrence = db.scalar(
+        select(Occurrence)
+        .options(selectinload(Occurrence.collection))
+        .where(Occurrence.occurrenceId == image.occurrenceId)
+    )
+    if not occurrence or not occurrence.collection:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    if not _user_can_edit_collection(db, current_user, occurrence.collection):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para eliminar esta imagen")
+
+    # Delete from SeaweedFS
+    try:
+        delete_url = f"{seaweedfs_internal_url}{image.imagePath}"
+        requests.delete(delete_url, timeout=10)
+    except Exception as e:
+        logger.warning(f"Could not delete image from SeaweedFS: {e}")
+
+    db.delete(image)
+    db.commit()
 
 
 @router.get(
@@ -1060,13 +955,13 @@ def upload_image_seaweedfs(
     summary="Descargar u obtener una imagen por su ID",
 )
 def get_image_seaweedfs(
-    image_id: int,
+    image_id: UUID,
     db: Session = Depends(get_db),
 ):
     """
     Obtiene una imagen de SeaweedFS consultando su ruta original mediante el OccurrenceImage ID
     """
-    image = db.scalar(select(OccurrenceImage).where(OccurrenceImage.id == image_id))
+    image = db.scalar(select(OccurrenceImage).where(OccurrenceImage.occurrenceImageId == image_id))
     if not image:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Image not found"

@@ -1,5 +1,6 @@
-# backend/schemas/occurrence.py
 from __future__ import annotations
+from uuid import UUID
+# backend/schemas/occurrence.py
 
 from datetime import datetime, date
 from typing import Any, Dict, List, Optional
@@ -13,26 +14,19 @@ from pydantic import BaseModel, Field
 
 
 class OccurrenceCollectionSummaryOut(ORMBaseModel):
-    id: int
-    collectionCode: Optional[str] = None
+    collectionId: UUID
     collectionName: Optional[str] = None
-    institutionId: Optional[int] = None
-
-
-class OccurrenceAgentOut(ORMBaseModel):
-    id: int
-    fullName: Optional[str] = None
-    orcID: Optional[str] = None
+    institutionId: Optional[UUID] = None
 
 
 class OccurrenceIdentifierOut(ORMBaseModel):
-    id: int
+    identifierId: UUID
     fullName: Optional[str] = None
     orcID: Optional[str] = None
 
 
 class OccurrenceTaxonOut(ORMBaseModel):
-    id: int
+    taxonId: UUID
     scientificName: Optional[str] = None
     scientificNameAuthorship: Optional[str] = None
     family: Optional[str] = None
@@ -40,12 +34,10 @@ class OccurrenceTaxonOut(ORMBaseModel):
     specificEpithet: Optional[str] = None
     infraspecificEpithet: Optional[str] = None
     taxonRank: Optional[str] = None
-    taxonID: Optional[str] = None
 
 
 class OccurrenceIdentificationOut(ORMBaseModel):
-    id: int
-    identifiedBy: Optional[str] = None
+    identificationId: UUID
     dateIdentified: Optional[str] = None
     isCurrent: bool
     isVerified: bool
@@ -65,8 +57,8 @@ class OccurrenceImageOut(ORMBaseModel):
     """
     Imagen asociada a una ocurrencia (refleja el modelo OccurrenceImage).
     """
-    id: int
-    occurrenceId: int
+    occurrenceImageId: UUID
+    occurrenceId: UUID
 
     imagePath: str
     fileSize: Optional[int] = None
@@ -83,12 +75,12 @@ class OccurrenceImageOut(ORMBaseModel):
 
 class OccurrenceOut(ORMBaseModel):
     # Identificador
-    id: int
+    occurrenceId: UUID
 
     # Enlaces
-    collectionId: Optional[int] = None
+    collectionId: Optional[UUID] = None
     collection: Optional[OccurrenceCollectionSummaryOut] = None
-    digitizerUserId: Optional[int] = None
+    digitizerUserId: Optional[UUID] = None
 
     # Occurrence + Event + Location (aplanado)
     recordNumber: Optional[str] = None
@@ -111,24 +103,19 @@ class OccurrenceOut(ORMBaseModel):
 
     decimalLatitude: Optional[float] = None
     decimalLongitude: Optional[float] = None
-    georeferencedBy: Optional[str] = None
-    georeferenceRemarks: Optional[str] = None
     verbatimElevation: Optional[str] = None
-    minimumElevationInMeters: Optional[float] = None
-    maximumElevationInMeters: Optional[float] = None
 
     countryCode: Optional[str] = None
-    verbatimCoordinateSystem: Optional[str] = None
     hydrographicContext: Optional[str] = None
     footprintWKT: Optional[str] = None
 
     organismQuantity: Optional[str] = None
     organismQuantityType: Optional[str] = None
     georeferenceVerificationStatus: Optional[str] = None
-    otherCatalogNumbers: Optional[str] = None
 
     habitat: Optional[str] = None
     eventRemarks: Optional[str] = None
+    occurrenceStatus: Optional[str] = None
     occurrenceRemarks: Optional[str] = None
     lifeStage: Optional[str] = None
     establishmentMeans: Optional[str] = None
@@ -137,23 +124,15 @@ class OccurrenceOut(ORMBaseModel):
 
     dynamicProperties: Optional[Dict[str, Any]] = None
 
-    projectTitle: Optional[str] = None
-    sampleSizeValue: Optional[float] = None
-    sampleSizeUnit: Optional[str] = None
     fieldNotes: Optional[str] = None
-    projectID: Optional[str] = None
-    fundingAttribution: Optional[str] = None
-    fundingAttributionID: Optional[str] = None
-
     createdAt: datetime
     updatedAt: datetime
 
     # Relacionados
-    agents: List[OccurrenceAgentOut] = []
     identifications: List[OccurrenceIdentificationOut] = []
 
     # Nueva relación: identificación vigente
-    currentIdentificationId: Optional[int] = None
+    currentIdentificationId: Optional[UUID] = None
     currentIdentification: Optional[OccurrenceIdentificationOut] = None
 
     # Nuevas imágenes asociadas
@@ -166,7 +145,7 @@ class OccurrenceOut(ORMBaseModel):
 
 
 class OccurrenceBriefItem(ORMBaseModel):
-    id: int
+    occurrenceId: UUID
     code: Optional[str] = None
     scientificName: Optional[str] = None
     family: Optional[str] = None
@@ -181,8 +160,13 @@ class OccurrenceBriefItem(ORMBaseModel):
 # Inputs
 # -----------------------------
 
+class IdentifierIn(StrictBaseModel):
+    name: str
+    orcid: Optional[str] = None
+
+
 class OccurrenceCreateIn(StrictBaseModel):
-    collectionId: int
+    collectionId: UUID
 
     occurrenceID: Optional[str] = None
     catalogNumber: str
@@ -208,20 +192,94 @@ class OccurrenceCreateIn(StrictBaseModel):
     decimalLatitude: Optional[float] = None
     decimalLongitude: Optional[float] = None
     verbatimElevation: Optional[str] = None
-    minimumElevationInMeters: Optional[float] = None
-    maximumElevationInMeters: Optional[float] = None
+    hydrographicContext: Optional[str] = None
 
     # Extra mapped directly (if exist in models)
     organismQuantity: Optional[str] = None
     organismQuantityType: Optional[str] = None
+    occurrenceStatus: Optional[str] = None
+    lifeStage: Optional[str] = None
+    establishmentMeans: Optional[str] = None
+    associatedReferences: Optional[str] = None
+    associatedTaxa: Optional[str] = None
+    occurrenceRemarks: Optional[str] = None
+    fieldNotes: Optional[str] = None
+    georeferenceVerificationStatus: Optional[str] = None
+    locationRemarks: Optional[str] = None
+    countryCode: Optional[str] = None
 
-    # Taxon / Identification (we only need TaxonID to link, or full string)
-    taxonId: Optional[int] = None
+    # Taxon / Identification
+    taxonId: Optional[UUID] = None
     scientificName: Optional[str] = None
-    
+    dateIdentified: Optional[str] = None
+    typeStatus: Optional[str] = None
+    isVerified: Optional[bool] = None
+    identifiers: Optional[List[IdentifierIn]] = None
+
     # Dynamic properties dictionary mapped by frontend
     dynamicProperties: Optional[Dict[str, Any]] = None
 
+
+
+class OccurrenceUpdateIn(StrictBaseModel):
+    catalogNumber: Optional[str] = None
+    recordNumber: Optional[str] = None
+    recordedBy: Optional[str] = None
+
+    # Event
+    eventDate: Optional[str] = None
+    verbatimEventDate: Optional[str] = None
+    year: Optional[int] = None
+    month: Optional[int] = None
+    day: Optional[int] = None
+    habitat: Optional[str] = None
+    eventRemarks: Optional[str] = None
+
+    # Location
+    country: Optional[str] = None
+    stateProvince: Optional[str] = None
+    county: Optional[str] = None
+    municipality: Optional[str] = None
+    locality: Optional[str] = None
+    verbatimLocality: Optional[str] = None
+    decimalLatitude: Optional[float] = None
+    decimalLongitude: Optional[float] = None
+    verbatimElevation: Optional[str] = None
+    hydrographicContext: Optional[str] = None
+
+    # Occurrence extra
+    organismQuantity: Optional[str] = None
+    organismQuantityType: Optional[str] = None
+    occurrenceStatus: Optional[str] = None
+    lifeStage: Optional[str] = None
+    establishmentMeans: Optional[str] = None
+    associatedReferences: Optional[str] = None
+    associatedTaxa: Optional[str] = None
+    occurrenceRemarks: Optional[str] = None
+    fieldNotes: Optional[str] = None
+    georeferenceVerificationStatus: Optional[str] = None
+    locationRemarks: Optional[str] = None
+    countryCode: Optional[str] = None
+
+    dynamicProperties: Optional[Dict[str, Any]] = None
+
+    # Identificación vigente — si se envía alguno se actualiza la identificación actual
+    taxonId: Optional[UUID] = None
+    scientificName: Optional[str] = None
+    dateIdentified: Optional[str] = None
+    typeStatus: Optional[str] = None
+    isVerified: Optional[bool] = None
+    identifiers: Optional[List[IdentifierIn]] = None
+
+
+class IdentificationCreateIn(StrictBaseModel):
+    taxonId: Optional[UUID] = None
+    scientificName: Optional[str] = None
+    dateIdentified: Optional[str] = None
+    typeStatus: Optional[str] = None
+    isVerified: Optional[bool] = None
+    identifiers: Optional[List[IdentifierIn]] = None
+    setAsCurrent: Optional[bool] = False
 
 
 class DynamicPropsIn(StrictBaseModel):
@@ -238,5 +296,5 @@ class OccurrenceFilters(BaseModel):
     date_from: Optional[date] = None
     date_to: Optional[date] = None
 
-    collection_id: Optional[int] = None
-    institution_id: Optional[int] = None
+    collection_id: Optional[UUID] = None
+    institution_id: Optional[UUID] = None

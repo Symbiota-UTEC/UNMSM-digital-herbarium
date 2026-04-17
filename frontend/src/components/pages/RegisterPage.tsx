@@ -64,7 +64,7 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
       username: userData.username,
       email: userData.email,
       password: userData.password,
-      institutionId: Number(userData.institutionId),
+      institutionId: userData.institutionId,
       givenName: agentData.givenName || null,
       familyName: agentData.familyName || null,
       orcid: agentData.orcid || null,
@@ -73,7 +73,7 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
     };
 
     try {
-      const res = await fetch(`${API.BASE_URL}${API.PATHS.REG_REQUEST}`, {
+      const res = await fetch(`${API.BASE_URL}${API.PATHS.AUTH.REG_REQUEST}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -199,8 +199,8 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
                       setUserData((prev) => ({ ...prev, institutionId: "" }));
                     }}
                     onSelect={(item) => {
-                      setInstText(item.institutionName);
-                      setUserData((prev) => ({ ...prev, institutionId: String(item.id) }));
+                      setInstText(item.institutionName ?? "");
+                      setUserData((prev) => ({ ...prev, institutionId: item.institutionId ?? "" }));
                     }}
                     minChars={1}
                   />

@@ -1,3 +1,4 @@
+from uuid import UUID
 # backend/schemas/auth.py
 from datetime import datetime
 from typing import Optional, Literal
@@ -8,11 +9,11 @@ from backend.schemas.common.base import ORMBaseModel, StrictBaseModel
 
 
 class RegistrationRequestItem(ORMBaseModel):
-    id: int
+    registrationRequestId: UUID
     username: str
     email: EmailStr
 
-    institutionId: int
+    institutionId: UUID
     institutionName: Optional[str] = None
 
     fullName: Optional[str] = None
@@ -25,10 +26,10 @@ class RegistrationRequestItem(ORMBaseModel):
     status: Literal["pending", "approved", "rejected"]
     createdAt: datetime
     reviewedAt: Optional[datetime] = None
-    reviewedByUserId: Optional[int] = None
-    resultingUserId: Optional[int] = None
+    reviewedByUserId: Optional[UUID] = None
+    resultingUserId: Optional[UUID] = None
 
 
 class UpdateRequestStatusBody(StrictBaseModel):
-    registrationRequestId: int
+    registrationRequestId: UUID
     newStatus: Literal["approved", "rejected"]

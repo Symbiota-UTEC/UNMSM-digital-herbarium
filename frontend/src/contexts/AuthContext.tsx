@@ -29,7 +29,6 @@ function decodeJwtPayload(token: string): any | null {
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  console.log(user);
   const [token, setToken] = useState<string | null>(null);
 
   // limpiar cualquier timer de auto-logout
@@ -91,7 +90,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     formData.append("username", email);
     formData.append("password", password);
 
-    const response = await fetch(`${API.BASE_URL}${API.PATHS.LOGIN}`, {
+    const response = await fetch(`${API.BASE_URL}${API.PATHS.AUTH.LOGIN}`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: formData.toString(),

@@ -1,3 +1,4 @@
+from uuid import UUID
 import math
 from typing import List, Optional, Literal
 
@@ -18,13 +19,13 @@ router = APIRouter(prefix="/users", tags=["Users"])
 
 
 class UserOut(BaseModel):
-    id: int
+    userId: UUID
     username: str
     email: str
     isActive: bool
     isSuperuser: bool
     isInstitutionAdmin: bool
-    institutionId: int
+    institutionId: UUID
     createdAt: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -33,7 +34,7 @@ class UserOut(BaseModel):
 def user_to_out(user: User) -> UserOut:
     """Mapeo explícito de modelo SQLAlchemy -> schema de salida."""
     return UserOut(
-        id=user.id,
+        userId=user.userId,
         username=user.username,
         email=user.email,
         isActive=user.isActive,
@@ -59,7 +60,7 @@ class UserLookupResponse(BaseModel):
 )
 def get_user_by_email(
     email: str = Query(...),
-    institution_id: Optional[int] = None,  # opcional; no otorga privilegios
+    institution_id: Optional[UUID] = None,  # opcional; no otorga privilegios
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -131,11 +132,11 @@ def get_user_by_email(
 
 @router.get("/{user_id}", response_model=UserOut, summary="Get user by id")
 def get_user_by_id(
-    user_id: int,
+    user_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    user = db.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
+    user = db.execute(select(User).where(User.userId == user_id)).scalar_one_or_none()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -153,7 +154,7 @@ def get_user_by_id(
             )
         return user_to_out(user)
 
-    elif current_user.id == user_id:
+    elif current_user.userId == user_id:
         return user_to_out(user)
 
     raise HTTPException(
@@ -168,7 +169,7 @@ def get_user_by_id(
     summary="Get users with optional institution filter and pagination",
 )
 def get_users(
-    institution_id: Optional[int] = Query(None, ge=1),
+    institution_id: Optional[UUID] = Query(None),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),

@@ -1,42 +1,33 @@
 export type CollectionRole = "viewer" | "editor" | "owner";
 
 export interface InstitutionOut {
-    id: number;
-    institutionCode?: string | null;
+    institutionId: string;
     institutionName?: string | null;
 }
 
-export interface AgentOut {
-    id: number;
-    fullName?: string | null;
-    orcid?: string | null;
-}
-
 export interface CollectionOut {
-    id: number;
-    collectionCode?: string | null;
+    collectionId: string;
     collectionName?: string | null;
     description?: string | null;
     institution?: InstitutionOut | null;
-    creator?: AgentOut | null;
+    creatorName?: string | null;
     myRole?: CollectionRole | null;
     occurrencesCount?: number;
 }
 
 export interface CollectionCreate {
-    collectionCode?: string | null;
     collectionName?: string | null;
     description?: string | null;
-    institutionId?: number | null;
-    creatorUserId?: number | null;
+    institutionId?: string | null;
+    creatorUserId?: string | null;
 }
 
 export interface CollectionListItem {
-    id: number;
+    collectionId: string;
     name: string | null;
     occurrencesCount: number;
     my_role?: CollectionRole | null;
-    institutionId?: number | null;
+    institutionId?: string | null;
     institutionName?: string | null;
     creatorName?: string | null;
 }
@@ -50,12 +41,12 @@ export interface CollectionUserAccessItem {
 
 export function toCollectionListItem(c: CollectionOut): CollectionListItem {
     return {
-        id: c.id,
+        collectionId: c.collectionId,
         name: c.collectionName ?? null,
         occurrencesCount: c.occurrencesCount ?? 0,
         my_role: c.myRole ?? null,
-        institutionId: c.institution?.id ?? null,
+        institutionId: c.institution?.institutionId ?? null,
         institutionName: c.institution?.institutionName ?? null,
-        creatorName: c.creator?.fullName ?? null,
+        creatorName: c.creatorName ?? null,
     };
 }

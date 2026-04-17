@@ -1,3 +1,4 @@
+from uuid import UUID
 # backend/schemas/collections.py
 from typing import Optional, Literal
 from pydantic import EmailStr
@@ -6,21 +7,19 @@ from backend.schemas.common.base import ORMBaseModel, StrictBaseModel
 
 
 class InstitutionOut(ORMBaseModel):
-    id: int
-    institutionCode: Optional[str] = None
+    institutionId: UUID
     institutionName: Optional[str] = None
 
 
 class UserSummaryOut(ORMBaseModel):
-    id: int
+    userId: UUID
     username: str
     email: EmailStr
     fullName: Optional[str] = None
 
 
 class CollectionOut(ORMBaseModel):
-    id: int
-    collectionCode: Optional[str] = None
+    collectionId: UUID
     collectionName: Optional[str] = None
     description: Optional[str] = None
     institution: Optional[InstitutionOut] = None
@@ -30,11 +29,10 @@ class CollectionOut(ORMBaseModel):
 
 
 class CollectionCreate(StrictBaseModel):
-    collectionCode: Optional[str] = None
     collectionName: Optional[str] = None
     description: Optional[str] = None
-    institutionId: Optional[int] = None
-    creatorUserId: int
+    institutionId: Optional[UUID] = None
+    creatorUserId: UUID
 
 
 class CollectionAccessUser(ORMBaseModel):
@@ -50,7 +48,7 @@ class AddUserToCollectionBody(StrictBaseModel):
 
 
 class CollectionPermissionOut(ORMBaseModel):
-    collectionId: int
-    userId: int
+    collectionId: UUID
+    userId: UUID
     email: EmailStr
     role: str

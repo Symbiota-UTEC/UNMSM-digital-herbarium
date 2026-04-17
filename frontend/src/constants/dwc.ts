@@ -59,17 +59,6 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       helpEs:
         "Nombre(s) de la(s) persona(s) que observaron o recolectaron, en orden de importancia.",
     },
-    {
-      entity: "Occurrence",
-      term: "recordedByID",
-      value: "Occurrence.recordedByID",
-      label: "dwc:Occurrence:recordedByID",
-      recommended: true,
-      inForm: true,
-      helpEs:
-        "Identificador interno del colector (Agent) asociado al campo recordedBy.",
-    },
-
     // ---------- DESEABLES (nice to have) ----------
     {
       entity: "Occurrence",
@@ -101,17 +90,6 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       helpEs:
         "Estado de verificación de la georreferenciación (p. ej., verificado, no verificado).",
     },
-    {
-      entity: "Occurrence",
-      term: "otherCatalogNumbers",
-      value: "Occurrence.otherCatalogNumbers",
-      label: "dwc:Occurrence:otherCatalogNumbers",
-      recommended: true,
-      inForm: true,
-      helpEs:
-        "Otros números de catálogo o identificadores asociados al ejemplar.",
-    },
-
     // ---------- OPCIONALES ----------
     {
       entity: "Occurrence",
@@ -247,63 +225,11 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
     // ---------- OPCIONALES ----------
     {
       entity: "Event",
-      term: "projectTitle",
-      value: "Event.projectTitle",
-      label: "dwc:Event:projectTitle",
-      inForm: true,
-      helpEs: "Título o nombre del proyecto/campaña de muestreo.",
-    },
-    {
-      entity: "Event",
-      term: "sampleSizeValue",
-      value: "Event.sampleSizeValue",
-      label: "dwc:Event:sampleSizeValue",
-      inForm: true,
-      helpEs: "Valor numérico del tamaño de muestra.",
-    },
-    {
-      entity: "Event",
-      term: "sampleSizeUnit",
-      value: "Event.sampleSizeUnit",
-      label: "dwc:Event:sampleSizeUnit",
-      inForm: true,
-      helpEs:
-        "Unidad del tamaño de muestra (trampas, parcelas, m², número de transectos, etc.).",
-    },
-    {
-      entity: "Event",
       term: "fieldNotes",
       value: "Event.fieldNotes",
       label: "dwc:Event:fieldNotes",
       inForm: true,
       helpEs: "Notas de campo tal como en la libreta de campo.",
-    },
-    {
-      entity: "Event",
-      term: "projectID",
-      value: "Event.projectID",
-      label: "dwc:Event:projectID",
-      inForm: false,
-      helpEs:
-        "Identificador interno o externo del proyecto (código de proyecto, grant, etc.).",
-    },
-    {
-      entity: "Event",
-      term: "fundingAttribution",
-      value: "Event.fundingAttribution",
-      label: "dwc:Event:fundingAttribution",
-      inForm: false,
-      helpEs:
-        "Texto recomendando cómo citar o reconocer el financiamiento.",
-    },
-    {
-      entity: "Event",
-      term: "fundingAttributionID",
-      value: "Event.fundingAttributionID",
-      label: "dwc:Event:fundingAttributionID",
-      inForm: false,
-      helpEs:
-        "Identificador del financiamiento (código de convenio, grant ID, etc.).",
     },
   ],
 
@@ -411,26 +337,6 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       inForm: true,
       helpEs: "Longitud en grados decimales (WGS84).",
     },
-    {
-      entity: "Location",
-      term: "georeferencedBy",
-      value: "Location.georeferencedBy",
-      label: "dwc:Location:georeferencedBy",
-      recommended: true,
-      inForm: true,
-      helpEs: "Persona(s) que realizaron la georreferenciación.",
-    },
-    {
-      entity: "Location",
-      term: "georeferenceRemarks",
-      value: "Location.georeferenceRemarks",
-      label: "dwc:Location:georeferenceRemarks",
-      recommended: true,
-      inForm: true,
-      helpEs:
-        "Notas sobre cómo se obtuvieron o revisaron las coordenadas (fuente, método, precisión, etc.).",
-    },
-
     // ---------- OPCIONALES ----------
     {
       entity: "Location",
@@ -440,31 +346,6 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       inForm: true,
       helpEs:
         "Código del país ISO 3166-1 alfa-2 (p. ej., PE, BR, EC).",
-    },
-    {
-      entity: "Location",
-      term: "minimumElevationInMeters",
-      value: "Location.minimumElevationInMeters",
-      label: "dwc:Location:minimumElevationInMeters",
-      inForm: true,
-      helpEs: "Elevación mínima en metros.",
-    },
-    {
-      entity: "Location",
-      term: "maximumElevationInMeters",
-      value: "Location.maximumElevationInMeters",
-      label: "dwc:Location:maximumElevationInMeters",
-      inForm: true,
-      helpEs: "Elevación máxima en metros.",
-    },
-    {
-      entity: "Location",
-      term: "verbatimCoordinateSystem",
-      value: "Location.verbatimCoordinateSystem",
-      label: "dwc:Location:verbatimCoordinateSystem",
-      inForm: true,
-      helpEs:
-        "Sistema de coordenadas tal como se registró (UTM, PSAD56, etc.).",
     },
     {
       entity: "Location",
