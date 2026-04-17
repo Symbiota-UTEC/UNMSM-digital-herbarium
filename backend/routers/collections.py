@@ -97,9 +97,22 @@ def get_collections_allowed(
     if current_user.isSuperuser:
         ids_q = select(Collection.collectionId)
     elif current_user.isInstitutionAdmin and current_user.institutionId is not None:
-        ids_q = select(Collection.collectionId).where(
+        own_inst_q = select(Collection.collectionId).where(
             Collection.institutionId == current_user.institutionId
         )
+        cross_inst_q = (
+            select(Collection.collectionId)
+            .join(
+                CollectionPermission,
+                CollectionPermission.collectionId == Collection.collectionId,
+            )
+            .where(
+                CollectionPermission.userId == current_user.userId,
+                Collection.institutionId != current_user.institutionId,
+            )
+            .group_by(Collection.collectionId)
+        )
+        ids_q = own_inst_q.union(cross_inst_q)
     else:
         # Usuario normal: requiere permiso explícito
         ids_q = (
@@ -417,10 +430,17 @@ def list_collection_access_users(
         pass
     elif current_user.isInstitutionAdmin:
         if collection.institutionId != current_user.institutionId:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="No tienes permisos para ver accesos de esta colección",
-            )
+            has_permission = db.execute(
+                select(CollectionPermission.collectionPermissionId).where(
+                    CollectionPermission.collectionId == collection_id,
+                    CollectionPermission.userId == current_user.userId,
+                )
+            ).scalar_one_or_none()
+            if not has_permission:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="No tienes permisos para ver accesos de esta colección",
+                )
     else:
         has_permission = db.execute(
             select(CollectionPermission.collectionPermissionId).where(
@@ -533,10 +553,17 @@ def list_occurrences_brief_by_collection_id(
         pass
     elif current_user.isInstitutionAdmin:
         if collection.institutionId != current_user.institutionId:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="No tienes permisos para ver ocurrencias de esta colección",
-            )
+            has_perm = db.execute(
+                select(CollectionPermission.collectionPermissionId).where(
+                    CollectionPermission.collectionId == collection_id,
+                    CollectionPermission.userId == current_user.userId,
+                )
+            ).scalar_one_or_none()
+            if not has_perm:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="No tienes permisos para ver ocurrencias de esta colección",
+                )
     else:
         has_perm = db.execute(
             select(CollectionPermission.collectionPermissionId).where(

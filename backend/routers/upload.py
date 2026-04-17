@@ -285,7 +285,7 @@ def upload_dwc_csv(
         * scientificName y scientificNameAuthorship copiados del bloque Taxon (si vienen).
         * Un taxonId asignado SOLO si se puede resolver un Taxon único
           según la lógica de resolución (backbone ya cargado).
-    - Crea Identifier(s) según identifiedBy / identifiedByID (separados por comas),
+    - Crea Identifier(s) según identifiedBy
       vinculados directamente a la Identification, **solo si vienen nombres/IDs**.
     - Marca la Identification creada como isCurrent = True y la asigna como
       currentIdentification de la Occurrence.
@@ -496,24 +496,13 @@ def upload_dwc_csv(
 
             # Identificadores (personas) con orden — relación directa sin tabla intermedia
             names_list = _split_list(identified_by_text)
-            ids_list = _split_list(ident_d.get("identifiedByID"))
 
-            if names_list or ids_list:
-                max_len_ident = max(len(names_list), len(ids_list))
-                for idx_i in range(max_len_ident):
-                    name = names_list[idx_i] if idx_i < len(names_list) else None
-                    id_value = ids_list[idx_i] if idx_i < len(ids_list) else None
-
-                    if not name and not id_value:
-                        continue
-
-                    identifier_obj = Identifier(
-                        identificationId=identification_obj.identificationId,
-                        fullName=name or None,
-                        orcID=id_value or None,
-                    )
-                    db.add(identifier_obj)
-                    stats["identifiersInserted"] += 1
+            for name in names_list:
+                db.add(Identifier(
+                    identificationId=identification_obj.identificationId,
+                    fullName=name,
+                ))
+                stats["identifiersInserted"] += 1
 
             # ---- Commit por lotes ----
             rows_in_batch += 1

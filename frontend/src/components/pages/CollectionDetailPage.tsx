@@ -91,7 +91,6 @@ function formatBriefDate(raw: string | null): string {
 export function CollectionDetailPage({
   collectionId,
   collectionName,
-  collectionInstitutionId,
   isOwner,
   onNavigate,
 }: CollectionDetailPageProps) {
@@ -234,9 +233,7 @@ export function CollectionDetailPage({
           return r;
         }
 
-        const sameInstitution =
-          r.user?.institutionId === collectionInstitutionId;
-        if (sameInstitution) {
+        if (r.sameInstitution) {
           setEmailStatus("ok");
           setEmailHelp("Usuario encontrado en la misma institución.");
         } else {
@@ -254,7 +251,7 @@ export function CollectionDetailPage({
         return null;
       }
     },
-    [token, collectionInstitutionId],
+    [token, apiFetch],
   );
 
   // ================== Agregar usuario ==================

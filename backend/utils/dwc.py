@@ -78,7 +78,6 @@ ALLOWED_FIELDS: Dict[str, Set[str]] = {
     # ------------------------------------------------------------------
     "Identification": {
         "identifiedBy",    # texto, lista separada por comas (OBLIGATORIO)
-        "identifiedByID",  # IDs (ORCID/URI/etc) en el mismo orden, separados por comas
         "dateIdentified",
         "isCurrent",
         "isVerified",

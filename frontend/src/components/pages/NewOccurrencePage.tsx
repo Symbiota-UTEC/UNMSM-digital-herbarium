@@ -12,6 +12,16 @@ import {
 } from "../ui/select";
 import { Badge } from "../ui/badge";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../ui/alert-dialog";
+import {
   ArrowLeft,
   Plus,
   X,
@@ -213,6 +223,7 @@ export function NewOccurrencePage({
   /* ── IMAGES ── */
   const [newImages, setNewImages] = useState<NewImageEntry[]>([]);
   const [existingImages, setExistingImages] = useState<OccurrenceImageOut[]>([]);
+  const [pendingDeleteImageId, setPendingDeleteImageId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   /* ── EDIT MODE ── */
@@ -391,8 +402,11 @@ export function NewOccurrencePage({
       setInlineSaving(false);
     }
   };
-
-  const handleDeleteExistingImage = async (imageId: string) => {
+  
+  const handleDeleteExistingImage = async () => {
+    if (!pendingDeleteImageId) return;
+    const imageId = pendingDeleteImageId;
+    setPendingDeleteImageId(null);
     setInlineSaving(true);
     try {
       await uploadService.deleteImage(apiFetch, imageId);
@@ -564,7 +578,7 @@ export function NewOccurrencePage({
           <Input id="recordNumber" value={recordNumber} onChange={(e) => setRecordNumber(e.target.value)} placeholder="Número de colecta" />
         </div>
         <div className="space-y-3">
-          <Label className="flex items-center gap-2">Registrado por <Badge variant="outline" className="text-xs">Recomendado</Badge> <span className="text-xs text-muted-foreground">dwc:recordedBy</span></Label>
+          <Label className="flex items-center gap-2">Recolectado por <Badge variant="outline" className="text-xs">Recomendado</Badge> <span className="text-xs text-muted-foreground">dwc:recordedBy</span></Label>
           <Input value={recordedBy} onChange={(e) => setRecordedBy(e.target.value)} placeholder="Nombre del recolector" />
         </div>
       </div>
@@ -1081,15 +1095,35 @@ export function NewOccurrencePage({
                   alt={img.imagePath}
                   className="w-full h-36 object-cover"
                 />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors pointer-events-none" />
                 <button
                   type="button"
                   disabled={inlineSaving}
-                  onClick={() => handleDeleteExistingImage(img.occurrenceImageId)}
-                  className="absolute top-1.5 right-1.5 bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700 disabled:opacity-50"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPendingDeleteImageId(img.occurrenceImageId); }}
+                  style={{
+                    position: "absolute",
+                    top: "10px",
+                    right: "10px",
+                    zIndex: 9999,
+                    backgroundColor: "rgb(117, 26, 29)",
+                    color: "white",
+                    padding: "6px 10px",
+                    borderRadius: "6px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    border: "none",
+                    cursor: "pointer",
+                    fontSize: "12px",
+                    fontWeight: "bold",
+                    opacity: 1,
+                    visibility: "visible",
+                    boxShadow: "0 2px 4px rgba(0,0,0,0.5)"
+                  }}
                   title="Eliminar imagen"
                 >
-                  <X className="h-3 w-3" />
+                  <Trash2 className="h-4 w-4" />
+                  Eliminar
                 </button>
                 {img.photographer && (
                   <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs px-2 py-1 truncate opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1163,11 +1197,28 @@ export function NewOccurrencePage({
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
                 <button
                   type="button"
-                  onClick={() => removeNewImage(index)}
-                  className="absolute top-1.5 right-1.5 bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); removeNewImage(index); }}
+                  style={{
+                    position: "absolute",
+                    top: "10px",
+                    right: "10px",
+                    zIndex: 9999,
+                    backgroundColor: "rgb(117, 26, 29)",
+                    color: "white",
+                    padding: "6px",
+                    borderRadius: "50%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    border: "none",
+                    cursor: "pointer",
+                    opacity: 1,
+                    visibility: "visible",
+                    boxShadow: "0 2px 4px rgba(0,0,0,0.5)"
+                  }}
                   title="Quitar imagen"
                 >
-                  <X className="h-3 w-3" />
+                  <X className="h-4 w-4" />
                 </button>
                 <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs px-2 py-1 truncate">
                   {(img.file.size / 1024 / 1024).toFixed(1)} MB
@@ -1285,6 +1336,30 @@ export function NewOccurrencePage({
           </div>
         </form>
       </div>
+
+      <AlertDialog
+        open={!!pendingDeleteImageId}
+        onOpenChange={(open: boolean) => { if (!open) setPendingDeleteImageId(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar imagen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer. La imagen será eliminada permanentemente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteExistingImage}
+              style={{ backgroundColor: "rgb(117,26,29)", color: "white" }}
+              className="hover:opacity-90 transition-opacity"
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

@@ -2,6 +2,16 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../ui/alert-dialog";
+import {
   ArrowLeft,
   Eye,
   Leaf,
@@ -9,7 +19,9 @@ import {
   XCircle,
   AlertCircle,
   Pencil,
+  Trash2,
 } from "lucide-react";
+import { toast } from "sonner@2.0.3";
 
 import { useAuth } from "@contexts/AuthContext";
 import { occurrencesService } from "@services/occurrences.service";
@@ -48,6 +60,8 @@ export function OccurrenceDetailPage({
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>("occurrence");
+  const [pendingDeleteImageId, setPendingDeleteImageId] = useState<string | null>(null);
+  const [deletingImageId, setDeletingImageId] = useState<string | null>(null);
 
   const show = (v: unknown) =>
     v === null || v === undefined || v === "" ? "—" : String(v);
@@ -125,6 +139,26 @@ export function OccurrenceDetailPage({
       isOwner,
       returnTo,
     });
+  };
+
+  const handleDeleteImage = async () => {
+    if (!pendingDeleteImageId) return;
+    const imageId = pendingDeleteImageId;
+    setPendingDeleteImageId(null);
+    setDeletingImageId(imageId);
+    try {
+      await uploadService.deleteImage(apiFetch, imageId);
+      setData((prev) =>
+        prev
+          ? { ...prev, images: (prev.images ?? []).filter((img) => img.occurrenceImageId !== imageId) }
+          : prev
+      );
+      toast.success("Imagen eliminada");
+    } catch {
+      toast.error("No se pudo eliminar la imagen");
+    } finally {
+      setDeletingImageId(null);
+    }
   };
 
   const goToTaxon = (taxonId?: string | null) => {
@@ -403,24 +437,40 @@ export function OccurrenceDetailPage({
     <div className="space-y-4">
       {data.images && data.images.length > 0 ? (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {data.images.map((img) => (
-            <div key={img.occurrenceImageId} className="relative rounded-lg overflow-hidden border bg-muted/20">
-              <img
-                src={uploadService.imageUrl(img.occurrenceImageId)}
-                alt="Imagen de ocurrencia"
-                className="w-full h-48 object-contain bg-muted/30"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src =
-                    'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 24 24" fill="none" stroke="%23888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>';
-                }}
-              />
-              {img.photographer && (
-                <div className="px-2 py-1 text-xs bg-background border-t truncate">
-                  <span className="text-muted-foreground">Fotógrafo: </span>{img.photographer}
-                </div>
-              )}
-            </div>
-          ))}
+          {data.images.map((img) => {
+            const isDeleting = deletingImageId === img.occurrenceImageId;
+            return (
+              <div key={img.occurrenceImageId} className="relative group rounded-lg overflow-hidden border bg-muted/20">
+                <img
+                  src={uploadService.imageUrl(img.occurrenceImageId)}
+                  alt="Imagen de ocurrencia"
+                  className={`w-full h-48 object-contain bg-muted/30 transition-opacity ${isDeleting ? "opacity-40" : ""}`}
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src =
+                      'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 24 24" fill="none" stroke="%23888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>';
+                  }}
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors pointer-events-none" />
+                {isOwner && (
+                  <button
+                    type="button"
+                    disabled={isDeleting || !!deletingImageId}
+                    onClick={() => setPendingDeleteImageId(img.occurrenceImageId)}
+                    className="absolute top-2 right-2 flex items-center gap-1.5 bg-black/60 backdrop-blur-sm text-white text-xs font-medium px-2.5 py-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-all hover:bg-red-600 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                    title="Eliminar imagen"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Eliminar
+                  </button>
+                )}
+                {img.photographer && (
+                  <div className="px-2 py-1 text-xs bg-background border-t truncate">
+                    <span className="text-muted-foreground">Fotógrafo: </span>{img.photographer}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       ) : (
         <p className="text-sm text-muted-foreground">Esta ocurrencia no tiene imágenes asociadas.</p>
@@ -505,6 +555,29 @@ export function OccurrenceDetailPage({
         {activeTab === "taxon" && renderTaxonTab()}
         {activeTab === "images" && renderImagesTab()}
       </div>
+
+      <AlertDialog
+        open={!!pendingDeleteImageId}
+        onOpenChange={(open: boolean) => { if (!open) setPendingDeleteImageId(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar imagen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer. La imagen será eliminada permanentemente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={handleDeleteImage}
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -196,11 +196,6 @@ const AUTO_MAP_RULES: Array<{ pattern: RegExp; target: string }> = [
     pattern: /\b(identified by|identificado por|determinado por|det\.)\b/,
     target: "Identification.identifiedBy",
   },
-  {
-    pattern:
-      /\b(identified by id|id identificador|id determinador|identificador de determinador)\b/,
-    target: "Identification.identifiedByID",
-  },
 ];
 
 // ==============================

@@ -396,7 +396,7 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
   ],
 
   // ============================================================
-  // IDENTIFICATION (solo identifiedBy e identifiedByID)
+  // IDENTIFICATION (solo identifiedBy)
   // ============================================================
   Identification: [
     {
@@ -408,16 +408,6 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       inForm: true,
       helpEs:
         "Persona(s) que identificaron taxonómicamente el espécimen.",
-    },
-    {
-      entity: "Identification",
-      term: "identifiedByID",
-      value: "Identification.identifiedByID",
-      label: "dwc:Identification:identifiedByID",
-      recommended: true,
-      inForm: true,
-      helpEs:
-        "Identificador interno del agente que realizó la identificación.",
     },
   ],
 };
