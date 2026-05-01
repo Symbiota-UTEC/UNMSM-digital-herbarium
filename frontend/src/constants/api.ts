@@ -36,6 +36,8 @@ export const API = {
         UPLOAD: {
             DWC_CSV: "/upload/dwc-csv",
             TAXON_FLORA_CSV: "/upload/taxon-flora-csv",
+            TAXON_FLORA_CSV_JOBS: "/upload/taxon-flora-csv/jobs",
+            TAXON_FLORA_CSV_JOB_BY_ID: (jobId: string) => `/upload/taxon-flora-csv/jobs/${jobId}`,
             IMAGE: "/upload/image",
             IMAGE_BY_ID: (imageId: string) => `/upload/image/${imageId}`,
         },
