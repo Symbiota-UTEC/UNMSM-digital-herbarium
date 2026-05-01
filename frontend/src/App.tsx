@@ -26,7 +26,7 @@ interface NavigationParams {
   collectionInstitutionId?: string;
   isOwner?: boolean;
   occurrenceId?: string;
-  returnTo?: "occurrences" | "collection";
+  returnTo?: "occurrences" | "collection" | "taxon";
   taxonId?: string;
 }
 
@@ -132,10 +132,13 @@ const buildRoute = (page: string, params: NavigationParams = {}) => {
       return {
         path: `/occurrences/${params.occurrenceId}`,
         state: {
-          returnTo: params.returnTo ?? (params.collectionId ? "collection" : "occurrences"),
+          returnTo:
+            params.returnTo ??
+            (params.collectionId ? "collection" : "occurrences"),
           collectionId: params.collectionId?.toString(),
           collectionName: params.collectionName,
           isOwner: params.isOwner,
+          taxonId: params.taxonId?.toString(),
         },
       };
     case "taxon":
@@ -222,6 +225,7 @@ function AppContent() {
         collectionId={collectionId}
         collectionName={state.collectionName}
         isOwner={state.isOwner}
+        taxonId={state.taxonId?.toString()}
       />
     );
   };
@@ -240,6 +244,7 @@ function AppContent() {
         collectionId={collectionId}
         collectionName={state.collectionName}
         isOwner={state.isOwner}
+        taxonId={state.taxonId?.toString()}
       />
     );
   };

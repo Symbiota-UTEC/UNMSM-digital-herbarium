@@ -31,10 +31,11 @@ import type { OccurrenceItem } from "@interfaces/occurrence";
 interface OccurrenceDetailPageProps {
   occurrenceId: string;
   onNavigate: (page: string, params?: Record<string, any>) => void;
-  returnTo?: "occurrences" | "collection";
+  returnTo?: "occurrences" | "collection" | "taxon";
   collectionId?: string;
   collectionName?: string;
   isOwner?: boolean;
+  taxonId?: string;
 }
 
 type TabKey = "occurrence" | "event" | "location" | "taxon" | "images";
@@ -54,6 +55,7 @@ export function OccurrenceDetailPage({
   collectionId,
   collectionName,
   isOwner,
+  taxonId,
 }: OccurrenceDetailPageProps) {
   const { apiFetch } = useAuth();
   const [data, setData] = useState<OccurrenceItem | null>(null);
@@ -120,7 +122,9 @@ export function OccurrenceDetailPage({
   );
 
   const handleBack = () => {
-    if (returnTo === "collection" && collectionId) {
+    if (returnTo === "taxon" && taxonId) {
+      onNavigate("taxon-detail", { taxonId });
+    } else if (returnTo === "collection" && collectionId) {
       onNavigate("collection-detail", {
         collectionId,
         collectionName: collectionName || "",
@@ -138,6 +142,7 @@ export function OccurrenceDetailPage({
       collectionName,
       isOwner,
       returnTo,
+      taxonId,
     });
   };
 

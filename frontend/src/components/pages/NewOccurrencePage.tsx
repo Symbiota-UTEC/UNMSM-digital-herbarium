@@ -55,10 +55,11 @@ interface NewOccurrencePageProps {
   onNavigate: (page: string, params?: Record<string, any>) => void;
   mode?: "create" | "edit";
   occurrenceId?: string;
-  returnTo?: "occurrences" | "collection";
+  returnTo?: "occurrences" | "collection" | "taxon";
   collectionId?: string;
   collectionName?: string;
   isOwner?: boolean;
+  taxonId?: string;
 }
 
 
@@ -158,6 +159,7 @@ export function NewOccurrencePage({
   collectionId,
   collectionName: collectionNameProp,
   isOwner,
+  taxonId,
 }: NewOccurrencePageProps) {
   const { apiFetch } = useAuth();
   const [activeTab, setActiveTab] = useState<TabKey>("occurrence");
@@ -437,7 +439,9 @@ export function NewOccurrencePage({
   const handleRemoveDynamicProp = (idx: number) => setDynamicProps((prev) => prev.filter((_, i) => i !== idx));
 
   const handleCancel = () => {
-    if (returnTo === "collection" && collectionId) {
+    if (returnTo === "taxon" && taxonId) {
+      onNavigate("taxon-detail", { taxonId });
+    } else if (returnTo === "collection" && collectionId) {
       onNavigate("collection-detail", { collectionId, collectionName: collectionNameProp || "", isOwner: isOwner ?? false });
     } else {
       onNavigate("occurrences");

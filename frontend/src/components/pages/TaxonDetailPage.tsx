@@ -4,7 +4,7 @@ import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { Separator } from "../ui/separator";
-import { ArrowLeft, Leaf, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import { ArrowLeft, Leaf, CheckCircle, XCircle, AlertCircle, Eye } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { taxonService } from "@services/taxon.service";
 
@@ -18,6 +18,7 @@ interface IdentifierOut {
 
 interface TaxonIdentificationOut {
   identificationId: string;
+  occurrenceId: string;
   scientificName: string | null;
   scientificNameAuthorship: string | null;
   dateIdentified: string | null;
@@ -110,6 +111,15 @@ export function TaxonDetailPage({ taxonId, onNavigate }: TaxonDetailPageProps) {
 
   const handleBack = () => {
     onNavigate("taxon");
+  };
+
+  const handleOpenOccurrence = (occurrenceId?: string) => {
+    if (!occurrenceId) return;
+    onNavigate("occurrence-detail", {
+      occurrenceId,
+      returnTo: "taxon",
+      taxonId,
+    });
   };
 
   // Helper para mostrar valores opcionales
@@ -416,7 +426,21 @@ export function TaxonDetailPage({ taxonId, onNavigate }: TaxonDetailPageProps) {
             {identifications.map((identification) => (
               <Card
                 key={identification.identificationId}
-                className="hover:shadow-md transition-shadow"
+                className={identification.occurrenceId
+                  ? "cursor-pointer transition-shadow hover:shadow-md hover:ring-1 hover:ring-primary/20"
+                  : "transition-shadow hover:shadow-md"}
+                onClick={() => handleOpenOccurrence(identification.occurrenceId)}
+                role={identification.occurrenceId ? "button" : undefined}
+                tabIndex={identification.occurrenceId ? 0 : undefined}
+                onKeyDown={(event) => {
+                  if (
+                    identification.occurrenceId &&
+                    (event.key === "Enter" || event.key === " ")
+                  ) {
+                    event.preventDefault();
+                    handleOpenOccurrence(identification.occurrenceId);
+                  }
+                }}
               >
                 <CardContent className="py-4">
                   <div className="grid md:grid-cols-6 gap-4 items-center">
@@ -454,6 +478,13 @@ export function TaxonDetailPage({ taxonId, onNavigate }: TaxonDetailPageProps) {
                     </div>
 
                     <div className="flex gap-2 md:col-span-2 flex-wrap">
+                      {identification.occurrenceId && (
+                        <Badge variant="outline">
+                          <Eye className="h-3 w-3 mr-1" />
+                          Ver ocurrencia
+                        </Badge>
+                      )}
+
                       {identification.isCurrent ? (
                         <Badge className="bg-green-100 text-green-800">
                           <CheckCircle className="h-3 w-3 mr-1" />
