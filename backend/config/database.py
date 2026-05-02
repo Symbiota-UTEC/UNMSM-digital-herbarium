@@ -41,17 +41,23 @@ def get_db() -> Iterator[SessionLocal]:
 #     print("[bootstrap] Database models created.")
 
 
-def reset_database():
+def ensure_database_extensions() -> None:
+    """Create database functions/extensions required by functional indexes."""
     with engine.begin() as conn:
-        conn.execute(text("DROP SCHEMA public CASCADE"))
-        conn.execute(text("CREATE SCHEMA public"))
-        conn.execute(text("GRANT ALL ON SCHEMA public TO PUBLIC"))
-        # Restore the unaccent extension and its immutable wrapper used by functional indexes
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS unaccent SCHEMA public"))
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA public"))
         conn.execute(text("""
             CREATE OR REPLACE FUNCTION public.unaccent_immutable(text)
             RETURNS text LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE AS
             $$ BEGIN RETURN public.unaccent($1); END; $$
         """))
+
+
+def reset_database():
+    with engine.begin() as conn:
+        conn.execute(text("DROP SCHEMA public CASCADE"))
+        conn.execute(text("CREATE SCHEMA public"))
+        conn.execute(text("GRANT ALL ON SCHEMA public TO PUBLIC"))
+    ensure_database_extensions()
     Base.metadata.create_all(bind=engine)
     print("[bootstrap] Database reset completed.")

@@ -1060,6 +1060,15 @@ Index("ix_occurrence_event_date", Occurrence.year, Occurrence.month, Occurrence.
 Index("ix_taxon_name_auth_rank", Taxon.scientificName, Taxon.scientificNameAuthorship, Taxon.taxonRank)
 
 Index(
+    "ix_taxon_scientific_name_unaccent_trgm",
+    func.unaccent_immutable(func.lower(Taxon.scientificName)).label(
+        "scientific_name_unaccent"
+    ),
+    postgresql_using="gin",
+    postgresql_ops={"scientific_name_unaccent": "gin_trgm_ops"},
+)
+
+Index(
     "ix_taxon_family_unaccent",
     func.unaccent_immutable(func.lower(Taxon.family)),
 )

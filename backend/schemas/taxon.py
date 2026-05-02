@@ -57,6 +57,23 @@ class TaxonTreeNode(BaseModel):
         from_attributes = True
 
 
+class TaxonSearchItem(BaseModel):
+    """Resultado ligero de búsqueda para navegación rápida en /taxon."""
+
+    taxonId: UUID
+    wfoTaxonId: Optional[str] = None
+    scientificName: Optional[str] = None
+    scientificNameAuthorship: Optional[str] = None
+    taxonRank: Optional[str] = None
+    taxonomicStatus: Optional[str] = None
+    family: Optional[str] = None
+    isCurrent: bool
+    occurrenceCount: int = 0
+
+    class Config:
+        from_attributes = True
+
+
 # -------------------------------------------------
 # Schemas para detalle de Taxon + identificaciones
 # -------------------------------------------------

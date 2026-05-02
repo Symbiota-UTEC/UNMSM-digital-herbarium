@@ -25,6 +25,18 @@ export interface TaxonTreeNode {
     synonyms: TaxonSynonym[];
 }
 
+export interface TaxonSearchItem {
+    taxonId: string;
+    wfoTaxonId: string | null;
+    scientificName: string | null;
+    scientificNameAuthorship: string | null;
+    taxonRank: string | null;
+    taxonomicStatus: string | null;
+    family: string | null;
+    isCurrent: boolean;
+    occurrenceCount: number;
+}
+
 export interface TaxonDetailOut {
     taxonId: string;
     scientificNameID: string | null;
@@ -65,6 +77,13 @@ export interface TaxonTreeParams {
     parentId?: string;
 }
 
+export interface TaxonSearchParams {
+    q: string;
+    page?: number;
+    size?: number;
+    onlyCurrent?: boolean;
+}
+
 export const taxonService = {
 
     async getTree(
@@ -85,6 +104,26 @@ export const taxonService = {
     async getById(apiFetch: ApiFetch, taxonId: string): Promise<TaxonDetailOut> {
         const res = await apiFetch(
             `${API.BASE_URL}${API.PATHS.TAXON.BY_ID(encodeURIComponent(taxonId))}`,
+        );
+        await throwIfError(res);
+        return res.json();
+    },
+
+    async search(
+        apiFetch: ApiFetch,
+        params: TaxonSearchParams,
+    ): Promise<PaginatedResponse<TaxonSearchItem>> {
+        const query = new URLSearchParams({
+            q: params.q,
+            page: String(params.page ?? 1),
+            size: String(params.size ?? 20),
+        });
+        if (params.onlyCurrent !== undefined) {
+            query.set("only_current", String(params.onlyCurrent));
+        }
+
+        const res = await apiFetch(
+            `${API.BASE_URL}${API.PATHS.TAXON.SEARCH}?${query.toString()}`,
         );
         await throwIfError(res);
         return res.json();

@@ -40,6 +40,8 @@ import { useAuth } from "@contexts/AuthContext";
 import { API } from "@constants/api";
 import { Role } from "@constants/roles";
 import type { PaginatedResponse } from "@interfaces/utils/pagination";
+import { type TaxonTreeNode } from "@services/taxon.service";
+import { TaxonSearchPanel } from "./TaxonSearchPanel";
 
 /* ----------------------------- Tipos API ----------------------------- */
 
@@ -85,34 +87,10 @@ interface TaxonFloraUploadAcceptedResponse {
   jobId: string;
 }
 
-interface TaxonSynonym {
-  taxonId: string;
-  wfoTaxonId: string | null;
-  scientificName: string | null;
-  scientificNameAuthorship: string | null;
-  taxonomicStatus: string | null;
-}
-
-interface TaxonTreeNode {
-  taxonId: string;
-  wfoTaxonId: string | null;
-  scientificName: string | null;
-  scientificNameAuthorship: string | null;
-  fullName: string | null;
-  taxonRank: string | null;
-  parentNameUsageID: string | null;
-  acceptedNameUsageID: string | null;
-  taxonomicStatus: string | null;
-  isCurrent: boolean;
-  hasChildren: boolean;
-  synonyms: TaxonSynonym[];
-}
-
 /* ---------------------- Config paginación árbol ---------------------- */
 
 const ROOT_PAGE_SIZE = 50;
 const CHILDREN_PAGE_SIZE = 50;
-
 const TAXON_FLORA_JOB_POLL_MS = 4000;
 
 function formatJobStatus(status: TaxonFloraImportJobStatus): string {
@@ -723,106 +701,105 @@ export function TaxonPage({ onNavigate }: TaxonPageProps) {
 
         {isSuperuser && (
           <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Upload className="h-4 w-4 mr-2" />
-              Cargar CSV de flora
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Cargar CSV de Flora</DialogTitle>
-              <DialogDescription>
-                Sube un archivo CSV con los taxones de flora para poblar el
-                catálogo taxonómico.
-              </DialogDescription>
-            </DialogHeader>
+            <DialogTrigger asChild>
+              <Button>
+                <Upload className="h-4 w-4 mr-2" />
+                Cargar CSV de flora
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Cargar CSV de Flora</DialogTitle>
+                <DialogDescription>
+                  Sube un archivo CSV con los taxones de flora para poblar el
+                  catálogo taxonómico.
+                </DialogDescription>
+              </DialogHeader>
 
-            <Alert className="mb-4">
-              <Info className="h-4 w-4" />
-              <AlertDescription>
-                <ol className="list-decimal pl-5 space-y-1 text-sm mt-2">
-                  <li>
-                    Descarga el archivo de taxones de tu flora de referencia
-                    (el CSV <code>classification.csv</code> de{" "}
-                    <a
-                      href="https://wfoplantlist.org/classifications"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-primary underline"
-                    >
-                      World Flora Online
-                    </a>
-                    ).
-                  </li>
-                  <li>
-                    No modifiques los encabezados originales del archivo para
-                    mantener la compatibilidad con Darwin Core.
-                  </li>
-                  <li>
-                    Selecciona el CSV descargado en tu computadora y súbelo.
+              <Alert className="mb-4">
+                <Info className="h-4 w-4" />
+                <AlertDescription>
+                  <ol className="list-decimal pl-5 space-y-1 text-sm mt-2">
+                    <li>
+                      Descarga el archivo de taxones de tu flora de referencia
+                      (el CSV <code>classification.csv</code> de{" "}
+                      <a
+                        href="https://wfoplantlist.org/classifications"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-primary underline"
+                      >
+                        World Flora Online
+                      </a>
+                      ).
+                    </li>
+                    <li>
+                      No modifiques los encabezados originales del archivo para
+                      mantener la compatibilidad con Darwin Core.
+                    </li>
+                    <li>
+                      Selecciona el CSV descargado en tu computadora y súbelo.
                       Luego revisa el estado de importación en el panel de esta
                       página.
-                  </li>
-                </ol>
-              </AlertDescription>
-            </Alert>
+                    </li>
+                  </ol>
+                </AlertDescription>
+              </Alert>
 
-            <form onSubmit={handleUpload} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="flora-csv-input">Archivo CSV de flora</Label>
-                <div className="flex items-center gap-3">
+              <form onSubmit={handleUpload} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="flora-csv-input">Archivo CSV de flora</Label>
+                  <div className="flex items-center gap-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() =>
+                        document.getElementById("flora-csv-input")?.click()
+                      }
+                      disabled={isUploading}
+                    >
+                      Seleccionar archivo
+                    </Button>
+                    <span className="text-sm text-muted-foreground truncate">
+                      {csvFile
+                        ? csvFile.name
+                        : "Ningún archivo seleccionado aún"}
+                    </span>
+                  </div>
+                  <Input
+                    id="flora-csv-input"
+                    type="file"
+                    accept=".csv"
+                    className="hidden"
+                    onChange={handleFileChange}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Formato esperado: <code>.csv</code> (por ejemplo, el
+                    classification.csv de la flora de referencia).
+                  </p>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() =>
-                      document.getElementById("flora-csv-input")?.click()
-                    }
+                    onClick={() => {
+                      setOpen(false);
+                      setCsvFile(null);
+                    }}
                     disabled={isUploading}
                   >
-                    Seleccionar archivo
+                    Cancelar
                   </Button>
-                  <span className="text-sm text-muted-foreground truncate">
-                    {csvFile
-                      ? csvFile.name
-                      : "Ningún archivo seleccionado aún"}
-                  </span>
+                  <Button type="submit" disabled={!csvFile || isUploading}>
+                    {isUploading ? "Subiendo..." : "Subir CSV de taxones"}
+                  </Button>
                 </div>
-                <Input
-                  id="flora-csv-input"
-                  type="file"
-                  accept=".csv"
-                  className="hidden"
-                  onChange={handleFileChange}
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Formato esperado: <code>.csv</code> (por ejemplo, el
-                  classification.csv de la flora de referencia).
-                </p>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setOpen(false);
-                    setCsvFile(null);
-                  }}
-                  disabled={isUploading}
-                >
-                  Cancelar
-                </Button>
-                <Button type="submit" disabled={!csvFile || isUploading}>
-                  {isUploading ? "Subiendo..." : "Subir CSV de taxones"}
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
+              </form>
+            </DialogContent>
           </Dialog>
         )}
       </div>
-
 
       {isSuperuser && (
         <Card className="mb-6">
@@ -976,6 +953,8 @@ export function TaxonPage({ onNavigate }: TaxonPageProps) {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <TaxonSearchPanel onNavigate={onNavigate} />
+
           {isLoadingRoot ? (
             <div className="flex items-center justify-center py-10 text-muted-foreground gap-2">
               <Loader2 className="h-4 w-4 animate-spin" />

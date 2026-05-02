@@ -31,6 +31,7 @@ export const API = {
         },
         TAXON: {
             TREE: "/taxon/tree",
+            SEARCH: "/taxon/search",
             BY_ID: (taxonId: string) => `/taxon/${taxonId}`,
         },
         UPLOAD: {

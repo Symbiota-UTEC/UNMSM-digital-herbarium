@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.config.database import engine
+from backend.config.database import engine, ensure_database_extensions
 from backend.config.settings import cors_allow_origins
 from backend.models import models as models_module
 
@@ -15,6 +15,7 @@ from backend.routers import upload as upload_router
 from backend.routers import taxon as taxon_router
 from backend.routers import autocomplete
 
+ensure_database_extensions()
 models_module.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(

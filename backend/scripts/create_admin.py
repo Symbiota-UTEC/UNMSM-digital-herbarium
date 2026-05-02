@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from backend.config.database import Base, engine, SessionLocal
+from backend.config.database import Base, engine, SessionLocal, ensure_database_extensions
 from backend.models.models import User, Institution
 from backend.utils.security import hash_password
 
@@ -183,6 +183,7 @@ def upsert_admin(db: Session, institution: Institution) -> User:
 
 def main():
     # Asegura que todas las tablas existen
+    ensure_database_extensions()
     Base.metadata.create_all(bind=engine)
 
     db = SessionLocal()

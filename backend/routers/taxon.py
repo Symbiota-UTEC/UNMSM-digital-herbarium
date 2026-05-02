@@ -11,7 +11,12 @@ from sqlalchemy.orm import Session, selectinload
 from backend.config.database import get_db
 from backend.models.models import Taxon, Identification
 from backend.schemas.common.pages import Page
-from backend.schemas.taxon import TaxonTreeNode, TaxonSynonym, TaxonDetailOut
+from backend.schemas.taxon import (
+    TaxonTreeNode,
+    TaxonSynonym,
+    TaxonDetailOut,
+    TaxonSearchItem,
+)
 
 router = APIRouter(prefix="/taxon", tags=["Taxon"])
 
@@ -182,6 +187,113 @@ def get_taxon_tree(
     # ---------------------- Respuesta paginada final ----------------------
 
     return Page[TaxonTreeNode](
+        items=items,
+        total=total,
+        limit=limit,
+        offset=offset,
+        currentPage=page,
+        totalPages=total_pages,
+        remainingPages=remaining_pages,
+    )
+
+
+@router.get(
+    "/search",
+    response_model=Page[TaxonSearchItem],
+    summary="Busca taxones por nombre científico.",
+)
+def search_taxa(
+    q: str = Query(..., min_length=1, description="Texto a buscar en scientificName."),
+    only_current: bool = Query(
+        default=True,
+        description="Si es True, filtra solo Taxon.isCurrent = true.",
+    ),
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    term = q.strip()
+    limit = size
+    offset = (page - 1) * limit
+
+    if not term:
+        return Page[TaxonSearchItem](
+            items=[],
+            total=0,
+            limit=limit,
+            offset=offset,
+            currentPage=page,
+            totalPages=0,
+            remainingPages=0,
+        )
+
+    pattern = f"%{term.lower()}%"
+    filters = [
+        Taxon.scientificName.isnot(None),
+        func.unaccent_immutable(func.lower(Taxon.scientificName)).like(
+            func.unaccent_immutable(pattern)
+        ),
+    ]
+    if only_current:
+        filters.append(Taxon.isCurrent.is_(True))
+
+    base_query = select(Taxon.taxonId).where(*filters)
+
+    total: int = db.scalar(
+        select(func.count()).select_from(base_query.subquery())
+    ) or 0
+    total_pages = math.ceil(total / limit) if total > 0 else 0
+    remaining_pages = max(total_pages - page, 0)
+
+    rows = db.execute(
+        select(
+            Taxon.taxonId,
+            Taxon.wfoTaxonId,
+            Taxon.scientificName,
+            Taxon.scientificNameAuthorship,
+            Taxon.taxonRank,
+            Taxon.taxonomicStatus,
+            Taxon.family,
+            Taxon.isCurrent,
+            func.count(func.distinct(Identification.occurrenceId)).label("occurrence_count"),
+        )
+        .outerjoin(Identification, Identification.taxonId == Taxon.taxonId)
+        .where(*filters)
+        .group_by(
+            Taxon.taxonId,
+            Taxon.wfoTaxonId,
+            Taxon.scientificName,
+            Taxon.scientificNameAuthorship,
+            Taxon.taxonRank,
+            Taxon.taxonomicStatus,
+            Taxon.family,
+            Taxon.isCurrent,
+        )
+        .order_by(
+            Taxon.scientificName.nulls_last(),
+            Taxon.scientificNameAuthorship.nulls_last(),
+            Taxon.taxonId,
+        )
+        .offset(offset)
+        .limit(limit)
+    ).all()
+
+    items = [
+        TaxonSearchItem(
+            taxonId=row.taxonId,
+            wfoTaxonId=row.wfoTaxonId,
+            scientificName=row.scientificName,
+            scientificNameAuthorship=row.scientificNameAuthorship,
+            taxonRank=row.taxonRank,
+            taxonomicStatus=row.taxonomicStatus,
+            family=row.family,
+            isCurrent=row.isCurrent,
+            occurrenceCount=row.occurrence_count or 0,
+        )
+        for row in rows
+    ]
+
+    return Page[TaxonSearchItem](
         items=items,
         total=total,
         limit=limit,
