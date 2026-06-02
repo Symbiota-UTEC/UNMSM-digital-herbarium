@@ -9,6 +9,6 @@
       "@utils/*": ["utils/*"],
       "@services/*": ["services/*"]
     },
-    "jsx": "react"
+    "jsx": "react-jsx"
   }
 }

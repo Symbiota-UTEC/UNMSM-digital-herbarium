@@ -2,7 +2,7 @@ import { useCallback, useEffect } from "react";
 import { Routes, Route, useLocation, useNavigate, useParams } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { PublicNavbar } from "./components/PublicNavbar";
-import { PrivateNavbar } from "./components/PrivateNavbar";
+import { PrivateSidebar } from "./components/PrivateSidebar";
 import { HomePage } from "./components/pages/HomePage";
 import { LoginPage } from "./components/pages/LoginPage";
 import { RegisterPage } from "./components/pages/RegisterPage";
@@ -19,6 +19,7 @@ import { MapPage } from "./components/pages/MapPage";
 import { Toaster } from "./components/ui/sonner";
 
 import { TaxonDetailPage } from "./components/pages/TaxonDetailPage";
+import { UploadsPage } from "./components/pages/UploadsPage";
 
 interface NavigationParams {
   collectionId?: string;
@@ -46,6 +47,7 @@ const routeConfigs: RouteConfig[] = [
   { path: "/occurrences/new", pageId: "new-occurrence" },
   { path: "/occurrences/:occurrenceId/edit", pageId: "edit-occurrence" },
   { path: "/occurrences/:occurrenceId", pageId: "occurrence-detail" },
+  { path: "/uploads", pageId: "uploads" },
   { path: "/taxon", pageId: "taxon" },
   { path: "/taxon/:taxonId", pageId: "taxon-detail" },
   { path: "/profile", pageId: "profile" },
@@ -141,6 +143,8 @@ const buildRoute = (page: string, params: NavigationParams = {}) => {
           taxonId: params.taxonId?.toString(),
         },
       };
+    case "uploads":
+      return { path: "/uploads" };
     case "taxon":
       return { path: "/taxon" };
     case "taxon-detail": {
@@ -174,7 +178,7 @@ function AppContent() {
         console.warn(`Missing navigation params for page "${page}"`, params);
         return;
       }
-      navigate(target.path, { state: target.state, replace: target.replace });
+      navigate(target.path, { state: target.state, replace: (target as any).replace });
     },
     [navigate]
   );
@@ -275,14 +279,15 @@ function AppContent() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {isAuthenticated ? (
-        <PrivateNavbar onNavigate={handleNavigation} currentPage={currentPage} />
-      ) : (
-        <PublicNavbar onNavigate={handleNavigation} />
+    <div className="flex h-full overflow-hidden bg-gray-50">
+      {isAuthenticated && (
+        <PrivateSidebar onNavigate={handleNavigation} currentPage={currentPage} />
       )}
 
-      <Routes>
+      <main className="flex flex-col flex-1 min-w-0 overflow-y-auto" style={{ paddingLeft: "1.5rem", paddingRight: "1.5rem" }}>
+        {!isAuthenticated && <PublicNavbar onNavigate={handleNavigation} />}
+
+        <Routes>
         <Route path="/" element={<HomePage onNavigate={handleNavigation} />} />
         <Route path="/login" element={<LoginPage onNavigate={handleNavigation} />} />
         <Route path="/register" element={<RegisterPage onNavigate={handleNavigation} />} />
@@ -293,6 +298,7 @@ function AppContent() {
         <Route path="/occurrences/new" element={<NewOccurrenceRoute mode="create" />} />
         <Route path="/occurrences/:occurrenceId/edit" element={<NewOccurrenceRoute mode="edit" />} />
         <Route path="/occurrences/:occurrenceId" element={<OccurrenceDetailRoute />} />
+        <Route path="/uploads" element={<UploadsPage />} />
         <Route path="/taxon" element={<TaxonPage onNavigate={handleNavigation} />} />
         <Route path="/taxon/:taxonId" element={<TaxonDetailRoute />} />
         <Route path="/profile" element={<ProfilePage />} />
@@ -301,7 +307,8 @@ function AppContent() {
         <Route path="*" element={<HomePage onNavigate={handleNavigation} />} />
       </Routes>
 
-      <Toaster />
+        <Toaster />
+      </main>
     </div>
   );
 }

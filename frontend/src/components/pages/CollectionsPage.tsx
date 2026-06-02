@@ -1,24 +1,25 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
-import { Plus, Folder, Upload, Users, ChevronLeft, ChevronRight, Shield } from "lucide-react";
-import { toast } from "sonner@2.0.3";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { Plus, Folder, Users, ChevronLeft, ChevronRight, Shield } from "lucide-react";
+import { toast } from "sonner";
 import { useAuth } from "@contexts/AuthContext";
 import { PAGE_SIZE } from "@constants/api";
 import { AutocompleteInstitution } from "../AutocompleteInstitution";
 import { Role } from "@constants/roles";
 import { collectionsService } from "@services/collections.service";
-
 import {
   CollectionCreate,
   CollectionListItem,
   toCollectionListItem,
 } from "@interfaces/collection";
+
+type AccessFilter = "owner" | "allowed";
 
 type CollectionsPageProps = {
   onNavigate: (page: string, params?: any) => void;
@@ -26,63 +27,62 @@ type CollectionsPageProps = {
 
 export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
   const { user, apiFetch, token } = useAuth() as any;
-  console.log(user);
 
   const isSuper = user?.role === Role.Admin;
-  const isInstAdmin = user?.role === Role.InstitutionAdmin;
-
-  // Solo los super pueden elegir institución libremente
-  const isRestrictedInstitutionPick = !isSuper; // true = user normal o InstitutionAdmin
+  const isRestrictedInstitutionPick = !isSuper;
   const userInstitutionId = user?.institutionId != null ? Number(user.institutionId) : null;
   const userInstitutionName = user?.institution || "";
   const creatorDisplayName = user?.username || user?.email || "Desconocido";
+  const userId = user?.userId ?? null;
 
   const collectionsPerPage = PAGE_SIZE.COLLECTIONS;
 
-  // Usamos siempre el id de usuario (agentId ya no viene del backend)
-  const userId = user?.userId ?? null;
-
-  // ------- Estado: colecciones por agente (mis colecciones) -------
-  const [myItems, setMyItems] = useState<CollectionListItem[]>([]);
-  const [myLoading, setMyLoading] = useState(false);
-  const [myPage, setMyPage] = useState(1);
-  const [myTotalPages, setMyTotalPages] = useState(1);
-
-  // ------- Estado: colecciones permitidas -------
-  const [allowedItems, setAllowedItems] = useState<CollectionListItem[]>([]);
-  const [allowedLoading, setAllowedLoading] = useState(false);
-  const [allowedPage, setAllowedPage] = useState(1);
-  const [allowedTotalPages, setAllowedTotalPages] = useState(1);
+  // ------- Estado unificado -------
+  const [access, setAccess] = useState<AccessFilter>("owner");
+  const [items, setItems] = useState<CollectionListItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   // ------- Diálogo de creación -------
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
-
-  // Selección de institución (usamos AutocompleteInstitution para obtener el id)
   const [instSearchText, setInstSearchText] = useState("");
   const [selectedInstitutionId, setSelectedInstitutionId] = useState<string | null>(null);
-
-  // Form de creación (solo campos que POST acepta)
-  // collectionID ya no se manda: lo genera el ORM
-  const [form, setForm] = useState<CollectionCreate>({
-    collectionName: "",
-    description: "",
-  });
-
-  const canManageCollection = (c: CollectionListItem) => {
-    const isSuper = user?.role === Role.Admin;
-    const isInstAdminSameInst =
-      user?.role === Role.InstitutionAdmin &&
-      Number(user?.institutionId) === Number(c.institutionId);
-
-    const isOwnerRole = c.my_role === "owner";
-    return isSuper || isInstAdminSameInst || isOwnerRole;
-  };
-
-  // CSV (opcional: por ahora solo contamos filas; la carga real de ocurrencias no está en este endpoint)
+  const [form, setForm] = useState<CollectionCreate>({ collectionName: "", description: "" });
   const [csvFile, setCsvFile] = useState<File | null>(null);
 
-  // Helpers UI
+  // ------- Fetch único -------
+  const fetchCollections = useCallback(
+    async (currentAccess: AccessFilter, currentPage: number) => {
+      try {
+        setLoading(true);
+        const data = await collectionsService.getCollections(apiFetch, currentAccess, currentPage, collectionsPerPage);
+        setItems(data.items.map(toCollectionListItem));
+        setTotalPages(data.totalPages ?? 1);
+      } catch (e) {
+        console.error(e);
+        toast.error("No se pudieron cargar las colecciones");
+        setItems([]);
+        setTotalPages(1);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [apiFetch, collectionsPerPage]
+  );
+
+  // Reiniciar página al cambiar filtro
+  const handleAccessChange = (value: AccessFilter) => {
+    setAccess(value);
+    setPage(1);
+  };
+
+  useEffect(() => {
+    fetchCollections(access, page);
+  }, [access, page, fetchCollections]);
+
+  // ------- Helpers UI -------
   const roleBadge = (role?: string | null) => {
     if (!role) return null;
     const map: Record<string, string> = {
@@ -92,7 +92,6 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
       editor: "bg-emerald-100 text-emerald-800",
       viewer: "bg-gray-100 text-gray-800",
     };
-    const cls = map[role] ?? "bg-gray-100 text-gray-800";
     const label: Record<string, string> = {
       superuser: "Superuser",
       institution_admin: "Admin institución",
@@ -101,65 +100,26 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
       viewer: "Lector",
     };
     return (
-      <span className={`text-xs px-2 py-1 rounded ${cls}`} title="Tu rol en esta colección">
+      <span className={`text-xs px-2 py-1 rounded ${map[role] ?? "bg-gray-100 text-gray-800"}`}>
         {label[role] ?? role}
       </span>
     );
   };
 
-  // ------- Fetchers -------
-  const fetchMyCollections = useCallback(
-    async (page: number) => {
-      if (!userId) return;
-      try {
-        setMyLoading(true);
-        const data = await collectionsService.getByUser(apiFetch, userId, page, collectionsPerPage);
-        setMyItems(data.items.map(toCollectionListItem));
-        setMyTotalPages(data.totalPages ?? 1);
-      } catch (e) {
-        console.error(e);
-        toast.error("No se pudieron cargar tus colecciones");
-        setMyItems([]);
-        setMyTotalPages(1);
-      } finally {
-        setMyLoading(false);
-      }
-    },
-    [apiFetch, userId, collectionsPerPage]
-  );
+  const canManageCollection = (c: CollectionListItem) => {
+    const isInstAdminSameInst =
+      user?.role === Role.InstitutionAdmin &&
+      Number(user?.institutionId) === Number(c.institutionId);
+    return isSuper || isInstAdminSameInst || c.my_role === "owner";
+  };
 
-  const fetchAllowedCollections = useCallback(
-    async (page: number) => {
-      try {
-        setAllowedLoading(true);
-        const data = await collectionsService.getAllowed(apiFetch, page, collectionsPerPage);
-        setAllowedItems(data.items.map(toCollectionListItem));
-        setAllowedTotalPages(data.totalPages ?? 1);
-      } catch (e) {
-        console.error(e);
-        toast.error("No se pudieron cargar las colecciones permitidas");
-        setAllowedItems([]);
-        setAllowedTotalPages(1);
-      } finally {
-        setAllowedLoading(false);
-      }
-    },
-    [apiFetch, collectionsPerPage]
-  );
-
-  // ------- Crear colección -------
+  // ------- Form -------
   const resetForm = () => {
-    setForm({
-      collectionName: "",
-      description: "",
-    });
+    setForm({ collectionName: "", description: "" });
     setCsvFile(null);
-
     if (isRestrictedInstitutionPick) {
-      setSelectedInstitutionId(userInstitutionId);
-      setInstSearchText(
-        userInstitutionName || (userInstitutionId ? `Institución #${userInstitutionId}` : "")
-      );
+      setSelectedInstitutionId(userInstitutionId != null ? String(userInstitutionId) : null);
+      setInstSearchText(userInstitutionName || (userInstitutionId ? `Institución #${userInstitutionId}` : ""));
     } else {
       setSelectedInstitutionId(null);
       setInstSearchText("");
@@ -168,38 +128,17 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
 
   useEffect(() => {
     if (isRestrictedInstitutionPick) {
-      setSelectedInstitutionId(userInstitutionId);
-      setInstSearchText(
-        userInstitutionName || (userInstitutionId ? `Institución #${userInstitutionId}` : "")
-      );
+      setSelectedInstitutionId(userInstitutionId != null ? String(userInstitutionId) : null);
+      setInstSearchText(userInstitutionName || (userInstitutionId ? `Institución #${userInstitutionId}` : ""));
     }
   }, [isRestrictedInstitutionPick, userInstitutionId, userInstitutionName, open]);
-
-  // ------- Effects -------
-  useEffect(() => {
-    if (userId) fetchMyCollections(myPage);
-  }, [userId, myPage, fetchMyCollections]);
-
-  useEffect(() => {
-    fetchAllowedCollections(allowedPage);
-  }, [allowedPage, fetchAllowedCollections]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!token) return;
-
-    if (!form.collectionName?.trim()) {
-      toast.error("Ingresa un nombre de colección");
-      return;
-    }
-    if (!selectedInstitutionId) {
-      toast.error("Selecciona una institución");
-      return;
-    }
-    if (!userId) {
-      toast.error("No se encontró tu ID de usuario");
-      return;
-    }
+    if (!form.collectionName?.trim()) { toast.error("Ingresa un nombre de colección"); return; }
+    if (!selectedInstitutionId) { toast.error("Selecciona una institución"); return; }
+    if (!userId) { toast.error("No se encontró tu ID de usuario"); return; }
 
     const payload: CollectionCreate = {
       collectionName: form.collectionName?.trim() || null,
@@ -214,19 +153,8 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
       toast.success("Colección creada correctamente");
       setOpen(false);
       resetForm();
-
-      // refrescar ambas listas
-      if (userId) fetchMyCollections(1);
-      fetchAllowedCollections(1);
-      setMyPage(1);
-      setAllowedPage(1);
-
-      if (csvFile) {
-        const content = await csvFile.text();
-        const lines = content.split(/\r?\n/).filter((l) => l.trim());
-        const approx = Math.max(0, lines.length - 1);
-        toast.info(`CSV detectado (${approx} filas). Importación de ocurrencias se implementará aparte.`);
-      }
+      setPage(1);
+      fetchCollections(access, 1);
     } catch (e) {
       console.error(e);
       toast.error("Error creando la colección");
@@ -235,18 +163,6 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0] ?? null;
-    if (!f) return;
-    if (f.type === "text/csv" || f.name.endsWith(".csv")) {
-      setCsvFile(f);
-      toast.success("Archivo CSV cargado (solo conteo por ahora)");
-    } else {
-      toast.error("Selecciona un archivo CSV válido");
-    }
-  };
-
-  // ------- Navegación tarjetas -------
   const goToCollectionDetail = (c: CollectionListItem) => {
     onNavigate("collection-detail", {
       collectionId: c.collectionId,
@@ -262,8 +178,8 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-3xl mb-2">Colecciones</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-3xl font-semibold tracking-tight mb-2">Colecciones</h1>
+          <p className="text-sm text-muted-foreground">
             Gestiona tus colecciones y las que tienes permiso a ver/editar
           </p>
         </div>
@@ -281,18 +197,14 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
               <DialogDescription>Completa los metadatos de tu nueva colección.</DialogDescription>
             </DialogHeader>
 
-            {/* Form base compartido */}
             <div className="rounded-lg bg-blue-50 p-4 my-4">
               <div className="flex items-start gap-3">
                 <Folder className="h-5 w-5 text-blue-600 mt-0.5" />
-                <div>
-                  <h4 className="text-sm text-blue-900 mb-1">Metadatos</h4>
-                </div>
+                <h4 className="text-sm text-blue-900">Metadatos</h4>
               </div>
             </div>
 
             <form onSubmit={handleCreate} className="space-y-4">
-              {/* Creator */}
               <div className="space-y-1">
                 <Label>Creador</Label>
                 <div className="text-sm">{creatorDisplayName}</div>
@@ -320,41 +232,22 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
                 />
               </div>
 
-              {/* Autocomplete de institución */}
               <div className="space-y-2">
                 <Label htmlFor="institution">Institución</Label>
-
                 <AutocompleteInstitution
                   token={token}
                   apiFetch={apiFetch}
-                  placeholder={
-                    isRestrictedInstitutionPick
-                      ? userInstitutionName || "Tu institución"
-                      : "Buscar institución..."
-                  }
+                  placeholder={isRestrictedInstitutionPick ? userInstitutionName || "Tu institución" : "Buscar institución..."}
                   disabled={isRestrictedInstitutionPick}
                   value={instSearchText}
-                  onChange={(t) => {
-                    if (isRestrictedInstitutionPick) return; // bloquear edición
-                    setInstSearchText(t);
-                    setSelectedInstitutionId(null);
-                  }}
-                  onSelect={(item) => {
-                    if (isRestrictedInstitutionPick) return; // bloquear selección
-                    setInstSearchText(item.institutionName ?? "");
-                    setSelectedInstitutionId(item.institutionId ?? null);
-                  }}
+                  onChange={(t) => { if (isRestrictedInstitutionPick) return; setInstSearchText(t); setSelectedInstitutionId(null); }}
+                  onSelect={(item) => { if (isRestrictedInstitutionPick) return; setInstSearchText(item.institutionName ?? ""); setSelectedInstitutionId(item.institutionId ?? null); }}
                   minChars={1}
                 />
               </div>
 
               <div className="flex gap-2 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setOpen(false)}
-                  className="flex-1"
-                >
+                <Button type="button" variant="outline" onClick={() => setOpen(false)} className="flex-1">
                   Cancelar
                 </Button>
                 <Button type="submit" className="flex-1" disabled={creating}>
@@ -366,199 +259,101 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
         </Dialog>
       </div>
 
-      {/* Mis colecciones */}
-      {userId && (
-        <section className="mb-12">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl">Mis colecciones</h2>
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-muted-foreground">
-                {myPage} / {myTotalPages}
-              </span>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setMyPage((p) => Math.max(1, p - 1))}
-                  disabled={myPage <= 1 || myLoading}
-                  className="h-9 w-9 rounded-full"
-                >
-                  <ChevronLeft className="h-5 w-5" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setMyPage((p) => Math.min(myTotalPages, p + 1))}
-                  disabled={myPage >= myTotalPages || myLoading}
-                  className="h-9 w-9 rounded-full"
-                >
-                  <ChevronRight className="h-5 w-5" />
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          {myLoading ? (
-            <p className="text-sm text-muted-foreground py-4">Cargando…</p>
-          ) : myItems.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4">
-              No tienes colecciones creadas.
-            </p>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {myItems.map((c) => (
-                <Card
-                  key={c.collectionId}
-                  className="hover:shadow-lg transition-all cursor-pointer h-full border-2 hover:border-primary/50"
-                  onClick={() => goToCollectionDetail(c)}
-                >
-                  <CardHeader>
-                    {/* fila superior: icono izquierda, contador derecha */}
-                    <div className="flex items-center justify-between gap-2 min-w-0 w-full">
-                      <Folder className="h-8 w-8 text-primary shrink-0" />
-
-                      <span
-                        className="
-                                inline-flex items-center justify-center rounded-full
-                                bg-red-50 text-primary tabular-nums
-                                px-2 py-0.5 leading-none
-                                text-[11px] sm:text-xs
-                                max-w-[55%] sm:max-w-[60%]
-                                overflow-hidden text-ellipsis whitespace-nowrap text-right
-                                font-normal
-                              "
-                        title={`${c.occurrencesCount} ocurrencias`}
-                      >
-                        <span>{c.occurrencesCount}</span>
-                        <span className="ml-1 hidden sm:inline">ocurrencias</span>
-                        <span className="ml-1 sm:hidden">ocurrencias</span>
-                      </span>
-                    </div>
-
-                    <CardTitle className="truncate">{c.name ?? "(sin nombre)"}</CardTitle>
-
-                    <CardDescription className="flex items-center gap-2 min-w-0">
-                      <Users className="h-4 w-4 shrink-0" />
-                      <span className="truncate">
-                        {c.institutionName ?? "Sin institución"}
-                      </span>
-                    </CardDescription>
-                  </CardHeader>
-
-                  <CardContent>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Shield className="h-4 w-4" />
-                      <span>Tu rol:</span>
-                      {c.my_role ? (
-                        roleBadge(c.my_role)
-                      ) : (
-                        <span className="italic">Sin rol específico</span>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* Colecciones permitidas */}
-      <section className="mb-12">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl">Colecciones permitidas</h2>
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground">
-              {allowedPage} / {allowedTotalPages}
-            </span>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => setAllowedPage((p) => Math.max(1, p - 1))}
-                disabled={allowedPage <= 1 || allowedLoading}
-                className="h-9 w-9 rounded-full"
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => setAllowedPage((p) => Math.min(allowedTotalPages, p + 1))}
-                disabled={allowedPage >= allowedTotalPages || allowedLoading}
-                className="h-9 w-9 rounded-full"
-              >
-                <ChevronRight className="h-5 w-5" />
-              </Button>
-            </div>
-          </div>
+      {/* Selector de tipo de acceso + paginación */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <Label className="text-sm font-medium text-muted-foreground whitespace-nowrap">
+            Tipo de Acceso
+          </Label>
+          <Select value={access} onValueChange={(v) => handleAccessChange(v as AccessFilter)}>
+            <SelectTrigger className="w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="owner">Propietario</SelectItem>
+              <SelectItem value="allowed">Permitido</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
-        {allowedLoading ? (
-          <p className="text-sm text-muted-foreground py-4">Cargando…</p>
-        ) : allowedItems.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-4">No hay colecciones para mostrar.</p>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {allowedItems.map((c) => (
-              <Card
-                key={c.collectionId}
-                className="hover:shadow-lg transition-all cursor-pointer h-full border-2 hover:border-primary/50"
-                onClick={() => goToCollectionDetail(c)}
-              >
-                <CardHeader>
-                  {/* fila superior: icono izquierda, contador derecha */}
-                  <div className="flex items-center justify-between gap-2 min-w-0 w-full">
-                    <Folder className="h-8 w-8 text-primary shrink-0" />
-
-                    <span
-                      className="
-                                inline-flex items-center justify-center rounded-full
-                                bg-red-50 text-primary tabular-nums
-                                px-2 py-0.5 leading-none
-                                text-[11px] sm:text-xs
-                                max-w-[55%] sm:max-w-[60%]
-                                overflow-hidden text-ellipsis whitespace-nowrap text-right
-                                font-normal
-                              "
-                      title={`${c.occurrencesCount} ocurrencias`}
-                    >
-                      <span>{c.occurrencesCount}</span>
-                      <span className="ml-1 hidden sm:inline">ocurrencias</span>
-                      <span className="ml-1 sm:hidden">ocurrencias</span>
-                    </span>
-                  </div>
-
-                  <CardTitle className="truncate">{c.name ?? "(sin nombre)"}</CardTitle>
-
-                  <CardDescription className="flex items-center gap-2 min-w-0">
-                    <Users className="h-4 w-4 shrink-0" />
-                    <span className="truncate">
-                      {c.institutionName ?? "Sin institución"}
-                    </span>
-                  </CardDescription>
-                </CardHeader>
-
-                <CardContent>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Users className="h-4 w-4" />
-                    <span className="truncate">
-                      Creador: {c.creatorName ?? "Desconocido"}
-                    </span>
-                  </div>
-
-                  {/* Rol abajo con Shield al costado */}
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground mt-2">
-                    <Shield className="h-4 w-4" />
-                    <span>Tu rol:</span>
-                    {c.my_role ? roleBadge(c.my_role) : <span>Sin rol específico</span>}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-muted-foreground">
+            {page} / {totalPages}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1 || loading}
+              className="h-9 w-9 rounded-full"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages || loading}
+              className="h-9 w-9 rounded-full"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </Button>
           </div>
-        )}
-      </section>
+        </div>
+      </div>
+
+      {/* Lista */}
+      {loading ? (
+        <p className="text-sm text-muted-foreground py-4">Cargando…</p>
+      ) : items.length === 0 ? (
+        <p className="text-sm text-muted-foreground py-4">
+          {access === "owner" ? "No tienes colecciones creadas." : "No hay colecciones para mostrar."}
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {items.map((c) => (
+            <Card
+              key={c.collectionId}
+              className="hover:shadow-lg transition-all cursor-pointer h-full border-2 hover:border-primary/50"
+              onClick={() => goToCollectionDetail(c)}
+            >
+              <CardHeader>
+                <div className="flex items-center justify-between gap-2 min-w-0 w-full">
+                  <Folder className="h-8 w-8 text-primary shrink-0" />
+                  <span
+                    className="inline-flex items-center justify-center rounded-full bg-red-50 text-primary tabular-nums px-2 py-0.5 leading-none text-xs max-w-[60%] overflow-hidden text-ellipsis whitespace-nowrap font-normal"
+                    title={`${c.occurrencesCount} ocurrencias`}
+                  >
+                    {c.occurrencesCount} ocurrencias
+                  </span>
+                </div>
+
+                <CardTitle className="truncate">{c.name ?? "(sin nombre)"}</CardTitle>
+
+                <CardDescription className="flex items-center gap-2 min-w-0">
+                  <Users className="h-4 w-4 shrink-0" />
+                  <span className="truncate">{c.institutionName ?? "Sin institución"}</span>
+                </CardDescription>
+              </CardHeader>
+
+              <CardContent className="space-y-2">
+                {access === "allowed" && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Users className="h-4 w-4 shrink-0" />
+                    <span className="truncate">Creador: {c.creatorName ?? "Desconocido"}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Shield className="h-4 w-4 shrink-0" />
+                  <span>Tu rol:</span>
+                  {c.my_role ? roleBadge(c.my_role) : <span className="italic">Sin rol específico</span>}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

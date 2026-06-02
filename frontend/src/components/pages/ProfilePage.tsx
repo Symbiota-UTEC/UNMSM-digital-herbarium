@@ -5,7 +5,7 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
 import { Mail, Calendar, Building, Award, Loader2 } from "lucide-react";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 import { useAuth } from "@contexts/AuthContext";
 import { API } from "@constants/api";
 import { Role } from "@constants/roles";
@@ -117,7 +117,7 @@ export function ProfilePage() {
           parseJson<UserProfileResponse>(res, "No se pudo recuperar tu perfil")
         );
 
-        const allowedPromise = apiFetch(`${API.BASE_URL}/collections/allowed?limit=1&offset=0`).then(
+        const allowedPromise = apiFetch(`${API.BASE_URL}/collections?access=allowed&limit=1&offset=0`).then(
           async (res) => {
             const data = await parseJson<CollectionsResponse>(
               res,
@@ -127,17 +127,15 @@ export function ProfilePage() {
           }
         );
 
-        const ownedPromise = user.userId
-          ? apiFetch(`${API.BASE_URL}/collections/by-user/${user.userId}?limit=1&offset=0`).then(
-              async (res) => {
-                const data = await parseJson<CollectionsResponse>(
-                  res,
-                  "No se pudieron cargar tus colecciones"
-                );
-                return extractCollectionsTotal(data);
-              }
-            )
-          : Promise.resolve(null);
+        const ownedPromise = apiFetch(`${API.BASE_URL}/collections?access=owner&limit=1&offset=0`).then(
+          async (res) => {
+            const data = await parseJson<CollectionsResponse>(
+              res,
+              "No se pudieron cargar tus colecciones"
+            );
+            return extractCollectionsTotal(data);
+          }
+        );
 
         const occurrencesPromise = apiFetch(
           `${API.BASE_URL}/occurrences?page=1&page_size=50`
@@ -259,29 +257,6 @@ export function ProfilePage() {
         </div>
 
         <div className="md:col-span-2 space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Estadísticas</CardTitle>
-              <CardDescription>Resumen de tu actividad en el herbario</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-4">
-                {stats.map((stat) => (
-                  <div key={stat.label} className="text-center p-4 bg-gray-50 rounded-lg">
-                    <div className="text-3xl text-primary mb-1 min-h-[2.5rem] flex items-center justify-center">
-                      {isLoading && (stat.value === null || stat.value === undefined) ? (
-                        <Loader2 className="h-6 w-6 animate-spin" />
-                      ) : (
-                        formatNumber(stat.value)
-                      )}
-                    </div>
-                    <div className="text-sm text-muted-foreground">{stat.label}</div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
           <Card>
             <CardHeader>
               <CardTitle>Información profesional</CardTitle>

@@ -375,7 +375,7 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
       {/* Encabezado */}
       <div className="flex flex-col gap-2 md:flex-row md:items-baseline md:justify-between">
         <div>
-          <h1 className="text-2xl md:text-3xl font-semibold tracking-tight mb-1">
+          <h1 className="text-3xl font-semibold tracking-tight mb-2">
             Ocurrencias
           </h1>
           <p className="text-sm text-muted-foreground">

@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status, BackgroundTasks
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select, exists, or_, update, text
+from sqlalchemy import func, select, exists, or_, update, text
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.inspection import inspect
 from datetime import datetime
@@ -34,8 +34,8 @@ from backend.models.models import (
     Identification,
     OccurrenceImage,
 )
+from backend.schemas.common.pages import Page
 from backend.schemas.upload import (
-    TaxonFloraImportJobListOut,
     TaxonFloraImportJobOut,
     TaxonFloraUploadAcceptedOut,
 )
@@ -847,6 +847,7 @@ def _process_taxon_flora_csv_background(
             except UnicodeDecodeError:
                 encoding = "latin-1"
 
+            delimiter = "\t" if b"\t" in sample else ","
             bin_file.seek(0)
 
             def decoded_lines(f, enc):
@@ -867,7 +868,7 @@ def _process_taxon_flora_csv_background(
                     except UnicodeDecodeError:
                         yield bline.decode("latin-1", errors="replace")
 
-            reader = csv.reader(decoded_lines(bin_file, encoding), delimiter="\t")
+            reader = csv.reader(decoded_lines(bin_file, encoding), delimiter=delimiter)
             headers = next(reader, None)
             if not headers:
                 logger.error("CSV vacío (sin headers) en backbone flora: %s", filename)
@@ -1043,23 +1044,33 @@ def _process_taxon_flora_csv_background(
 
 @router.get(
     "/taxon-flora-csv/jobs",
-    response_model=TaxonFloraImportJobListOut,
-    summary="Lista los trabajos recientes de importación del backbone Taxon.",
+    response_model=Page[TaxonFloraImportJobOut],
+    summary="Lista los trabajos de importación del backbone Taxon (paginado).",
 )
 def list_taxon_flora_import_jobs(
-    limit: int = Query(10, ge=1, le=50),
+    limit: int = Query(10, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_superuser),
 ):
     del current_user
 
-    jobs = db.scalars(
-        select(TaxonFloraImportJob)
-        .order_by(TaxonFloraImportJob.createdAt.desc())
-        .limit(limit)
-    ).all()
+    base_q = select(TaxonFloraImportJob).order_by(TaxonFloraImportJob.createdAt.desc())
+    total = db.scalar(select(func.count()).select_from(base_q.subquery()))
+    jobs = db.scalars(base_q.limit(limit).offset(offset)).all()
 
-    return TaxonFloraImportJobListOut(items=jobs)
+    total_pages = (total + limit - 1) // limit if limit else 1
+    current_page = (offset // limit) + 1 if limit else 1
+
+    return Page[TaxonFloraImportJobOut](
+        items=jobs,
+        total=total,
+        limit=limit,
+        offset=offset,
+        currentPage=current_page,
+        totalPages=total_pages,
+        remainingPages=max(total_pages - current_page, 0),
+    )
 
 
 @router.get(

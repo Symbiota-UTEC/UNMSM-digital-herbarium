@@ -131,8 +131,8 @@ export function MapPage() {
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="mb-6">
-        <h1 className="text-3xl mb-2">Mapa de Ocurrencias</h1>
-        <p className="text-muted-foreground">
+        <h1 className="text-3xl font-semibold tracking-tight mb-2">Mapa de Ocurrencias</h1>
+        <p className="text-sm text-muted-foreground">
           Visualiza y filtra la distribución geográfica de especímenes
         </p>
       </div>

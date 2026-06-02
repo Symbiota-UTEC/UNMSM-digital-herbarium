@@ -14,8 +14,6 @@ export const API = {
         },
         COLLECTIONS: {
             BASE: "/collections",
-            BY_USER: (userId: string) => `/collections/by-user/${userId}`,
-            ALLOWED: "/collections/allowed",
             ACCESS_USERS: (collectionId: string) => `/collections/${collectionId}/access-users`,
             OCCURRENCES_BRIEF: (collectionId: string) => `/collections/${collectionId}/occurrences/brief`,
             ADD_USER: (collectionId: string) => `/collections/${collectionId}/permissions/add-user`,
@@ -60,4 +58,7 @@ export const PAGE_SIZE = {
     INSTITUTIONS: 4,
     REGISTRATIONS: 6,
     COLLECTIONS: 3,
+    TAXON_FLORA_JOBS: 1,
+    TAXON_TREE_ROOT: 50,
+    TAXON_TREE_CHILDREN: 50,
 };

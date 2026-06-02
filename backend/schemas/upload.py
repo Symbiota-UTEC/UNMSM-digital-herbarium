@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Optional
 from uuid import UUID
 
 from backend.schemas.common.base import StrictBaseModel
@@ -39,5 +39,3 @@ class TaxonFloraImportJobOut(StrictBaseModel):
     uploadedByUserId: Optional[UUID] = None
 
 
-class TaxonFloraImportJobListOut(StrictBaseModel):
-    items: List[TaxonFloraImportJobOut]

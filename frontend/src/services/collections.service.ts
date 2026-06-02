@@ -6,28 +6,15 @@ import { ApiError, throwIfError, type ApiFetch } from "./api.error";
 
 export const collectionsService = {
 
-    async getByUser(
+    async getCollections(
         apiFetch: ApiFetch,
-        userId: string,
+        access: "owner" | "allowed",
         page: number,
         limit: number,
     ): Promise<PaginatedResponse<CollectionOut>> {
         const offset = (page - 1) * limit;
         const res = await apiFetch(
-            `${API.BASE_URL}${API.PATHS.COLLECTIONS.BY_USER(userId)}?limit=${limit}&offset=${offset}`,
-        );
-        await throwIfError(res);
-        return res.json();
-    },
-
-    async getAllowed(
-        apiFetch: ApiFetch,
-        page: number,
-        limit: number,
-    ): Promise<PaginatedResponse<CollectionOut>> {
-        const offset = (page - 1) * limit;
-        const res = await apiFetch(
-            `${API.BASE_URL}${API.PATHS.COLLECTIONS.ALLOWED}?limit=${limit}&offset=${offset}`,
+            `${API.BASE_URL}${API.PATHS.COLLECTIONS.BASE}?access=${access}&limit=${limit}&offset=${offset}`,
         );
         await throwIfError(res);
         return res.json();

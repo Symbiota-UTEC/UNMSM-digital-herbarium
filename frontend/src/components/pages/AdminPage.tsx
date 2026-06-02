@@ -911,8 +911,8 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     <div className="container mx-auto px-4 py-8">
       {/* Header */}
       <div className="mb-6">
-        <h1 className="text-3xl mb-2">Panel de Administración</h1>
-        <p className="text-muted-foreground">
+        <h1 className="text-3xl font-semibold tracking-tight mb-2">Panel de Administración</h1>
+        <p className="text-sm text-muted-foreground">
           {isInstitutionAdmin
             ? `Administración de ${user?.institution}`
             : "Gestiona usuarios, colecciones y solicitudes de acceso"}
