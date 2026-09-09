@@ -15,8 +15,19 @@ RUN if [ -f package-lock.json ]; then \
 COPY . .
 ARG VITE_API_URL
 ARG VITE_CAMERA_BASE_URL
+# Microservicio de agentes IA (repo digital-herbarium-agents). Igual que la
+# integracion de camara, el navegador lo llama directo por URL absoluta, no a
+# traves del proxy de Nginx.
+#
+# Tiene que estar aca y no solo en el runtime: Vite reemplaza los
+# `import.meta.env.*` en tiempo de BUILD y hornea el valor en el bundle. Si no
+# se pasa, el default de `src/config/env.ts` deja `http://localhost:8100`
+# compilado y la integracion no funciona en ningun navegador que no sea el de
+# la maquina que corre el contenedor.
+ARG VITE_AGENTS_BASE_URL
 ENV VITE_API_URL=${VITE_API_URL}
 ENV VITE_CAMERA_BASE_URL=${VITE_CAMERA_BASE_URL}
+ENV VITE_AGENTS_BASE_URL=${VITE_AGENTS_BASE_URL}
 RUN npm run build
 
 # Normalize build output to /out (supports Vite 'dist/' or CRA 'build/')
