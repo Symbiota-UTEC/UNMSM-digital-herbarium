@@ -5,12 +5,19 @@ export interface InstitutionOut {
     institutionName?: string | null;
 }
 
+export interface CreatorOut {
+    userId: string;
+    username: string;
+    email: string;
+    fullName?: string | null;
+}
+
 export interface CollectionOut {
     collectionId: string;
     collectionName?: string | null;
     description?: string | null;
     institution?: InstitutionOut | null;
-    creatorName?: string | null;
+    creator?: CreatorOut | null;
     myRole?: CollectionRole | null;
     occurrencesCount?: number;
 }
@@ -47,6 +54,6 @@ export function toCollectionListItem(c: CollectionOut): CollectionListItem {
         my_role: c.myRole ?? null,
         institutionId: c.institution?.institutionId ?? null,
         institutionName: c.institution?.institutionName ?? null,
-        creatorName: c.creatorName ?? null,
+        creatorName: c.creator?.fullName || c.creator?.username || null,
     };
 }

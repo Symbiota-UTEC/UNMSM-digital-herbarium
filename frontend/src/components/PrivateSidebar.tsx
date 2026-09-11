@@ -37,10 +37,10 @@ const SUPERUSER_ITEMS = [
   { id: "uploads", label: "Cargas", icon: Upload },
 ];
 
-const BG = "#751a1d";
-const BG_HOVER = "#8c2023";
-const BG_ACTIVE = "#5a1416";
-const TEXT_MUTED = "rgba(255,255,255,0.65)";
+const BG = "#1f0909";
+const BG_HOVER = "#2e1010";
+const BG_ACTIVE = "#8b2323";
+const TEXT_MUTED = "rgba(255,255,255,0.6)";
 
 export function PrivateSidebar({ onNavigate, currentPage }: PrivateSidebarProps) {
   const { user, logout } = useAuth();
