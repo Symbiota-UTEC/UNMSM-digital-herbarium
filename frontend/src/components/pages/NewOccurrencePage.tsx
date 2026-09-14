@@ -34,6 +34,7 @@ import {
   Camera,
   Trash2,
   Star,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "../ui/alert";
@@ -42,6 +43,8 @@ import { autocompleteService } from "@services/autocomplete.service";
 import { taxonService } from "@services/taxon.service";
 import { occurrencesService } from "@services/occurrences.service";
 import { uploadService } from "@services/upload.service";
+import type { AgentExtractionResult } from "@services/agents.service";
+import { AgentsProcessingModal } from "../AgentsProcessingModal";
 import {
   Tooltip,
   TooltipContent,
@@ -234,6 +237,10 @@ export function NewOccurrencePage({
   /* ── CAMERA ── */
   const [captureLoading, setCaptureLoading] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+
+  // Procesamiento con IA (digital-herbarium-agents)
+  const [agentsModalOpen, setAgentsModalOpen] = useState(false);
+  const [agentsImageFile, setAgentsImageFile] = useState<File | null>(null);
 
   /* ── Cleanup blobs on unmount ── */
   useEffect(() => {
@@ -1085,6 +1092,77 @@ export function NewOccurrencePage({
     </div>
   );
 
+  /* ══════════════════════════════════════════════════
+     PROCESAMIENTO CON IA (digital-herbarium-agents)
+     Aplica los campos extraidos a los setters del form.
+     No sobrescribe campos que el usuario ya completo.
+  ══════════════════════════════════════════════════ */
+  const applyAgentsExtraction = (e: AgentExtractionResult) => {
+    const setIfEmpty = (current: string, next: string | null | undefined, setter: (v: string) => void) => {
+      if (next && !current) setter(next);
+    };
+
+    setIfEmpty(catalogNumber, e.usm_barcode, setCatalogNumber);
+    setIfEmpty(recordNumber, e.numero_colector, setRecordNumber);
+    setIfEmpty(recordedBy, e.nombre_colector, setRecordedBy);
+    setIfEmpty(verbatimEventDate, e.fecha_colecta, setVerbatimEventDate);
+    setIfEmpty(stateProvince, e.departamento_estado, setStateProvince);
+    setIfEmpty(county, e.provincia, setCounty);
+    setIfEmpty(municipality, e.distrito, setMunicipality);
+    setIfEmpty(verbatimLocality, e.localidad_verbatim, setVerbatimLocality);
+    setIfEmpty(verbatimElevation, e.altitud_verbatim, setVerbatimElevation);
+    setIfEmpty(habitat, e.habitat, setHabitat);
+    setIfEmpty(lifeStage, e.fenologia, setLifeStage);
+    setIfEmpty(associatedTaxa, e.asociacion_ecologica, setAssociatedTaxa);
+    setIfEmpty(occurrenceRemarks, e.notas_etiqueta, setOccurrenceRemarks);
+    setIfEmpty(typeStatus, e.type_status, setTypeStatus);
+    setIfEmpty(dateIdentified, e.fecha_determinacion, setDateIdentified);
+    setIfEmpty(scientificNameInput, e.nombre_cientifico_verbatim, setScientificNameInput);
+
+    // Coordenadas: numeros -> string
+    if (e.coordenadas_lat != null && !decimalLatitude) setDecimalLatitude(String(e.coordenadas_lat));
+    if (e.coordenadas_lon != null && !decimalLongitude) setDecimalLongitude(String(e.coordenadas_lon));
+
+    // Pais -> mapeo a countryCode (ISO-2) si encontramos match
+    if (e.pais && !countryCode) {
+      const found = COUNTRIES.find(
+        (c) => c.name.toLowerCase() === e.pais!.trim().toLowerCase(),
+      );
+      if (found) setCountryCode(found.code);
+    }
+
+    // Determinador -> primer Identifier si todavia no hay ninguno
+    if (e.determinador && identifiers.length === 0) {
+      setIdentifiers([{ name: e.determinador, orcid: "" }]);
+    }
+
+    // Metadatos del agente -> dynamicProperties (categoria + GBIF si lo hubo)
+    const newDynProps: { key: string; value: string }[] = [];
+    if (e.categoria_investigacion && e.categoria_investigacion !== "DESCONOCIDA") {
+      const exists = dynamicProps.some((d) => d.key === "categoria_investigacion");
+      if (!exists) newDynProps.push({ key: "categoria_investigacion", value: e.categoria_investigacion });
+    }
+    if (e.gbif?.matched && e.gbif.scientific_name) {
+      const exists = dynamicProps.some((d) => d.key === "gbif_match");
+      if (!exists) {
+        newDynProps.push({
+          key: "gbif_match",
+          value: JSON.stringify({
+            name: e.gbif.scientific_name,
+            family: e.gbif.family,
+            gbifKey: e.gbif.gbif_key,
+            matchType: e.gbif.match_type,
+          }),
+        });
+      }
+    }
+    if (newDynProps.length > 0) {
+      setDynamicProps((prev) => [...prev, ...newDynProps]);
+    }
+
+    toast.success("Campos prellenados con IA. Reviselos antes de guardar.");
+  };
+
   const renderImagesTab = () => (
     <div className="space-y-6">
       {/* Existing images (edit mode) */}
@@ -1174,6 +1252,35 @@ export function NewOccurrencePage({
             className="hidden"
             onChange={(e) => handleFileUpload(e.target.files)}
           />
+
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={newImages.length === 0}
+                    onClick={() => {
+                      if (newImages.length === 0) return;
+                      setAgentsImageFile(newImages[0].file);
+                      setAgentsModalOpen(true);
+                    }}
+                    className="gap-1.5"
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Procesar con IA
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                {newImages.length === 0
+                  ? "Primero toma una foto o sube una imagen"
+                  : "Detecta zonas y extrae los campos de las etiquetas con IA"}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
 
         {cameraError && (
@@ -1364,6 +1471,13 @@ export function NewOccurrencePage({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AgentsProcessingModal
+        open={agentsModalOpen}
+        imageFile={agentsImageFile}
+        onClose={() => setAgentsModalOpen(false)}
+        onComplete={(extraction) => applyAgentsExtraction(extraction)}
+      />
     </>
   );
 }

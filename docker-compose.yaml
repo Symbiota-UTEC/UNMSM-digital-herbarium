@@ -89,6 +89,16 @@ services:
         # VITE_API_URL: "http://216.144.234.244:8000/api"
         VITE_API_URL: "http://localhost:8000/api"
         VITE_CAMERA_BASE_URL: "http://172.31.99.9:8000"
+        # Microservicio de agentes IA. Corre por fuera de este compose (repo
+        # digital-herbarium-agents, container_name herbarium_agents), asi que la
+        # URL es la publica y no el nombre del servicio: la resuelve el
+        # NAVEGADOR, no el contenedor del frontend.
+        #
+        # Dos cosas que tienen que acompanar a este valor:
+        #   - el puerto 8100 publicado en el host donde corra el microservicio;
+        #   - este origen del frontend en su CORS_ALLOW_ORIGINS, que por
+        #     defecto solo trae localhost.
+        VITE_AGENTS_BASE_URL: "http://216.144.234.244:8100"
     container_name: herbarium_frontend
     depends_on:
       backend:
