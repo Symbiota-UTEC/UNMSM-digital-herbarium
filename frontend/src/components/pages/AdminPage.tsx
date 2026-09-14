@@ -198,15 +198,15 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
         params.set("statusFilter", "pending");
 
         if (user?.role === Role.InstitutionAdmin && user?.institutionId) {
-          params.set("institution_id", String(user.institutionId));
+          params.set("institutionId", String(user.institutionId));
         } else {
           if (reqSelectedInstitutionId && reqSelectedInstitutionId !== "all") {
-            params.set("institution_id", String(reqSelectedInstitutionId));
+            params.set("institutionId", String(reqSelectedInstitutionId));
           }
         }
 
         if (requestNameFilter.trim()) {
-          params.set("full_name_prefix", requestNameFilter.trim());
+          params.set("fullNamePrefix", requestNameFilter.trim());
         }
 
         const res = await apiFetch(

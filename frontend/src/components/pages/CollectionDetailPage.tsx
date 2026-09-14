@@ -36,7 +36,6 @@ import {
 } from "../ui/alert-dialog";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { Badge } from "../ui/badge";
 import {
   Select,
   SelectContent,
@@ -47,17 +46,20 @@ import {
 import {
   ArrowLeft,
   UserPlus,
+  Users,
   Pencil,
   Trash2,
   Eye,
   RefreshCw,
   ChevronDown,
+  ChevronUp,
   ChevronRight,
   ChevronLeft,
   Upload,
   Info,
 } from "lucide-react";
-import { toast } from "sonner@2.0.3";
+import { DataTable, type ColumnDef } from "../ui/data-table";
+import { toast } from "sonner";
 import { useAuth } from "@contexts/AuthContext";
 import { collectionsService } from "@services/collections.service";
 import { usersService } from "@services/users.service";
@@ -105,6 +107,7 @@ export function CollectionDetailPage({
   // ================== Estado: ocurrencias ==================
   const [occResp, setOccResp] =
     useState<PaginatedResponse<OccurrenceBriefItem> | null>(null);
+  const [occLoading, setOccLoading] = useState(false);
   const [occLimit] = useState(5);
   const [occOffset, setOccOffset] = useState(0);
 
@@ -165,11 +168,14 @@ export function CollectionDetailPage({
   const fetchOccurrences = useCallback(async () => {
     if (!token) return;
     try {
+      setOccLoading(true);
       const data = await collectionsService.getOccurrencesBrief(apiFetch, collectionId, occOffset, occLimit);
       setOccResp(data);
     } catch (err) {
       console.error("fetch occurrences error:", err);
       toast.error("No se pudieron cargar las ocurrencias");
+    } finally {
+      setOccLoading(false);
     }
   }, [apiFetch, collectionId, occLimit, occOffset, token]);
 
@@ -317,12 +323,6 @@ export function CollectionDetailPage({
   const usersHasPrev = usersOffset > 0;
   const usersHasNext = usersOffset + usersLimit < usersTotal;
 
-  const usersRange = {
-    start: usersTotal === 0 ? 0 : usersOffset + 1,
-    end: Math.min(usersOffset + usersLimit, usersTotal),
-    total: usersTotal,
-    page: usersCurrentPage,
-  };
 
   const gotoUsersPage = (page: number) => {
     const clamped = Math.max(1, Math.min(usersTotalPages, page));
@@ -337,9 +337,6 @@ export function CollectionDetailPage({
     occTotalPages,
     Math.floor(occOffset / occLimit) + 1,
   );
-  const occHasPrev = occOffset > 0;
-  const occHasNext = occOffset + occLimit < occTotal;
-
   const gotoOccPage = (page: number) => {
     const clamped = Math.max(1, Math.min(occTotalPages, page));
     setOccOffset((clamped - 1) * occLimit);
@@ -357,6 +354,66 @@ export function CollectionDetailPage({
       isOwner,
     });
   };
+
+  const occColumns: ColumnDef<OccurrenceBriefItem>[] = [
+    { key: "code", header: "Código", cell: (occ) => occ.code ?? "—" },
+    {
+      key: "scientific-name",
+      header: "Nombre Científico",
+      cell: (occ) => <span className="italic">{occ.scientificName ?? "—"}</span>,
+    },
+    { key: "family", header: "Familia", cell: (occ) => occ.family ?? "—" },
+    { key: "location", header: "Ubicación", cell: (occ) => occ.location ?? "—" },
+    { key: "collector", header: "Recolector", cell: (occ) => occ.collector ?? "—" },
+    { key: "date", header: "Fecha", cell: (occ) => formatBriefDate(occ.date) },
+    {
+      key: "actions",
+      header: "Acciones",
+      cell: (occ) => (
+        <div className="flex justify-end gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 w-8 p-0"
+            onClick={() => goToOccurrenceDetail(occ.occurrenceId)}
+            title="Ver detalle"
+          >
+            <Eye className="h-4 w-4" />
+          </Button>
+          {isOwner && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0"
+                title="Editar ocurrencia"
+                onClick={() =>
+                  onNavigate("edit-occurrence", {
+                    occurrenceId: occ.occurrenceId,
+                    collectionId,
+                    collectionName,
+                    isOwner,
+                    returnTo: "collection",
+                  })
+                }
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled
+                title="Próximamente"
+                className="h-8 w-8 p-0"
+              >
+                <Trash2 className="h-4 w-4 text-red-600" />
+              </Button>
+            </>
+          )}
+        </div>
+      ),
+    },
+  ];
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -381,474 +438,270 @@ export function CollectionDetailPage({
 
       {/* Usuarios con Acceso */}
       {isOwner && (
-        <Card className="mb-6">
-          <CardHeader>
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              {/* Zona título + chevron (colapsable) */}
-              <button
-                type="button"
-                onClick={() => setIsUsersExpanded(!isUsersExpanded)}
-                className="flex items-center gap-3 flex-1 text-left cursor-pointer hover:bg-muted/50 transition-colors rounded-md -mx-2 px-2 py-1"
-              >
-                {isUsersExpanded ? (
-                  <ChevronDown className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-                ) : (
-                  <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-                )}
-                <div className="flex-1">
-                  <CardTitle className="mb-1">Usuarios con Acceso</CardTitle>
-                  <CardDescription>
-                    Usuarios que pueden acceder a esta colección (
-                    {usersCount} total)
-                  </CardDescription>
-                </div>
-              </button>
-
-              {/* Controles de paginación + botón */}
-              {isUsersExpanded && (
-                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
-                  {/* Prev/Next */}
-                  <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => gotoUsersPage(usersCurrentPage - 1)}
-                      disabled={!usersHasPrev}
-                    >
-                      <ChevronLeft className="h-4 w-4 mr-1" />
-                      Anterior
-                    </Button>
-
-                    <span className="text-sm text-muted-foreground min-w-[170px] text-center">
-                      Página {usersCurrentPage} de {usersTotalPages}
-                      {usersResp && usersTotalPages > 1 && (
-                        <>
-                          <span className="mx-1">•</span>
-                          {usersRange.start}–{usersRange.end}
-                        </>
+        <div className="flex flex-col gap-3 mb-6">
+          {/* Botón encima de la card */}
+          <div className="flex justify-end">
+            <Dialog
+              open={showAddUserDialog}
+              onOpenChange={(open: boolean) => {
+                setShowAddUserDialog(open);
+                if (!open) {
+                  setEmailInput("");
+                  setEmailStatus("idle");
+                  setEmailHelp("");
+                }
+              }}
+            >
+              <DialogTrigger asChild>
+                <Button size="sm">
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Agregar Usuario
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Agregar Usuario a la Colección</DialogTitle>
+                  <DialogDescription>
+                    Invita a otros usuarios como visualizadores
+                  </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleAddUser} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="userEmail">Correo Electrónico</Label>
+                    <div className="relative">
+                      <Input
+                        id="userEmail"
+                        type="email"
+                        value={emailInput}
+                        onChange={(e) => {
+                          setEmailInput(e.target.value);
+                          setEmailStatus("idle");
+                          setEmailHelp("");
+                        }}
+                        onBlur={(e) => { void validateAddUserEmail(e.target.value); }}
+                        placeholder="usuario@ejemplo.com"
+                        required
+                        aria-invalid={emailStatus === "error" ? true : undefined}
+                        style={statusStyle}
+                        className="focus-visible:outline-none"
+                      />
+                      {emailStatus !== "idle" && (
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                          {emailStatus === "checking" && <Info className="h-4 w-4 text-muted-foreground animate-pulse" />}
+                          {emailStatus === "ok" && <span style={{ color: STATUS_HEX.ok }} className="text-sm font-medium">OK</span>}
+                          {emailStatus === "warn" && <span style={{ color: STATUS_HEX.warn }} className="text-sm font-medium">Warn</span>}
+                          {emailStatus === "error" && <span style={{ color: STATUS_HEX.error }} className="text-sm font-medium">Error</span>}
+                        </div>
                       )}
-                    </span>
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => gotoUsersPage(usersCurrentPage + 1)}
-                      disabled={!usersHasNext}
-                    >
-                      Siguiente
-                      <ChevronRight className="h-4 w-4 ml-1" />
-                    </Button>
-                  </div>
-
-                  {/* Dialog Agregar Usuario */}
-                  <Dialog
-                    open={showAddUserDialog}
-                    onOpenChange={(open) => {
-                      setShowAddUserDialog(open);
-                      if (!open) {
-                        setEmailInput("");
-                        setEmailStatus("idle");
-                        setEmailHelp("");
-                      }
-                    }}
-                  >
-                    <DialogTrigger asChild>
-                      <Button size="sm" className="flex-shrink-0">
-                        <UserPlus className="h-4 w-4 mr-2" />
-                        Agregar Usuario
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Agregar Usuario a la Colección</DialogTitle>
-                        <DialogDescription>
-                          Invita a otros usuarios como visualizadores
-                        </DialogDescription>
-                      </DialogHeader>
-
-                      <form onSubmit={handleAddUser} className="space-y-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="userEmail">Correo Electrónico</Label>
-                          <div className="relative">
-                            <Input
-                              id="userEmail"
-                              type="email"
-                              value={emailInput}
-                              onChange={(e) => {
-                                setEmailInput(e.target.value);
-                                setEmailStatus("idle");
-                                setEmailHelp("");
-                              }}
-                              onBlur={(e) => {
-                                void validateAddUserEmail(e.target.value);
-                              }}
-                              placeholder="usuario@ejemplo.com"
-                              required
-                              aria-invalid={
-                                emailStatus === "error" ? true : undefined
-                              }
-                              style={statusStyle}
-                              className="focus-visible:outline-none"
-                            />
-
-                            {emailStatus !== "idle" && (
-                              <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                                {emailStatus === "checking" && (
-                                  <Info className="h-4 w-4 text-muted-foreground animate-pulse" />
-                                )}
-                                {emailStatus === "ok" && (
-                                  <span
-                                    style={{ color: STATUS_HEX.ok }}
-                                    className="text-sm font-medium"
-                                  >
-                                    OK
-                                  </span>
-                                )}
-                                {emailStatus === "warn" && (
-                                  <span
-                                    style={{ color: STATUS_HEX.warn }}
-                                    className="text-sm font-medium"
-                                  >
-                                    Warn
-                                  </span>
-                                )}
-                                {emailStatus === "error" && (
-                                  <span
-                                    style={{ color: STATUS_HEX.error }}
-                                    className="text-sm font-medium"
-                                  >
-                                    Error
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                          </div>
-
-                          {emailHelp && (
-                            <p
-                              className="text-sm"
-                              style={{
-                                color:
-                                  emailStatus === "error"
-                                    ? STATUS_HEX.error
-                                    : emailStatus === "warn"
-                                    ? STATUS_HEX.warn
-                                    : emailStatus === "ok"
-                                    ? STATUS_HEX.ok
-                                    : undefined,
-                              }}
-                            >
-                              {emailHelp}
-                            </p>
-                          )}
-                        </div>
-
-                        {/* Rol fijo: viewer */}
-                        <div className="space-y-2">
-                          <Label htmlFor="userRole">Rol</Label>
-                          <Select
-                            value={"viewer"}
-                            onValueChange={() => {}}
-                            disabled
-                          >
-                            <SelectTrigger id="userRole">
-                              <SelectValue placeholder="Visualizador" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="viewer">
-                                Visualizador
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <p className="text-sm text-muted-foreground">
-                            Se agregará como <strong>Visualizador</strong>.
-                          </p>
-                        </div>
-
-                        <Button
-                          type="submit"
-                          className="w-full"
-                          disabled={
-                            emailStatus === "error" ||
-                            emailStatus === "checking" ||
-                            !emailInput.trim()
-                          }
-                        >
-                          Agregar Usuario
-                        </Button>
-                      </form>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-              )}
-            </div>
-          </CardHeader>
-
-          {isUsersExpanded && (
-            <CardContent>
-              {!usersResp ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-                  <RefreshCw className="h-4 w-4 animate-spin" /> Cargando
-                  usuarios…
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Usuario</TableHead>
-                      <TableHead className="text-center">Rol</TableHead>
-                      <TableHead className="text-center">Acciones</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {usersResp.items.length === 0 ? (
-                      <TableRow>
-                        <TableCell
-                          colSpan={3}
-                          className="text-center text-sm text-muted-foreground"
-                        >
-                          No hay usuarios aún.
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      usersResp.items.map((u) => (
-                        <TableRow key={u.email}>
-                          {/* Columna usuario */}
-                          <TableCell>
-                            <div className="flex items-center gap-3">
-                              <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                                {u.role === "viewer" ? (
-                                  <Eye className="h-5 w-5 text-primary" />
-                                ) : (
-                                  <Pencil className="h-5 w-5 text-primary" />
-                                )}
-                              </div>
-                              <div>
-                                <p className="font-medium">
-                                  {u.fullName || u.email.split("@")[0]}
-                                </p>
-                                <p className="text-sm text-muted-foreground">
-                                  {u.email}
-                                </p>
-                                {u.institution && (
-                                  <p className="text-xs text-muted-foreground mt-0.5">
-                                    {u.institution}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          </TableCell>
-
-                          {/* Columna rol */}
-                          <TableCell className="whitespace-nowrap align-middle text-center">
-                            <Badge
-                              variant={
-                                u.role === "viewer" ? "secondary" : "default"
-                              }
-                              className="mx-auto"
-                            >
-                              {u.role === "viewer"
-                                ? "Visualizador"
-                                : u.role === "editor"
-                                ? "Editor"
-                                : "Owner"}
-                            </Badge>
-                          </TableCell>
-
-                          {/* Columna acciones */}
-                          <TableCell className="whitespace-nowrap align-middle">
-                            <div className="flex justify-center gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                disabled
-                                title="Próximamente"
-                                className="h-9 w-9 p-0"
-                              >
-                                <RefreshCw className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                disabled
-                                title="Próximamente"
-                                className="h-9 w-9 p-0"
-                              >
-                                <Trash2 className="h-4 w-4 text-red-600" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))
+                    </div>
+                    {emailHelp && (
+                      <p className="text-sm" style={{ color: emailStatus === "error" ? STATUS_HEX.error : emailStatus === "warn" ? STATUS_HEX.warn : emailStatus === "ok" ? STATUS_HEX.ok : undefined }}>
+                        {emailHelp}
+                      </p>
                     )}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          )}
-        </Card>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="userRole">Rol</Label>
+                    <Select value="viewer" onValueChange={() => {}} disabled>
+                      <SelectTrigger id="userRole">
+                        <SelectValue placeholder="Visualizador" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="viewer">Visualizador</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-sm text-muted-foreground">
+                      Se agregará como <strong>Visualizador</strong>.
+                    </p>
+                  </div>
+                  <Button
+                    type="submit"
+                    className="w-full"
+                    disabled={emailStatus === "error" || emailStatus === "checking" || !emailInput.trim()}
+                  >
+                    Agregar Usuario
+                  </Button>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </div>
+
+          {/* Card de usuarios — misma estructura que FiltersCard */}
+          <Card className="border border-primary/30 shadow-sm">
+            <CardHeader className="pb-3 border-b border-border">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="flex items-center justify-center rounded-full bg-primary/10"
+                    style={{ width: "2rem", height: "2rem", flexShrink: 0 }}
+                  >
+                    <Users className="h-4 w-4 text-primary" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-lg font-semibold tracking-tight">
+                      Usuarios con Acceso
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      Usuarios que pueden acceder a esta colección ({usersCount} total)
+                    </CardDescription>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setIsUsersExpanded((v) => !v)}
+                  aria-label={isUsersExpanded ? "Ocultar usuarios" : "Mostrar usuarios"}
+                >
+                  {isUsersExpanded
+                    ? <ChevronUp className="h-4 w-4" />
+                    : <ChevronDown className="h-4 w-4" />}
+                </Button>
+              </div>
+            </CardHeader>
+
+            {isUsersExpanded && (
+              <CardContent className="pt-4">
+                {!usersResp ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+                    <RefreshCw className="h-4 w-4 animate-spin" /> Cargando usuarios…
+                  </div>
+                ) : (
+                  <>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Usuario</TableHead>
+                          <TableHead>Rol</TableHead>
+                          <TableHead className="whitespace-nowrap" style={{ width: "1px", textAlign: "right" }}>Acciones</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {usersResp.items.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={3} className="text-center text-sm text-muted-foreground">
+                              No hay usuarios aún.
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          usersResp.items.map((u) => (
+                            <TableRow key={u.email}>
+                              <TableCell>
+                                <div className="flex items-center gap-3">
+                                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                    {u.role === "viewer"
+                                      ? <Eye className="h-4 w-4 text-primary" />
+                                      : <Pencil className="h-4 w-4 text-primary" />}
+                                  </div>
+                                  <div>
+                                    <p className="font-medium">{u.full_name || u.email.split("@")[0]}</p>
+                                    <p className="text-sm text-muted-foreground">{u.email}</p>
+                                    {u.institution && (
+                                      <p className="text-xs text-muted-foreground">{u.institution}</p>
+                                    )}
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell className="whitespace-nowrap align-middle">
+                                <div>
+                                  {u.role === "owner" && (
+                                    <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">Propietario</span>
+                                  )}
+                                  {u.role === "editor" && (
+                                    <span className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-700">Editor</span>
+                                  )}
+                                  {u.role === "viewer" && (
+                                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-800">Lector</span>
+                                  )}
+                                  {!["owner", "editor", "viewer"].includes(u.role) && (
+                                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-800">{u.role}</span>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell className="whitespace-nowrap align-middle" style={{ width: "1px" }}>
+                                <div className="flex justify-end gap-2">
+                                  <Button variant="outline" size="sm" disabled title="Próximamente" className="h-9 w-9 p-0">
+                                    <RefreshCw className="h-4 w-4" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" disabled title="Próximamente" className="h-9 w-9 p-0">
+                                    <Trash2 className="h-4 w-4 text-red-600" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+
+                    {/* Paginación debajo de la tabla */}
+                    <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => gotoUsersPage(usersCurrentPage - 1)}
+                        disabled={!usersHasPrev}
+                      >
+                        <ChevronLeft className="h-4 w-4 mr-1" />
+                        Anterior
+                      </Button>
+                      <span className="text-sm text-muted-foreground">
+                        Página {usersCurrentPage} de {usersTotalPages}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => gotoUsersPage(usersCurrentPage + 1)}
+                        disabled={!usersHasNext}
+                      >
+                        Siguiente
+                        <ChevronRight className="h-4 w-4 ml-1" />
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            )}
+          </Card>
+        </div>
       )}
 
       {/* Ocurrencias */}
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-            <div>
-              <CardTitle>Ocurrencias</CardTitle>
-              <CardDescription>
-                Lista de especímenes en esta colección
-              </CardDescription>
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
-              {/* Prev/Next */}
-              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => gotoOccPage(occCurrentPage - 1)}
-                  disabled={!occHasPrev}
-                >
-                  <ChevronLeft className="h-4 w-4 mr-1" />
-                  Anterior
-                </Button>
-                <span className="text-sm text-muted-foreground min-w-[140px] text-center">
-                  Página {occCurrentPage} de {occTotalPages}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => gotoOccPage(occCurrentPage + 1)}
-                  disabled={!occHasNext}
-                >
-                  Siguiente
-                  <ChevronRight className="h-4 w-4 ml-1" />
-                </Button>
-              </div>
-
-              {isOwner && (
-                <Button
-                  onClick={() =>
-                    onNavigate("new-occurrence", {
-                      collectionId,
-                      collectionName,
-                      isOwner,
-                    })
-                  }
-                  variant="outline"
-                  size="sm"
-                  className="flex-shrink-0"
-                >
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  Nueva Ocurrencia
-                </Button>
-              )}
-
-              {isOwner && (
-                <Button
-                  onClick={() =>
-                    onNavigate("csv-import", { collectionId, collectionName })
-                  }
-                  size="sm"
-                  className="flex-shrink-0"
-                >
-                  <Upload className="h-4 w-4 mr-2" />
-                  Importar CSV
-                </Button>
-              )}
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {!occResp ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-              <RefreshCw className="h-4 w-4 animate-spin" /> Cargando
-              ocurrencias…
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Código</TableHead>
-                  <TableHead>Nombre Científico</TableHead>
-                  <TableHead>Familia</TableHead>
-                  <TableHead>Ubicación</TableHead>
-                  <TableHead>Recolector</TableHead>
-                  <TableHead>Fecha</TableHead>
-                  <TableHead>Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {occResp.items.length === 0 ? (
-                  <TableRow>
-                    <TableCell
-                      colSpan={7}
-                      className="text-center text-sm text-muted-foreground"
-                    >
-                      No hay ocurrencias en esta colección todavía.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  occResp.items.map((occ) => (
-                    <TableRow key={occ.occurrenceId}>
-                      <TableCell>{occ.code ?? "—"}</TableCell>
-                      <TableCell className="italic">
-                        {occ.scientificName ?? "—"}
-                      </TableCell>
-                      <TableCell>{occ.family ?? "—"}</TableCell>
-                      <TableCell>{occ.location ?? "—"}</TableCell>
-                      <TableCell>{occ.collector ?? "—"}</TableCell>
-                      <TableCell>{formatBriefDate(occ.date)}</TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-9 w-9 p-0"
-                            onClick={() => goToOccurrenceDetail(occ.occurrenceId)}
-                            title="Ver detalle"
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          {isOwner && (
-                            <>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-9 w-9 p-0"
-                                title="Editar ocurrencia"
-                                onClick={() =>
-                                  onNavigate("edit-occurrence", {
-                                    occurrenceId: occ.occurrenceId,
-                                    collectionId,
-                                    collectionName,
-                                    isOwner,
-                                    returnTo: "collection",
-                                  })
-                                }
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                disabled
-                                title="Próximamente"
-                                className="h-9 w-9 p-0"
-                              >
-                                <Trash2 className="h-4 w-4 text-red-600" />
-                              </Button>
-                            </>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      <DataTable<OccurrenceBriefItem>
+        title="Ocurrencias"
+        description="Lista de especímenes en esta colección"
+        columns={occColumns}
+        data={occResp?.items ?? []}
+        keyExtractor={(row) => row.occurrenceId}
+        loading={occLoading}
+        emptyMessage="No hay ocurrencias en esta colección todavía."
+        page={occCurrentPage}
+        totalPages={occTotalPages}
+        onPrevPage={() => gotoOccPage(occCurrentPage - 1)}
+        onNextPage={() => gotoOccPage(occCurrentPage + 1)}
+        toolbar={
+          isOwner ? (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onNavigate("new-occurrence", { collectionId, collectionName, isOwner })}
+              >
+                <UserPlus className="h-4 w-4 mr-2" />
+                Nueva Ocurrencia
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => onNavigate("csv-import", { collectionId, collectionName })}
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                Importar CSV
+              </Button>
+            </>
+          ) : undefined
+        }
+      />
 
       {/* Eliminar colección (placeholder visual) */}
       {isOwner && (

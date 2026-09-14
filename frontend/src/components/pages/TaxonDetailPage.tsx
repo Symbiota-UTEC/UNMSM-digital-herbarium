@@ -75,10 +75,23 @@ interface TaxonDetailOut {
 
 interface TaxonDetailPageProps {
   taxonId: string;
+  returnTo?: string;
+  returnOccurrenceId?: string;
+  collectionId?: string;
+  collectionName?: string;
+  isOwner?: boolean;
   onNavigate: (page: string, params?: Record<string, any>) => void;
 }
 
-export function TaxonDetailPage({ taxonId, onNavigate }: TaxonDetailPageProps) {
+export function TaxonDetailPage({
+  taxonId,
+  returnTo,
+  returnOccurrenceId,
+  collectionId,
+  collectionName,
+  isOwner,
+  onNavigate,
+}: TaxonDetailPageProps) {
   const { apiFetch } = useAuth();
   const [taxon, setTaxon] = useState<TaxonDetailOut | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -110,7 +123,16 @@ export function TaxonDetailPage({ taxonId, onNavigate }: TaxonDetailPageProps) {
   }, [taxonId]);
 
   const handleBack = () => {
-    onNavigate("taxon");
+    if (returnTo === "occurrence-detail" && returnOccurrenceId) {
+      onNavigate("occurrence-detail", {
+        occurrenceId: returnOccurrenceId,
+        collectionId,
+        collectionName,
+        isOwner,
+      });
+    } else {
+      onNavigate("taxon");
+    }
   };
 
   const handleOpenOccurrence = (occurrenceId?: string) => {
@@ -141,7 +163,7 @@ export function TaxonDetailPage({ taxonId, onNavigate }: TaxonDetailPageProps) {
         <div className="flex items-center gap-4 mb-6">
           <Button variant="ghost" onClick={handleBack}>
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Volver a Taxones
+            Volver
           </Button>
         </div>
         <Card>
@@ -161,7 +183,7 @@ export function TaxonDetailPage({ taxonId, onNavigate }: TaxonDetailPageProps) {
         <div className="flex items-center gap-4 mb-6">
           <Button variant="ghost" onClick={handleBack}>
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Volver a Taxones
+            Volver
           </Button>
         </div>
         <Card>
@@ -183,7 +205,7 @@ export function TaxonDetailPage({ taxonId, onNavigate }: TaxonDetailPageProps) {
       <div className="flex items-center gap-4 mb-6">
         <Button variant="ghost" onClick={handleBack}>
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Volver a Taxones
+          Volver
         </Button>
       </div>
 

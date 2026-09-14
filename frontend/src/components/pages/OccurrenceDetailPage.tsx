@@ -168,7 +168,14 @@ export function OccurrenceDetailPage({
 
   const goToTaxon = (taxonId?: string | null) => {
     if (!taxonId) return;
-    onNavigate("taxon-detail", { taxonId });
+    onNavigate("taxon-detail", {
+      taxonId,
+      returnTo: "occurrence-detail",
+      returnOccurrenceId: occurrenceId,
+      collectionId,
+      collectionName,
+      isOwner,
+    });
   };
 
   /* ── Field row helper ── */

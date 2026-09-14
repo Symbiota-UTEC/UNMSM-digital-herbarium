@@ -24,14 +24,8 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Badge } from "../ui/badge";
 import { Alert, AlertDescription } from "../ui/alert";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Upload,
-  Info,
-  Loader2,
-} from "lucide-react";
-import { toast } from "sonner@2.0.3";
+import { Upload, Info, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { useAuth } from "@contexts/AuthContext";
 import { PAGE_SIZE } from "@constants/api";
 import { Role } from "@constants/roles";
@@ -40,6 +34,7 @@ import {
   type TaxonFloraImportJob,
   type TaxonFloraImportJobStatus,
 } from "@services/upload.service";
+import { DataTable, type ColumnDef } from "../ui/data-table";
 
 const POLL_MS = 4000;
 
@@ -211,9 +206,71 @@ export function UploadsPage() {
   const jobCurrentPage = Math.floor(jobHistoryOffset / PAGE_SIZE.TAXON_FLORA_JOBS) + 1;
   const jobTotalPages = Math.ceil(jobHistoryTotal / PAGE_SIZE.TAXON_FLORA_JOBS) || 1;
 
+  const handleHistorialPrev = () => {
+    const prev = Math.max(0, jobHistoryOffset - PAGE_SIZE.TAXON_FLORA_JOBS);
+    setJobHistoryOffset(prev);
+    fetchJobHistory(activeJob?.jobId, false, prev);
+  };
+
+  const handleHistorialNext = () => {
+    const next = jobHistoryOffset + PAGE_SIZE.TAXON_FLORA_JOBS;
+    setJobHistoryOffset(next);
+    fetchJobHistory(activeJob?.jobId, false, next);
+  };
+
+  const historialColumns: ColumnDef<TaxonFloraImportJob>[] = [
+    {
+      key: "filename",
+      header: "Archivo",
+      cell: (job) => (
+        <div>
+          <div className="font-medium text-sm">{job.filename}</div>
+          {(job.detail || job.stage) && (
+            <div className="text-xs text-muted-foreground">{job.detail || job.stage}</div>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "created-at",
+      header: "Fecha",
+      cell: (job) => <span className="text-sm">{formatDateTime(job.createdAt)}</span>,
+    },
+    {
+      key: "rows",
+      header: "Filas",
+      cell: (job) => (
+        <span className="text-sm tabular-nums">{job.rowsProcessed.toLocaleString("es-PE")}</span>
+      ),
+    },
+    {
+      key: "progress",
+      header: "Progreso",
+      cell: (job) => (
+        <span className="text-sm tabular-nums">
+          {job.progressPercent != null ? `${job.progressPercent.toFixed(1)}%` : "—"}
+        </span>
+      ),
+    },
+    {
+      key: "status",
+      header: "Estado",
+      cell: (job) => (
+        <div className="flex items-center justify-end gap-2">
+          {(job.status === "queued" || job.status === "running") && (
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          )}
+          <Badge variant={badgeVariant(job.status)}>
+            {formatStatus(job.status)}
+          </Badge>
+        </div>
+      ),
+    },
+  ];
+
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-6">
+    <div className="container mx-auto px-4 py-8 space-y-6">
+      <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight mb-2">Cargas</h1>
           <p className="text-sm text-muted-foreground">
@@ -255,9 +312,7 @@ export function UploadsPage() {
                       </a>
                       ).
                     </li>
-                    <li>
-                      No modifiques los encabezados originales del archivo.
-                    </li>
+                    <li>No modifiques los encabezados originales del archivo.</li>
                     <li>
                       Selecciona el CSV y súbelo. El progreso se muestra en
                       esta página.
@@ -314,9 +369,9 @@ export function UploadsPage() {
       </div>
 
       {/* Job activo */}
-      <Card className="mb-6">
+      <Card>
         <CardHeader>
-          <CardTitle>Estado de importación</CardTitle>
+          <CardTitle>Estado de última importación</CardTitle>
           <CardDescription>
             Sigue el progreso de la carga del backbone taxonómico.
           </CardDescription>
@@ -406,83 +461,23 @@ export function UploadsPage() {
       </Card>
 
       {/* Historial */}
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            Historial
-            {jobHistoryTotal > 0 && (
-              <span className="ml-2 text-base text-muted-foreground font-normal">
-                ({jobHistoryTotal} {jobHistoryTotal === 1 ? "importación" : "importaciones"})
-              </span>
-            )}
-          </CardTitle>
-          <CardDescription>Importaciones ejecutadas previamente.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {jobHistory.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No hay historial de importaciones todavía.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {jobHistory.map((job) => (
-                <div
-                  key={job.jobId}
-                  className="flex flex-col gap-2 rounded-md border p-3 md:flex-row md:items-center md:justify-between"
-                >
-                  <div>
-                    <div className="font-medium">{job.filename}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {formatDateTime(job.createdAt)} · {job.rowsProcessed.toLocaleString("es-PE")} filas ·{" "}
-                      {job.progressPercent != null ? `${job.progressPercent.toFixed(1)}%` : "sin porcentaje"}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {(job.status === "queued" || job.status === "running") && (
-                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                    )}
-                    <Badge variant={badgeVariant(job.status)}>
-                      {formatStatus(job.status)}
-                    </Badge>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="flex items-center justify-between mt-4 pt-4 border-t">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={jobHistoryOffset === 0 || isLoadingJobs}
-              onClick={() => {
-                const prev = Math.max(0, jobHistoryOffset - PAGE_SIZE.TAXON_FLORA_JOBS);
-                setJobHistoryOffset(prev);
-                fetchJobHistory(activeJob?.jobId, false, prev);
-              }}
-            >
-              <ChevronLeft className="h-4 w-4 mr-1" />
-              Anterior
-            </Button>
-            <span className="text-sm text-muted-foreground">
-              Página {jobCurrentPage} de {jobTotalPages}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={jobHistoryOffset + PAGE_SIZE.TAXON_FLORA_JOBS >= jobHistoryTotal || isLoadingJobs}
-              onClick={() => {
-                const next = jobHistoryOffset + PAGE_SIZE.TAXON_FLORA_JOBS;
-                setJobHistoryOffset(next);
-                fetchJobHistory(activeJob?.jobId, false, next);
-              }}
-            >
-              Siguiente
-              <ChevronRight className="h-4 w-4 ml-1" />
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <DataTable<TaxonFloraImportJob>
+        title="Historial de importaciones"
+        description={
+          jobHistoryTotal > 0
+            ? `${jobHistoryTotal} ${jobHistoryTotal === 1 ? "importación" : "importaciones"} en total`
+            : "Importaciones ejecutadas previamente."
+        }
+        columns={historialColumns}
+        data={jobHistory}
+        keyExtractor={(row) => row.jobId}
+        loading={isLoadingJobs}
+        emptyMessage="No hay historial de importaciones todavía."
+        page={jobCurrentPage}
+        totalPages={jobTotalPages}
+        onPrevPage={handleHistorialPrev}
+        onNextPage={handleHistorialNext}
+      />
     </div>
   );
 }

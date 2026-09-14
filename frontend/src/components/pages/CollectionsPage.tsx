@@ -1,12 +1,28 @@
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Button } from "../ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "../ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../ui/dialog";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { Plus, Folder, Users, ChevronLeft, ChevronRight, Shield } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
+import { Badge } from "../ui/badge";
+import { Plus, Folder, Users, Shield, Eye } from "lucide-react";
+import { FiltersCard } from "../ui/filters";
+import { DataTable, type ColumnDef } from "../ui/data-table";
 import { toast } from "sonner";
 import { useAuth } from "@contexts/AuthContext";
 import { PAGE_SIZE } from "@constants/api";
@@ -25,34 +41,44 @@ type CollectionsPageProps = {
   onNavigate: (page: string, params?: any) => void;
 };
 
+const ROLE_BADGE: Record<string, { label: string; className: string }> = {
+  superuser:         { label: "Superuser",        className: "bg-purple-100 text-purple-800" },
+  institution_admin: { label: "Admin institución", className: "bg-orange-100 text-orange-800" },
+  owner:             { label: "Propietario",       className: "bg-blue-100 text-blue-800" },
+  editor:            { label: "Editor",            className: "bg-green-50 text-green-700" },
+  viewer:            { label: "Lector",            className: "bg-gray-100 text-gray-800" },
+};
+
 export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
   const { user, apiFetch, token } = useAuth() as any;
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const isSuper = user?.role === Role.Admin;
   const isRestrictedInstitutionPick = !isSuper;
-  const userInstitutionId = user?.institutionId != null ? Number(user.institutionId) : null;
+  const userInstitutionId = user?.institutionId ?? null;
   const userInstitutionName = user?.institution || "";
   const creatorDisplayName = user?.username || user?.email || "Desconocido";
   const userId = user?.userId ?? null;
 
   const collectionsPerPage = PAGE_SIZE.COLLECTIONS;
 
-  // ------- Estado unificado -------
-  const [access, setAccess] = useState<AccessFilter>("owner");
+  const [filterAccess, setFilterAccess] = useState<AccessFilter>(
+    () => (searchParams.get("access") as AccessFilter) ?? "owner"
+  );
+  const [access, setAccess] = useState<AccessFilter>(
+    () => (searchParams.get("access") as AccessFilter) ?? "owner"
+  );
   const [items, setItems] = useState<CollectionListItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(() => Math.max(1, Number(searchParams.get("page")) || 1));
   const [totalPages, setTotalPages] = useState(1);
 
-  // ------- Diálogo de creación -------
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [instSearchText, setInstSearchText] = useState("");
   const [selectedInstitutionId, setSelectedInstitutionId] = useState<string | null>(null);
   const [form, setForm] = useState<CollectionCreate>({ collectionName: "", description: "" });
-  const [csvFile, setCsvFile] = useState<File | null>(null);
 
-  // ------- Fetch único -------
   const fetchCollections = useCallback(
     async (currentAccess: AccessFilter, currentPage: number) => {
       try {
@@ -69,57 +95,36 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
         setLoading(false);
       }
     },
-    [apiFetch, collectionsPerPage]
+    [apiFetch, collectionsPerPage],
   );
 
-  // Reiniciar página al cambiar filtro
-  const handleAccessChange = (value: AccessFilter) => {
-    setAccess(value);
-    setPage(1);
+  const syncURL = (currentAccess: AccessFilter, pageNum: number) => {
+    const p = new URLSearchParams();
+    if (currentAccess !== "owner") p.set("access", currentAccess);
+    if (pageNum > 1) p.set("page", String(pageNum));
+    setSearchParams(p, { replace: true });
   };
+
+  const handleApplyFilters = () => { setAccess(filterAccess); setPage(1); syncURL(filterAccess, 1); };
+  const handleClearFilters = () => { setFilterAccess("owner"); setAccess("owner"); setPage(1); setSearchParams({}, { replace: true }); };
+  const filtersActive = true; // access filter always has an active value
 
   useEffect(() => {
     fetchCollections(access, page);
   }, [access, page, fetchCollections]);
 
-  // ------- Helpers UI -------
-  const roleBadge = (role?: string | null) => {
-    if (!role) return null;
-    const map: Record<string, string> = {
-      superuser: "bg-purple-100 text-purple-800",
-      institution_admin: "bg-orange-100 text-orange-800",
-      owner: "bg-blue-100 text-blue-800",
-      editor: "bg-emerald-100 text-emerald-800",
-      viewer: "bg-gray-100 text-gray-800",
-    };
-    const label: Record<string, string> = {
-      superuser: "Superuser",
-      institution_admin: "Admin institución",
-      owner: "Propietario",
-      editor: "Editor",
-      viewer: "Lector",
-    };
-    return (
-      <span className={`text-xs px-2 py-1 rounded ${map[role] ?? "bg-gray-100 text-gray-800"}`}>
-        {label[role] ?? role}
-      </span>
-    );
-  };
-
   const canManageCollection = (c: CollectionListItem) => {
     const isInstAdminSameInst =
       user?.role === Role.InstitutionAdmin &&
-      Number(user?.institutionId) === Number(c.institutionId);
+      user?.institutionId === c.institutionId;
     return isSuper || isInstAdminSameInst || c.my_role === "owner";
   };
 
-  // ------- Form -------
   const resetForm = () => {
     setForm({ collectionName: "", description: "" });
-    setCsvFile(null);
     if (isRestrictedInstitutionPick) {
-      setSelectedInstitutionId(userInstitutionId != null ? String(userInstitutionId) : null);
-      setInstSearchText(userInstitutionName || (userInstitutionId ? `Institución #${userInstitutionId}` : ""));
+      setSelectedInstitutionId(userInstitutionId ?? null);
+      setInstSearchText(userInstitutionName);
     } else {
       setSelectedInstitutionId(null);
       setInstSearchText("");
@@ -128,12 +133,12 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
 
   useEffect(() => {
     if (isRestrictedInstitutionPick) {
-      setSelectedInstitutionId(userInstitutionId != null ? String(userInstitutionId) : null);
-      setInstSearchText(userInstitutionName || (userInstitutionId ? `Institución #${userInstitutionId}` : ""));
+      setSelectedInstitutionId(userInstitutionId ?? null);
+      setInstSearchText(userInstitutionName);
     }
   }, [isRestrictedInstitutionPick, userInstitutionId, userInstitutionName, open]);
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const handleCreate = async (e: React.BaseSyntheticEvent) => {
     e.preventDefault();
     if (!token) return;
     if (!form.collectionName?.trim()) { toast.error("Ingresa un nombre de colección"); return; }
@@ -167,16 +172,81 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
     onNavigate("collection-detail", {
       collectionId: c.collectionId,
       collectionName: c.name,
-      collectionInstitutionId: Number(c.institutionId),
+      collectionInstitutionId: c.institutionId,
       isOwner: canManageCollection(c),
     });
   };
 
-  // ------- Render -------
+  const extraColumns: ColumnDef<CollectionListItem>[] = access === "allowed"
+    ? [{ key: "creator", header: "Creador", cell: (c) => <span className="text-sm text-muted-foreground">{c.creatorName ?? "—"}</span> }]
+    : [];
+
+  const columns: ColumnDef<CollectionListItem>[] = [
+    {
+      key: "name",
+      header: "Colección",
+      cell: (c) => (
+        <div className="flex items-center gap-2">
+          <Folder className="h-4 w-4 text-primary shrink-0" />
+          <span className="font-medium text-sm truncate max-w-[200px]">{c.name ?? "(sin nombre)"}</span>
+        </div>
+      ),
+    },
+    {
+      key: "institution",
+      header: "Institución",
+      cell: (c) => (
+        <div className="flex items-center gap-1 text-sm text-muted-foreground">
+          <Users className="h-3 w-3 shrink-0" />
+          <span className="truncate max-w-[180px]">{c.institutionName ?? "—"}</span>
+        </div>
+      ),
+    },
+    ...extraColumns,
+    {
+      key: "count",
+      header: "Ocurrencias",
+      cell: (c) => (
+        <Badge variant="outline" className="text-xs tabular-nums">{c.occurrencesCount}</Badge>
+      ),
+    },
+    {
+      key: "role",
+      header: "Rol",
+      cell: (c) => {
+        const badge = c.my_role ? ROLE_BADGE[c.my_role] : null;
+        return badge ? (
+          <span className={`text-xs px-2 py-0.5 rounded-full ${badge.className}`}>
+            {badge.label}
+          </span>
+        ) : (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Shield className="h-3 w-3" />
+            <span className="italic">Sin rol</span>
+          </div>
+        );
+      },
+    },
+    {
+      key: "actions",
+      header: "Acciones",
+      cell: (c) => (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={(e: React.MouseEvent) => { e.stopPropagation(); goToCollectionDetail(c); }}
+          title="Ver colección"
+        >
+          <Eye className="h-4 w-4" />
+        </Button>
+      ),
+    },
+  ];
+
   return (
-    <div className="container mx-auto px-4 py-8">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6">
+    <div className="container mx-auto px-4 py-8 space-y-6">
+      <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight mb-2">Colecciones</h1>
           <p className="text-sm text-muted-foreground">
@@ -259,13 +329,19 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
         </Dialog>
       </div>
 
-      {/* Selector de tipo de acceso + paginación */}
-      <div className="flex items-center justify-between mb-6">
+      <FiltersCard
+        title="Filtrar colecciones"
+        description="Selecciona el tipo de acceso para ver las colecciones correspondientes."
+        filtersActive={filtersActive}
+        onClear={handleClearFilters}
+        onApply={handleApplyFilters}
+        loading={loading}
+      >
         <div className="flex items-center gap-3">
-          <Label className="text-sm font-medium text-muted-foreground whitespace-nowrap">
+          <Label className="text-xs font-semibold text-foreground whitespace-nowrap">
             Tipo de Acceso
           </Label>
-          <Select value={access} onValueChange={(v) => handleAccessChange(v as AccessFilter)}>
+          <Select value={filterAccess} onValueChange={(v: string) => setFilterAccess(v as AccessFilter)}>
             <SelectTrigger className="w-44">
               <SelectValue />
             </SelectTrigger>
@@ -275,85 +351,22 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
             </SelectContent>
           </Select>
         </div>
+      </FiltersCard>
 
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-muted-foreground">
-            {page} / {totalPages}
-          </span>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1 || loading}
-              className="h-9 w-9 rounded-full"
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages || loading}
-              className="h-9 w-9 rounded-full"
-            >
-              <ChevronRight className="h-5 w-5" />
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* Lista */}
-      {loading ? (
-        <p className="text-sm text-muted-foreground py-4">Cargando…</p>
-      ) : items.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-4">
-          {access === "owner" ? "No tienes colecciones creadas." : "No hay colecciones para mostrar."}
-        </p>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {items.map((c) => (
-            <Card
-              key={c.collectionId}
-              className="hover:shadow-lg transition-all cursor-pointer h-full border-2 hover:border-primary/50"
-              onClick={() => goToCollectionDetail(c)}
-            >
-              <CardHeader>
-                <div className="flex items-center justify-between gap-2 min-w-0 w-full">
-                  <Folder className="h-8 w-8 text-primary shrink-0" />
-                  <span
-                    className="inline-flex items-center justify-center rounded-full bg-red-50 text-primary tabular-nums px-2 py-0.5 leading-none text-xs max-w-[60%] overflow-hidden text-ellipsis whitespace-nowrap font-normal"
-                    title={`${c.occurrencesCount} ocurrencias`}
-                  >
-                    {c.occurrencesCount} ocurrencias
-                  </span>
-                </div>
-
-                <CardTitle className="truncate">{c.name ?? "(sin nombre)"}</CardTitle>
-
-                <CardDescription className="flex items-center gap-2 min-w-0">
-                  <Users className="h-4 w-4 shrink-0" />
-                  <span className="truncate">{c.institutionName ?? "Sin institución"}</span>
-                </CardDescription>
-              </CardHeader>
-
-              <CardContent className="space-y-2">
-                {access === "allowed" && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Users className="h-4 w-4 shrink-0" />
-                    <span className="truncate">Creador: {c.creatorName ?? "Desconocido"}</span>
-                  </div>
-                )}
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Shield className="h-4 w-4 shrink-0" />
-                  <span>Tu rol:</span>
-                  {c.my_role ? roleBadge(c.my_role) : <span className="italic">Sin rol específico</span>}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+      <DataTable<CollectionListItem>
+        title="Listado de colecciones"
+        description="Colecciones visibles para tu usuario según el tipo de acceso."
+        columns={columns}
+        data={items}
+        keyExtractor={(row) => row.collectionId}
+        loading={loading}
+        emptyMessage={access === "owner" ? "No tienes colecciones creadas." : "No hay colecciones para mostrar."}
+        page={page}
+        totalPages={totalPages}
+        onPrevPage={() => { setPage((p) => { syncURL(access, p - 1); return p - 1; }); }}
+        onNextPage={() => { setPage((p) => { syncURL(access, p + 1); return p + 1; }); }}
+        onRowClick={goToCollectionDetail}
+      />
     </div>
   );
 }

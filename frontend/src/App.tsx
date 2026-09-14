@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Routes, Route, useLocation, useNavigate, useParams } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { PublicNavbar } from "./components/PublicNavbar";
@@ -152,7 +152,14 @@ const buildRoute = (page: string, params: NavigationParams = {}) => {
       if (!taxonId) return null;
       return {
         path: `/taxon/${taxonId}`,
-        state: { taxonId },
+        state: {
+          taxonId,
+          returnTo: params.returnTo,
+          returnOccurrenceId: params.returnOccurrenceId?.toString(),
+          collectionId: params.collectionId?.toString(),
+          collectionName: params.collectionName,
+          isOwner: params.isOwner,
+        },
       };
     }
     case "profile":
@@ -166,10 +173,27 @@ const buildRoute = (page: string, params: NavigationParams = {}) => {
   }
 };
 
+// Pages whose search params should be saved and restored on re-visit
+const FILTER_PAGES = ["/occurrences", "/taxon", "/collections"];
+
 function AppContent() {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Persists the last search string for each filter page across navigation
+  const lastSearch = useRef<Record<string, string>>({});
+
+  useEffect(() => {
+    const path = location.pathname;
+    if (FILTER_PAGES.includes(path)) {
+      if (location.search) {
+        lastSearch.current[path] = location.search;
+      } else {
+        delete lastSearch.current[path];
+      }
+    }
+  }, [location.pathname, location.search]);
 
   const handleNavigation = useCallback(
     (page: string, params?: NavigationParams) => {
@@ -178,7 +202,14 @@ function AppContent() {
         console.warn(`Missing navigation params for page "${page}"`, params);
         return;
       }
-      navigate(target.path, { state: target.state, replace: (target as any).replace });
+      // Restore last search params when navigating to a filter page with no specific params
+      const savedSearch = (!params && FILTER_PAGES.includes(target.path))
+        ? (lastSearch.current[target.path] ?? "")
+        : "";
+      navigate(
+        { pathname: target.path, search: savedSearch },
+        { state: target.state, replace: (target as any).replace }
+      );
     },
     [navigate]
   );
@@ -273,13 +304,18 @@ function AppContent() {
     return (
       <TaxonDetailPage
         taxonId={taxonId || (state.taxonId?.toString() ?? "")}
+        returnTo={state.returnTo?.toString()}
+        returnOccurrenceId={state.returnOccurrenceId?.toString()}
+        collectionId={state.collectionId?.toString()}
+        collectionName={state.collectionName?.toString()}
+        isOwner={state.isOwner as boolean | undefined}
         onNavigate={handleNavigation}
       />
     );
   };
 
   return (
-    <div className="flex h-full overflow-hidden bg-gray-50">
+    <div className="flex h-full overflow-hidden bg-background">
       {isAuthenticated && (
         <PrivateSidebar onNavigate={handleNavigation} currentPage={currentPage} />
       )}
