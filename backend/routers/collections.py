@@ -27,6 +27,10 @@ from backend.schemas.collections import (
     CollectionPermissionOut,
 )
 from backend.schemas.occurrence import OccurrenceBriefItem
+from backend.services.collection_permissions import (
+    user_can_view_collection,
+    user_can_manage_collection_permissions,
+)
 
 
 router = APIRouter(prefix="/collections", tags=["Collections"])
@@ -45,17 +49,6 @@ def _bounds(limit: int, offset: int):
     limit = max(1, min(limit or 20, 200))  # límite sensato (1..200)
     offset = max(0, offset or 0)
     return limit, offset
-
-
-def _page_metrics(total: int, limit: int, offset: int):
-    if total == 0:
-        total_pages = 0
-        remaining_pages = 0
-    else:
-        total_pages = (total + limit - 1) // limit
-        current_page = min(total_pages, (offset // limit) + 1)
-        remaining_pages = max(0, total_pages - current_page)
-    return total_pages, remaining_pages
 
 
 # ------------------- Endpoints -------------------
@@ -135,18 +128,7 @@ def _build_collections_page(
             )
         )
 
-    total_pages, remaining_pages = _page_metrics(total, limit, offset)
-    current_page = (offset // limit) + 1 if limit > 0 else 1
-
-    return Page[CollectionOut](
-        items=items,
-        total=total,
-        limit=limit,
-        offset=offset,
-        currentPage=current_page,
-        totalPages=total_pages,
-        remainingPages=remaining_pages,
-    )
+    return Page[CollectionOut].of(items, total=total, limit=limit, offset=offset)
 
 
 @router.get(
@@ -285,16 +267,6 @@ def create_collection(
     )
 
 
-def _current_user_role_in_collection(
-    db: Session, collection_id: UUID, user_id: UUID
-) -> Optional[str]:
-    return db.execute(
-        select(CollectionPermission.role).where(
-            CollectionPermission.collectionId == collection_id,
-            CollectionPermission.userId == user_id,
-        )
-    ).scalar_one_or_none()
-
 
 @router.get(
     "/{collection_id}/access-users",
@@ -320,33 +292,11 @@ def list_collection_access_users(
         raise HTTPException(status_code=404, detail="Colección no encontrada")
 
     # 2) Autorización
-    if current_user.isSuperuser:
-        pass
-    elif current_user.isInstitutionAdmin:
-        if collection.institutionId != current_user.institutionId:
-            has_permission = db.execute(
-                select(CollectionPermission.collectionPermissionId).where(
-                    CollectionPermission.collectionId == collection_id,
-                    CollectionPermission.userId == current_user.userId,
-                )
-            ).scalar_one_or_none()
-            if not has_permission:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="No tienes permisos para ver accesos de esta colección",
-                )
-    else:
-        has_permission = db.execute(
-            select(CollectionPermission.collectionPermissionId).where(
-                CollectionPermission.collectionId == collection_id,
-                CollectionPermission.userId == current_user.userId,
-            )
-        ).scalar_one_or_none()
-        if not has_permission:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="No tienes permisos para ver accesos de esta colección",
-            )
+    if not user_can_view_collection(db, current_user, collection):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para ver accesos de esta colección",
+        )
 
     name_expr = func.coalesce(User.fullName, User.username)
 
@@ -403,18 +353,7 @@ def list_collection_access_users(
         for row in rows
     ]
 
-    total_pages, remaining_pages = _page_metrics(total, limit, offset)
-    current_page = (offset // limit) + 1 if limit > 0 else 1
-
-    return Page[CollectionAccessUser](
-        items=items,
-        total=total,
-        limit=limit,
-        offset=offset,
-        currentPage=current_page,
-        totalPages=total_pages,
-        remainingPages=remaining_pages,
-    )
+    return Page[CollectionAccessUser].of(items, total=total, limit=limit, offset=offset)
 
 
 @router.get(
@@ -443,33 +382,11 @@ def list_occurrences_brief_by_collection_id(
         raise HTTPException(status_code=404, detail="Colección no encontrada")
 
     # 2) Autorización
-    if current_user.isSuperuser:
-        pass
-    elif current_user.isInstitutionAdmin:
-        if collection.institutionId != current_user.institutionId:
-            has_perm = db.execute(
-                select(CollectionPermission.collectionPermissionId).where(
-                    CollectionPermission.collectionId == collection_id,
-                    CollectionPermission.userId == current_user.userId,
-                )
-            ).scalar_one_or_none()
-            if not has_perm:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="No tienes permisos para ver ocurrencias de esta colección",
-                )
-    else:
-        has_perm = db.execute(
-            select(CollectionPermission.collectionPermissionId).where(
-                CollectionPermission.collectionId == collection_id,
-                CollectionPermission.userId == current_user.userId,
-            )
-        ).scalar_one_or_none()
-        if not has_perm:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="No tienes permisos para ver ocurrencias de esta colección",
-            )
+    if not user_can_view_collection(db, current_user, collection):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para ver ocurrencias de esta colección",
+        )
 
     # 3) Expresiones para campos
     code_expr = func.coalesce(Occurrence.catalogNumber, Occurrence.recordNumber)
@@ -558,18 +475,7 @@ def list_occurrences_brief_by_collection_id(
         for r in rows
     ]
 
-    total_pages, remaining_pages = _page_metrics(total, limit, offset)
-    current_page = (offset // limit) + 1 if limit > 0 else 1
-
-    return Page[OccurrenceBriefItem](
-        items=items,
-        total=total,
-        limit=limit,
-        offset=offset,
-        currentPage=current_page,
-        totalPages=total_pages,
-        remainingPages=remaining_pages,
-    )
+    return Page[OccurrenceBriefItem].of(items, total=total, limit=limit, offset=offset)
 
 
 # ------------------- Gestión de permisos en colecciones -------------------
@@ -595,21 +501,19 @@ def add_user_to_collection(
         raise HTTPException(status_code=404, detail="Colección no encontrada")
 
     # 2) Autorización (SOLO superuser, admin de su institución o owner)
-    if current_user.isSuperuser:
-        pass
-    elif current_user.isInstitutionAdmin:
-        if collection.institutionId != current_user.institutionId:
+    if not user_can_manage_collection_permissions(db, current_user, collection):
+        if current_user.isInstitutionAdmin:
+            # Denegado siendo institution admin => la colección es de otra institución
+            # (ver docstring de user_can_manage_collection_permissions: aquí no hay
+            # fallback a un permiso explícito cuando la institución no coincide).
             raise HTTPException(
                 status_code=403,
                 detail="No puedes gestionar permisos de una colección de otra institución",
             )
-    else:
-        my_role = _current_user_role_in_collection(db, collection_id, current_user.userId)
-        if my_role != "owner":
-            raise HTTPException(
-                status_code=403,
-                detail="Se requiere rol 'owner' en la colección para agregar usuarios",
-            )
+        raise HTTPException(
+            status_code=403,
+            detail="Se requiere rol 'owner' en la colección para agregar usuarios",
+        )
 
     # 3) Usuario objetivo por email (case-insensitive)
     target = db.execute(

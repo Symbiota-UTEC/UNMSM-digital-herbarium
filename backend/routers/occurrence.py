@@ -7,7 +7,7 @@ from datetime import datetime, date
 from typing import Optional, Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select, delete, exists, or_, func, and_
+from sqlalchemy import select, delete, or_, func, and_
 from sqlalchemy.orm import Session, selectinload
 
 from backend.config.database import get_db
@@ -36,6 +36,10 @@ from backend.schemas.occurrence import (
 from backend.services.occurrence_filters import (
     get_occurrence_filters,
     apply_occurrence_filters,
+)
+from backend.services.collection_permissions import (
+    user_can_view_collection,
+    user_can_edit_collection,
 )
 
 router = APIRouter(
@@ -80,90 +84,44 @@ def _fmt_dt(v: Optional[datetime | date | str]) -> Optional[str]:
     return None
 
 
-def _user_flags(user: User):
-    """Pequeño helper para tolerar nombres snake/camel."""
-    is_superuser = getattr(user, "isSuperuser", getattr(user, "is_superuser", False))
-    is_inst_admin = getattr(
-        user, "isInstitutionAdmin", getattr(user, "is_institution_admin", False)
-    )
-    institution_id = getattr(user, "institutionId", getattr(user, "institution_id", None))
-    return is_superuser, is_inst_admin, institution_id
-
-
-def _user_can_view_collection(db: Session, user: User, collection: Collection) -> bool:
-    """
-    Reglas:
-       - superuser: acceso
-       - permiso explícito (viewer/editor/owner): acceso
-       - admin de institución y misma institución: acceso
-    """
-    is_superuser, is_inst_admin, user_inst_id = _user_flags(user)
-
-    if is_superuser:
-        return True
-
-    # permiso explícito
-    perm_exists = db.scalar(
-        select(
-            exists().where(
-                (CollectionPermission.collectionId == collection.collectionId)
-                & (CollectionPermission.userId == user.userId)
-            )
+def _load_occurrence_full(db: Session, occurrence_id: UUID) -> Optional[Occurrence]:
+    """Carga una Occurrence con todo lo que necesita `OccurrenceOut`: collection,
+    identifications.identifiers, identifications.taxon e images."""
+    stmt = (
+        select(Occurrence)
+        .options(
+            selectinload(Occurrence.collection),
+            selectinload(Occurrence.identifications).selectinload(Identification.identifiers),
+            selectinload(Occurrence.identifications).selectinload(Identification.taxon),
+            selectinload(Occurrence.images),
         )
+        .where(Occurrence.occurrenceId == occurrence_id)
     )
-    if perm_exists:
-        return True
-
-    # admin de la institución que posee la colección
-    if is_inst_admin and collection.institutionId and user_inst_id:
-        if collection.institutionId == user_inst_id:
-            return True
-
-    return False
+    return db.scalar(stmt)
 
 
-def _user_can_edit_collection(db: Session, user: User, collection: Collection) -> bool:
-    """
-    Permisos de edición:
-       - superuser
-       - admin de la institución dueña
-       - rol explícito editor/owner
-    """
-    is_superuser, is_inst_admin, user_inst_id = _user_flags(user)
-
-    if is_superuser:
-        return True
-
-    if is_inst_admin and collection.institutionId and user_inst_id:
-        if collection.institutionId == user_inst_id:
-            return True
-
-    role = db.scalar(
-        select(CollectionPermission.role).where(
-            (CollectionPermission.collectionId == collection.collectionId)
-            & (CollectionPermission.userId == user.userId)
-        )
+def _load_occurrence_with_collection(db: Session, occurrence_id: UUID) -> Optional[Occurrence]:
+    """Carga liviana (Occurrence + collection) para el chequeo de permisos antes
+    de mutar; la respuesta final se recarga completa con `_load_occurrence_full`."""
+    return db.scalar(
+        select(Occurrence)
+        .options(selectinload(Occurrence.collection))
+        .where(Occurrence.occurrenceId == occurrence_id)
     )
-    return role in ("editor", "owner")
 
 
-def _page_meta(total: int, limit: int, offset: int) -> tuple[int, int, int]:
-    """
-    Devuelve (total_pages, current_page, remaining_pages) usando la misma lógica
-    que en Collections.
-    """
-    if limit <= 0:
-        return 0, 1, 0
-
-    if total == 0:
-        # totalPages = 0, currentPage = 1, remainingPages = 0
-        return 0, 1, 0
-
-    total_pages = (total + limit - 1) // limit
-    current_page = min(total_pages, (offset // limit) + 1)
-    remaining_pages = max(0, total_pages - current_page)
-    return total_pages, current_page, remaining_pages
-
+def _apply_event_date_ymd(occ: Occurrence, event_date: Optional[str]) -> None:
+    """Deriva year/month/day de un eventDate ISO ('YYYY-MM-DD') y los asigna sobre
+    `occ`. Si no es un ISO date válido, no hace nada."""
+    if not event_date:
+        return
+    try:
+        parsed = date.fromisoformat(event_date)
+    except ValueError:
+        return
+    occ.year = parsed.year
+    occ.month = parsed.month
+    occ.day = parsed.day
 
 
 # =========================
@@ -188,7 +146,7 @@ def create_occurrence(
             status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found"
         )
     
-    if not _user_can_edit_collection(db, current_user, collection):
+    if not user_can_edit_collection(db, current_user, collection):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para añadir ocurrencias en esta colección"
         )
@@ -208,15 +166,8 @@ def create_occurrence(
 
     # Derivar year/month/day del eventDate si viene y no se enviaron explícitamente
     if payload.eventDate and occ.year is None:
-        try:
-            from datetime import date as _date
-            parsed = _date.fromisoformat(payload.eventDate)
-            occ.year = parsed.year
-            occ.month = parsed.month
-            occ.day = parsed.day
-        except ValueError:
-            pass
-    
+        _apply_event_date_ymd(occ, payload.eventDate)
+
     db.add(occ)
     db.flush()
 
@@ -265,20 +216,8 @@ def create_occurrence(
     db.refresh(occ)
 
     # Lo volvemos a traer completo para que responda OccurrenceOut
-    stmt = (
-        select(Occurrence)
-        .options(
-            selectinload(Occurrence.collection),
+    occ = _load_occurrence_full(db, occ.occurrenceId)
 
-            selectinload(Occurrence.identifications)
-            .selectinload(Identification.identifiers),
-            selectinload(Occurrence.identifications)
-            .selectinload(Identification.taxon),
-        )
-        .where(Occurrence.occurrenceId == occ.occurrenceId)
-    )
-    occ = db.scalar(stmt)
-    
     return OccurrenceOut.model_validate(occ, from_attributes=True)
 
 
@@ -299,19 +238,7 @@ def get_occurrence_by_id(
     - Colección asociada.
     - Identificaciones (Identification) + identificadores (Identifier) + taxón.
     """
-    stmt = (
-        select(Occurrence)
-        .options(
-            selectinload(Occurrence.collection),
-
-            selectinload(Occurrence.identifications)
-            .selectinload(Identification.identifiers),
-            selectinload(Occurrence.identifications)
-            .selectinload(Identification.taxon),
-        )
-        .where(Occurrence.occurrenceId == occurrence_id)
-    )
-    occ = db.scalar(stmt)
+    occ = _load_occurrence_full(db, occurrence_id)
 
     if not occ:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Occurrence not found")
@@ -322,7 +249,7 @@ def get_occurrence_by_id(
             detail="Access denied (occurrence without collection)",
         )
 
-    if not _user_can_view_collection(db, current_user, occ.collection):
+    if not user_can_view_collection(db, current_user, occ.collection):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
     # Pydantic v2 con from_attributes=True en OccurrenceOut hace el mapeo completo.
@@ -353,7 +280,9 @@ def list_occurrences_basic(
     - collector: recordedBy.
     - date: eventDate (normalizada a dd/mm/aaaa cuando se puede parsear).
     """
-    is_superuser, is_inst_admin, user_inst_id = _user_flags(current_user)
+    is_superuser = current_user.isSuperuser
+    is_inst_admin = current_user.isInstitutionAdmin
+    user_inst_id = current_user.institutionId
 
     code_expr = func.coalesce(Occurrence.catalogNumber, Occurrence.recordNumber)
     location_expr = func.coalesce(
@@ -464,17 +393,7 @@ def list_occurrences_basic(
             )
         )
 
-    total_pages, current_page, remaining_pages = _page_meta(total, limit, offset)
-
-    return Page[OccurrenceBriefItem](
-        items=items,
-        total=total,
-        limit=limit,
-        offset=offset,
-        currentPage=current_page,
-        totalPages=total_pages,
-        remainingPages=remaining_pages,
-    )
+    return Page[OccurrenceBriefItem].of(items, total=total, limit=limit, offset=offset)
 
 
 
@@ -490,17 +409,7 @@ def update_occurrence(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    stmt = (
-        select(Occurrence)
-        .options(
-            selectinload(Occurrence.collection),
-            selectinload(Occurrence.identifications).selectinload(Identification.identifiers),
-            selectinload(Occurrence.identifications).selectinload(Identification.taxon),
-            selectinload(Occurrence.images),
-        )
-        .where(Occurrence.occurrenceId == occurrence_id)
-    )
-    occ = db.scalar(stmt)
+    occ = _load_occurrence_full(db, occurrence_id)
 
     if not occ:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Occurrence not found")
@@ -508,7 +417,7 @@ def update_occurrence(
     if not occ.collection:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied (occurrence without collection)")
 
-    if not _user_can_edit_collection(db, current_user, occ.collection):
+    if not user_can_edit_collection(db, current_user, occ.collection):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para editar esta ocurrencia")
 
     # Campos de identificación separados del resto
@@ -522,14 +431,7 @@ def update_occurrence(
     # Recalcular year/month/day si cambió eventDate y no se enviaron explícitamente
     if "eventDate" in update_data and payload.eventDate:
         if "year" not in update_data:
-            try:
-                from datetime import date as _date
-                parsed = _date.fromisoformat(payload.eventDate)
-                occ.year = parsed.year
-                occ.month = parsed.month
-                occ.day = parsed.day
-            except ValueError:
-                pass
+            _apply_event_date_ymd(occ, payload.eventDate)
 
     # Actualizar identificación vigente si se envió algún campo de identificación
     ident_sent = any(
@@ -602,32 +504,8 @@ def update_occurrence(
     db.commit()
     db.refresh(occ)
 
-    stmt = (
-        select(Occurrence)
-        .options(
-            selectinload(Occurrence.collection),
-            selectinload(Occurrence.identifications).selectinload(Identification.identifiers),
-            selectinload(Occurrence.identifications).selectinload(Identification.taxon),
-            selectinload(Occurrence.images),
-        )
-        .where(Occurrence.occurrenceId == occ.occurrenceId)
-    )
-    occ = db.scalar(stmt)
+    occ = _load_occurrence_full(db, occ.occurrenceId)
     return OccurrenceOut.model_validate(occ, from_attributes=True)
-
-
-def _reload_occurrence(db: Session, occurrence_id: UUID) -> Occurrence:
-    stmt = (
-        select(Occurrence)
-        .options(
-            selectinload(Occurrence.collection),
-            selectinload(Occurrence.identifications).selectinload(Identification.identifiers),
-            selectinload(Occurrence.identifications).selectinload(Identification.taxon),
-            selectinload(Occurrence.images),
-        )
-        .where(Occurrence.occurrenceId == occurrence_id)
-    )
-    return db.scalar(stmt)
 
 
 @router.post(
@@ -642,15 +520,12 @@ def add_identification(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    occ = db.scalar(
-        select(Occurrence).options(selectinload(Occurrence.collection))
-        .where(Occurrence.occurrenceId == occurrence_id)
-    )
+    occ = _load_occurrence_with_collection(db, occurrence_id)
     if not occ:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Occurrence not found")
     if not occ.collection:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-    if not _user_can_edit_collection(db, current_user, occ.collection):
+    if not user_can_edit_collection(db, current_user, occ.collection):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para editar esta ocurrencia")
 
     if payload.taxonId:
@@ -691,7 +566,7 @@ def add_identification(
         db.add(occ)
 
     db.commit()
-    occ = _reload_occurrence(db, occurrence_id)
+    occ = _load_occurrence_full(db, occurrence_id)
     return OccurrenceOut.model_validate(occ, from_attributes=True)
 
 
@@ -707,15 +582,12 @@ def delete_identification(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    occ = db.scalar(
-        select(Occurrence).options(selectinload(Occurrence.collection))
-        .where(Occurrence.occurrenceId == occurrence_id)
-    )
+    occ = _load_occurrence_with_collection(db, occurrence_id)
     if not occ:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Occurrence not found")
     if not occ.collection:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-    if not _user_can_edit_collection(db, current_user, occ.collection):
+    if not user_can_edit_collection(db, current_user, occ.collection):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para editar esta ocurrencia")
 
     ident = db.scalar(
@@ -736,7 +608,7 @@ def delete_identification(
         db.add(occ)
 
     db.commit()
-    occ = _reload_occurrence(db, occurrence_id)
+    occ = _load_occurrence_full(db, occurrence_id)
     return OccurrenceOut.model_validate(occ, from_attributes=True)
 
 
@@ -752,15 +624,12 @@ def set_current_identification(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    occ = db.scalar(
-        select(Occurrence).options(selectinload(Occurrence.collection))
-        .where(Occurrence.occurrenceId == occurrence_id)
-    )
+    occ = _load_occurrence_with_collection(db, occurrence_id)
     if not occ:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Occurrence not found")
     if not occ.collection:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-    if not _user_can_edit_collection(db, current_user, occ.collection):
+    if not user_can_edit_collection(db, current_user, occ.collection):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para editar esta ocurrencia")
 
     target_ident = None
@@ -781,7 +650,7 @@ def set_current_identification(
     db.add(occ)
     db.commit()
 
-    occ = _reload_occurrence(db, occurrence_id)
+    occ = _load_occurrence_full(db, occurrence_id)
     return OccurrenceOut.model_validate(occ, from_attributes=True)
 
 
@@ -797,19 +666,7 @@ def set_dynamic_properties(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    stmt = (
-        select(Occurrence)
-        .options(
-            selectinload(Occurrence.collection),
-
-            selectinload(Occurrence.identifications)
-            .selectinload(Identification.identifiers),
-            selectinload(Occurrence.identifications)
-            .selectinload(Identification.taxon),
-        )
-        .where(Occurrence.occurrenceId == occurrence_id)
-    )
-    occ = db.scalar(stmt)
+    occ = _load_occurrence_full(db, occurrence_id)
     if not occ:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Occurrence not found")
 
@@ -819,7 +676,7 @@ def set_dynamic_properties(
             detail="Access denied (occurrence without collection)",
         )
 
-    if not _user_can_edit_collection(db, current_user, occ.collection):
+    if not user_can_edit_collection(db, current_user, occ.collection):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough privileges")
 
     # Normalizar entrada a dict o None

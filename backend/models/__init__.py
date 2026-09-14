@@ -8,7 +8,9 @@ from .models import (
     Identifier,
     Taxon,
     Occurrence,
+    OccurrenceImage,
     Identification,
+    TaxonFloraImportJob,
 )
 
 __all__ = [
@@ -21,5 +23,7 @@ __all__ = [
     "Identifier",
     "Taxon",
     "Occurrence",
+    "OccurrenceImage",
     "Identification",
+    "TaxonFloraImportJob",
 ]

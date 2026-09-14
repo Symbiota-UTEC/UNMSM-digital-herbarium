@@ -1,56 +1,18 @@
 from uuid import UUID
-import math
-from typing import List, Optional, Literal
+from typing import Optional
 
-from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
 
 from backend.config.database import get_db
-from backend.models.models import User, Institution
+from backend.models.models import User
 from backend.auth.jwt import get_current_user
 
 from backend.schemas.common.pages import Page
-
-from pydantic import BaseModel, ConfigDict
+from backend.schemas.users import UserOut, UserLookupResponse
 
 router = APIRouter(prefix="/users", tags=["Users"])
-
-
-class UserOut(BaseModel):
-    userId: UUID
-    username: str
-    email: str
-    isActive: bool
-    isSuperuser: bool
-    isInstitutionAdmin: bool
-    institutionId: UUID
-    createdAt: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-def user_to_out(user: User) -> UserOut:
-    """Mapeo explícito de modelo SQLAlchemy -> schema de salida."""
-    return UserOut(
-        userId=user.userId,
-        username=user.username,
-        email=user.email,
-        isActive=user.isActive,
-        isSuperuser=user.isSuperuser,
-        isInstitutionAdmin=user.isInstitutionAdmin,
-        institutionId=user.institutionId,
-        createdAt=user.createdAt,
-    )
-
-
-class UserLookupResponse(BaseModel):
-    found: bool
-    sameInstitution: Optional[bool] = None
-    visibility: Literal["full", "limited", "none"]
-    user: Optional[UserOut] = None
-    message: Optional[str] = None
 
 
 @router.get(
@@ -86,7 +48,7 @@ def get_user_by_email(
             found=True,
             sameInstitution=same_inst,
             visibility="full",
-            user=user_to_out(target),
+            user=UserOut.model_validate(target, from_attributes=True),
         )
 
     if current_user.isInstitutionAdmin:
@@ -96,7 +58,7 @@ def get_user_by_email(
                 found=True,
                 sameInstitution=True,
                 visibility="full",
-                user=user_to_out(target),
+                user=UserOut.model_validate(target, from_attributes=True),
             )
         else:
             # Admin de institución: existe pero no es de su institución → limited
@@ -114,7 +76,7 @@ def get_user_by_email(
             found=True,
             sameInstitution=True,
             visibility="full",
-            user=user_to_out(target),
+            user=UserOut.model_validate(target, from_attributes=True),
         )
     else:
         # Solo indicamos existencia y si comparte institución
@@ -144,7 +106,7 @@ def get_user_by_id(
         )
 
     if current_user.isSuperuser:
-        return user_to_out(user)
+        return UserOut.model_validate(user, from_attributes=True)
 
     elif current_user.isInstitutionAdmin:
         if current_user.institutionId != user.institutionId:
@@ -152,10 +114,10 @@ def get_user_by_id(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No tienes permisos para acceder a este usuario",
             )
-        return user_to_out(user)
+        return UserOut.model_validate(user, from_attributes=True)
 
     elif current_user.userId == user_id:
-        return user_to_out(user)
+        return UserOut.model_validate(user, from_attributes=True)
 
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
@@ -211,17 +173,7 @@ def get_users(
     users = db.scalars(base_stmt).all()
     total_users = db.scalar(count_stmt) or 0
 
-    total_pages = math.ceil(total_users / limit) if total_users else 0
-    current_page_index = offset // limit if limit else 0
-    remaining_pages = (
-        max(total_pages - current_page_index - 1, 0) if total_pages > 0 else 0
-    )
-
-    return Page[UserOut](
-        items=[user_to_out(u) for u in users],
-        total=total_users,
-        totalPages=total_pages,
-        limit=limit,
-        offset=offset,
-        remainingPages=remaining_pages,
+    return Page[UserOut].of(
+        [UserOut.model_validate(u, from_attributes=True) for u in users],
+        total=total_users, limit=limit, offset=offset
     )

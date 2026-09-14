@@ -66,7 +66,6 @@ def _like_unaccent(expr, term: str, *, mode: str = "contains"):
 
 def apply_occurrence_filters(stmt: Select, filters: OccurrenceFilters) -> Select:
     f = filters
-    print(f)
 
     # mismas expresiones que usas en el endpoint
     code_expr = func.coalesce(Occurrence.catalogNumber, Occurrence.recordNumber)
@@ -85,7 +84,6 @@ def apply_occurrence_filters(stmt: Select, filters: OccurrenceFilters) -> Select
 
     # Nombre científico (prefijo, acento-insensible) -> Taxon.scientificName
     if f.scientific_name:
-        print("scientific name entrando")
         cond = _like_unaccent(
             Taxon.scientificName,
             f.scientific_name,
