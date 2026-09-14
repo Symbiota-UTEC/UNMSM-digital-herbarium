@@ -1,22 +1,17 @@
 from __future__ import annotations
 
-import os
-from pathlib import Path
 from typing import Iterator
 
-from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
-BASE_DIR = Path(__file__).resolve().parent
-ENV_PATH = BASE_DIR / ".env"
-load_dotenv(ENV_PATH)
+from backend.config.env import getenv
 
-USERNAME = os.getenv("USERNAME", "")
-PASSWORD = os.getenv("PASSWORD", "")
-HOST = os.getenv("HOST", "localhost")
-PORT = os.getenv("PORT", "5432")
-DATABASE = os.getenv("DATABASE", "")
+USERNAME = getenv("USERNAME", "")
+PASSWORD = getenv("PASSWORD", "")
+HOST = getenv("HOST", "localhost")
+PORT = getenv("PORT", "5432")
+DATABASE = getenv("DATABASE", "")
 
 DATABASE_URL = f"postgresql+psycopg2://{USERNAME}:{PASSWORD}@{HOST}:{PORT}/{DATABASE}"
 

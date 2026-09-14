@@ -132,18 +132,8 @@ def list_registration_requests(
         for r in rows
     ]
 
-    total_pages = (total + limit - 1) // limit if limit > 0 else 1
-    current_page = (offset // limit) + 1 if limit > 0 else 1
-    remaining_pages = max(total_pages - current_page, 0)
-
-    return Page[RegistrationRequestItem](
-        items=items,
-        total=total,
-        currentPage=current_page,
-        totalPages=total_pages,
-        limit=limit,
-        offset=offset,
-        remainingPages=remaining_pages,
+    return Page[RegistrationRequestItem].of(
+        items, total=total, limit=limit, offset=offset
     )
 
 

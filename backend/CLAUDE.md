@@ -18,11 +18,21 @@ FastAPI application exposing a Darwin Core (DwC)-compliant REST API for managing
 backend/
 ├── main.py                   # App factory, CORS, router registration, DB init
 ├── config/
+│   ├── .env.sample           # Copy to config/.env and fill in — see "Environment Variables" below
+│   ├── env.py                # SINGLE place that loads `.env` and exposes getenv()/getenv_list()
 │   ├── settings.py           # CORS origins, SeaweedFS URLs (env-driven)
 │   ├── database.py           # SQLAlchemy engine, SessionLocal, get_db dependency
 │   └── auth.py               # SECRET_KEY, ALGORITHM, token expiry settings
-├── models/
-│   └── models.py             # All SQLAlchemy ORM models (single file)
+├── models/                    # One file per domain; models.py re-exports all of them
+│   ├── models.py             # Aggregator + cross-model Index(...) definitions
+│   ├── institution.py        # Institution
+│   ├── collection.py         # Collection, CollectionPermission
+│   ├── user.py                # User
+│   ├── registration_request.py  # RegistrationRequest
+│   ├── taxon.py               # Taxon
+│   ├── occurrence.py          # Occurrence, OccurrenceImage
+│   ├── identification.py      # Identification, Identifier
+│   └── upload_jobs.py         # TaxonFloraImportJob
 ├── schemas/
 │   ├── common/
 │   │   ├── base.py           # ORMBaseModel, StrictBaseModel
@@ -34,20 +44,28 @@ backend/
 │   ├── institutions.py
 │   ├── admin.py
 │   └── autocomplete.py
-├── routers/                  # One file per resource; all mounted under /api
+├── routers/                  # One file (or package) per resource; all mounted under /api
 │   ├── auth.py
 │   ├── users.py
 │   ├── collections.py
 │   ├── occurrence.py
 │   ├── taxon.py
-│   ├── upload.py
+│   ├── upload/                # Package: dwc_csv.py, taxon_flora.py, images.py
+│   │   ├── __init__.py       # Aggregates the 3 sub-routers under prefix="/upload"
+│   │   ├── dwc_csv.py         # POST /upload/dwc-csv
+│   │   ├── taxon_flora.py     # POST/GET /upload/taxon-flora-csv[...] (async job)
+│   │   └── images.py          # /upload/image[...] via SeaweedFS
 │   ├── institutions.py
 │   ├── admin.py
 │   └── autocomplete.py
 ├── auth/
 │   └── jwt.py                # Token creation, verification, auth dependencies
 ├── services/
-│   └── occurrence_filters.py # Filter dependency + SQLAlchemy filter builder
+│   ├── occurrence_filters.py    # Filter dependency + SQLAlchemy filter builder
+│   └── collection_permissions.py  # Single source of truth for Collection authorization
+│                                   # (view / edit / manage-permissions); used by
+│                                   # routers/occurrence.py, routers/collections.py and
+│                                   # routers/upload/*
 ├── utils/
 │   ├── dwc.py                # DwC CSV header validation constants
 │   └── security.py           # hash_password, verify_password
@@ -61,34 +79,27 @@ backend/
 
 ### Environment Variables
 
-Minimum required:
+All of `config/database.py`, `config/settings.py`, `config/auth.py` and
+`scripts/create_admin.py` read from the **same** `backend/config/.env` file,
+but none of them loads it directly anymore — `config/env.py` is the single
+place that resolves its path and calls `load_dotenv()`; every other module
+imports `getenv()`/`getenv_list()` from there instead of reading `os.environ`
+or calling `load_dotenv()` itself. If you add a new config value, read it via
+`from backend.config.env import getenv` rather than `os.getenv` directly.
 
-```bash
-# Database
-USERNAME=postgres
-PASSWORD=postgres
-HOST=localhost
-PORT=5432
-DATABASE=herbarium
+The full, code-verified list of variables (with working local-dev defaults)
+lives in [`config/.env.sample`](config/.env.sample) — copy it to
+`config/.env` and adjust. Don't duplicate that list here; it drifts (this
+section used to list a stale `INSTITUTION_CODE` that no code ever read).
 
-# Auth (required — app crashes without it)
-SECRET_KEY=your-secret-key
+Only `SECRET_KEY` is truly required — the app raises `RuntimeError` at
+import time without it. Every other variable has a working default in code
+(see `config/database.py`, `config/settings.py`, `config/auth.py`,
+`scripts/create_admin.py`).
 
-# Optional
-ACCESS_TOKEN_EXPIRE_MINUTES=60        # default 60
-BACKEND_CORS_ALLOW_ORIGINS=http://localhost:5173
-
-# SeaweedFS
-SEAWEEDFS_INTERNAL_URL=http://localhost:8888
-SEAWEEDFS_PUBLIC_URL=http://localhost:8888
-
-# Bootstrap admin (used by scripts/create_admin.py)
-ADMIN_USERNAME=admin
-ADMIN_EMAIL=admin@example.com
-ADMIN_PASSWORD=changeme
-INSTITUTION_CODE=UNMSM
-INSTITUTION_NAME="Universidad Nacional Mayor de San Marcos"
-```
+If you also run this via `docker compose` / `make dev` / `make prd` from the
+repo root, see [`/.env.sample`](../.env.sample) too — `USERNAME`/`PASSWORD`/`DATABASE`
+there must match the same-named variables in `config/.env`.
 
 ### Start (development)
 
@@ -130,7 +141,7 @@ All routes are prefixed with `/api`.
 
 ## Data Model
 
-Core Darwin Core entities live in `models/models.py` (single file, all models in one place):
+Core Darwin Core entities live under `models/`, one file per aggregate (`institution.py`, `collection.py`, `user.py`, `taxon.py`, `occurrence.py`, `identification.py`, `registration_request.py`, `upload_jobs.py`). `models/models.py` re-exports everything, so existing `from backend.models.models import X` imports elsewhere in the codebase are unaffected:
 
 ```
 Institution ──< User
@@ -168,7 +179,7 @@ All models use `UUID` PKs (Python `uuid.uuid4`).
 ### Roles
 - **Superuser** — full access across all institutions
 - **Institution admin** — manages their own institution's data
-- **Collection roles** — `owner`, `editor`, `viewer` stored in `CollectionPermission`
+- **Collection roles** — `owner`, `editor`, `viewer` stored in `CollectionPermission`. Whether a user can view/edit/manage-permissions-of a given `Collection` is decided by `services/collection_permissions.py` (`user_can_view_collection`, `user_can_edit_collection`, `user_can_manage_collection_permissions`) — don't reimplement this check in a router, import it.
 
 ---
 
@@ -177,6 +188,44 @@ All models use `UUID` PKs (Python `uuid.uuid4`).
 - All output schemas extend `ORMBaseModel` (enables `from_attributes=True` for ORM serialization).
 - All input schemas extend `StrictBaseModel` (`extra="forbid"` — unknown fields raise 422).
 - Paginated responses use the generic `Page[T]` (fields: `items`, `total`, `limit`, `offset`, `currentPage`, `totalPages`, `remainingPages`).
+
+### Building a `Page[T]`
+
+**Always build paginated responses with `Page[T].of(items, total=..., limit=..., offset=...)`**
+(defined in `schemas/common/pages.py`) — never compute `currentPage`/`totalPages`/`remainingPages`
+by hand in a router. The formula, applied uniformly across every paginated endpoint:
+
+```
+totalPages     = ceil(total / limit)
+currentPage    = (offset // limit) + 1
+remainingPages = max(totalPages - currentPage, 0)
+```
+
+- No clamping: if a client requests an `offset` past the end, `currentPage` reflects
+  that honestly (e.g. `currentPage` can end up higher than `totalPages`) instead of
+  silently capping it — `remainingPages` will just be `0`. This is deliberate.
+- Requires `limit > 0`, which every paginated endpoint already enforces via
+  `Query(..., ge=1)`. With `limit <= 0`, `Page.of` returns a safe empty page
+  (`currentPage=1, totalPages=0, remainingPages=0`) instead of raising `ZeroDivisionError`.
+
+**Why this exists:** before it, six routers each computed these three fields inline,
+and they had quietly drifted into three different formulas (some clamped `currentPage`
+to `totalPages`, some special-cased `total == 0`, one — `routers/users.py` — never set
+`currentPage` at all, which made `GET /api/users/` raise a Pydantic `ValidationError`
+on every call). Unifying picked the formula the majority of endpoints already followed
+(no clamping, no special-casing). Practical effect of the unification:
+  - `routers/occurrence.py` (`list_occurrences_basic`) and the three paginated
+    endpoints in `routers/collections.py` used to clamp `currentPage` to `totalPages`
+    and force `currentPage=1` when `total==0`; they no longer do — only relevant if a
+    caller requests an `offset` beyond the last page.
+  - `routers/users.py` (`GET /api/users/`) is fixed: it now returns a valid `Page`
+    instead of crashing.
+  - `routers/taxon.py`'s `GET /taxon/tree` now rejects `size <= 0` with a normal 422
+    instead of crashing with a `ZeroDivisionError` (`size` gained `ge=1`, matching
+    every other paginated endpoint).
+  - `routers/auth.py`, `routers/institutions.py`, `routers/taxon.py` (`size`-based
+    pagination) and `routers/upload/taxon_flora.py` already matched this formula
+    exactly, so nothing observable changes for them.
 
 ---
 
@@ -225,7 +274,7 @@ This creates any missing tables but does not run migrations. There is no Alembic
 
 ## Adding a New Resource
 
-1. Add the ORM model to `models/models.py`.
+1. Add the ORM model to the right domain file under `models/` (or a new one) and re-export it from `models/models.py`.
 2. Add Pydantic schemas to a new file in `schemas/`.
 3. Create a router file in `routers/`, using `get_db` and auth dependencies.
 4. Register the router in `main.py` with `app.include_router(...)`.

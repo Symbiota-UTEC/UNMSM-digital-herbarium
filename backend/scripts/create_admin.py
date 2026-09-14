@@ -1,22 +1,15 @@
 # backend/scripts/create_admin.py
 from __future__ import annotations
 
-import os
-from pathlib import Path
 from uuid import uuid4
 
-from dotenv import load_dotenv
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.config.database import Base, engine, SessionLocal, ensure_database_extensions
+from backend.config.env import getenv
 from backend.models.models import User, Institution
 from backend.utils.security import hash_password
-
-# Cargamos variables de entorno desde backend/config/.env (si existe)
-BASE_DIR = Path(__file__).resolve().parent
-ENV_PATH = BASE_DIR.parent / "config" / ".env"
-load_dotenv(ENV_PATH)
 
 
 def increment_users_count(db: Session, institution: Institution, delta: int = 1) -> None:
@@ -36,17 +29,17 @@ def upsert_institution(db: Session) -> Institution:
     Crea o devuelve la institución objetivo. Usa variables de entorno con
     valores por defecto de la UNMSM.
     """
-    institution_id = os.getenv("INSTITUTION_ID", "ae3fa7bc-6437-4ffb-8e33-ec8935295289")
-    institution_name = os.getenv("INSTITUTION_NAME", "Universidad Nacional Mayor de San Marcos")
-    website = os.getenv("INSTITUTION_WEBSITE", "https://www.unmsm.edu.pe/")
-    country = os.getenv("INSTITUTION_COUNTRY", "Perú")
-    city = os.getenv("INSTITUTION_CITY", "Lima")
-    address = os.getenv(
+    institution_id = getenv("INSTITUTION_ID", "ae3fa7bc-6437-4ffb-8e33-ec8935295289")
+    institution_name = getenv("INSTITUTION_NAME", "Universidad Nacional Mayor de San Marcos")
+    website = getenv("INSTITUTION_WEBSITE", "https://www.unmsm.edu.pe/")
+    country = getenv("INSTITUTION_COUNTRY", "Perú")
+    city = getenv("INSTITUTION_CITY", "Lima")
+    address = getenv(
         "INSTITUTION_ADDRESS",
         "Av. Universitaria 1801, San Miguel, Lima, Perú",
     )
-    email = os.getenv("INSTITUTION_EMAIL")
-    phone = os.getenv("INSTITUTION_PHONE")
+    email = getenv("INSTITUTION_EMAIL")
+    phone = getenv("INSTITUTION_PHONE")
 
     inst = db.scalar(
         select(Institution).where(Institution.institutionId == institution_id)
@@ -102,10 +95,10 @@ def upsert_admin(db: Session, institution: Institution) -> User:
     """
     Crea (o actualiza) un usuario admin global para la institución dada.
     """
-    admin_id = os.getenv("ADMIN_ID", "ae3fa7bc-6437-4ffb-8e33-ec8935295280")
-    admin_username = os.getenv("ADMIN_USERNAME", "admin")
-    admin_email = os.getenv("ADMIN_EMAIL", "admin@gmail.com")
-    admin_password = os.getenv("ADMIN_PASSWORD", "admin")
+    admin_id = getenv("ADMIN_ID", "ae3fa7bc-6437-4ffb-8e33-ec8935295280")
+    admin_username = getenv("ADMIN_USERNAME", "admin")
+    admin_email = getenv("ADMIN_EMAIL", "admin@gmail.com")
+    admin_password = getenv("ADMIN_PASSWORD", "admin")
 
     user = db.scalar(select(User).where(User.username == admin_username))
     created_user = False

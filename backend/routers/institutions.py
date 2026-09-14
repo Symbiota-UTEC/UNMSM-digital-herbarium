@@ -79,19 +79,8 @@ def list_institutions(
 
     institutions = db.scalars(stmt).all()
 
-    # ---- Métricas de página (usa el schema Page con currentPage)
-    current_page = (offset // limit) + 1 if limit else 1
-    total_pages = (total + limit - 1) // limit if limit else 1
-    remaining_pages = max(0, total_pages - current_page)
-
-    return Page[InstitutionOut](
-        items=institutions,
-        total=total,
-        limit=limit,
-        offset=offset,
-        currentPage=current_page,
-        totalPages=total_pages,
-        remainingPages=remaining_pages,
+    return Page[InstitutionOut].of(
+        institutions, total=total, limit=limit, offset=offset
     )
 
 

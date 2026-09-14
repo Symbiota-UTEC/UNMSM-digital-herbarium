@@ -1,7 +1,6 @@
 # backend/api/endpoints/taxon.py
 from __future__ import annotations
 
-import math
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query, HTTPException
@@ -43,7 +42,7 @@ def get_taxon_tree(
         description="Filtra por majorGroup (opcional). Útil para separar plantas, algas, etc.",
     ),
     page: int = Query(1, ge=1),
-    size: int = Query(50),
+    size: int = Query(50, ge=1),
     db: Session = Depends(get_db),
 ):
     """
@@ -83,8 +82,6 @@ def get_taxon_tree(
 
     limit = size
     offset = (page - 1) * limit
-    total_pages = math.ceil(total / limit) if total > 0 else 0
-    remaining_pages = max(total_pages - page, 0)
 
     taxa: List[Taxon] = (
         db.scalars(
@@ -101,15 +98,7 @@ def get_taxon_tree(
 
     if not taxa:
         # Página vacía, pero con estructura completa de Page
-        return Page[TaxonTreeNode](
-            items=[],
-            total=total,
-            limit=limit,
-            offset=offset,
-            currentPage=page,
-            totalPages=total_pages,
-            remainingPages=remaining_pages,
-        )
+        return Page[TaxonTreeNode].of([], total=total, limit=limit, offset=offset)
 
     # ------------------------- Calcular hasChildren ------------------------
 
@@ -186,15 +175,7 @@ def get_taxon_tree(
 
     # ---------------------- Respuesta paginada final ----------------------
 
-    return Page[TaxonTreeNode](
-        items=items,
-        total=total,
-        limit=limit,
-        offset=offset,
-        currentPage=page,
-        totalPages=total_pages,
-        remainingPages=remaining_pages,
-    )
+    return Page[TaxonTreeNode].of(items, total=total, limit=limit, offset=offset)
 
 
 @router.get(
@@ -217,15 +198,7 @@ def search_taxa(
     offset = (page - 1) * limit
 
     if not term:
-        return Page[TaxonSearchItem](
-            items=[],
-            total=0,
-            limit=limit,
-            offset=offset,
-            currentPage=page,
-            totalPages=0,
-            remainingPages=0,
-        )
+        return Page[TaxonSearchItem].of([], total=0, limit=limit, offset=offset)
 
     pattern = f"%{term.lower()}%"
     filters = [
@@ -242,8 +215,6 @@ def search_taxa(
     total: int = db.scalar(
         select(func.count()).select_from(base_query.subquery())
     ) or 0
-    total_pages = math.ceil(total / limit) if total > 0 else 0
-    remaining_pages = max(total_pages - page, 0)
 
     rows = db.execute(
         select(
@@ -293,15 +264,7 @@ def search_taxa(
         for row in rows
     ]
 
-    return Page[TaxonSearchItem](
-        items=items,
-        total=total,
-        limit=limit,
-        offset=offset,
-        currentPage=page,
-        totalPages=total_pages,
-        remainingPages=remaining_pages,
-    )
+    return Page[TaxonSearchItem].of(items, total=total, limit=limit, offset=offset)
 
 
 @router.get(

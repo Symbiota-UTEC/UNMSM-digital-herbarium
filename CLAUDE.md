@@ -6,6 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 UNMSM Digital Herbarium — a Darwin Core (DwC)-compliant web application for managing herbarium specimens. Consists of a FastAPI backend and a React/TypeScript frontend, orchestrated via Docker Compose.
 
+### Environment files
+
+Three `.env.sample` files, one per level — copy each to `.env` next to it and fill in:
+- `/.env.sample` — only needed for `docker compose`/`make dev`/`make prd`; seeds the Postgres container.
+- `backend/config/.env.sample` — the backend's only `.env` (see `backend/CLAUDE.md` > Environment Variables).
+- `frontend/.env.sample` — only needed to run `npm run dev` outside Docker.
+
 ## Commands
 
 ```bash
@@ -37,7 +44,7 @@ FastAPI app with SQLAlchemy 2.0 ORM, PostgreSQL, and JWT auth. See [`backend/CLA
 **Key patterns:**
 - All routes prefixed `/api`, one router file per resource in `routers/`
 - Auth dependencies: `get_current_user`, `require_admin`, `require_superuser` from `auth/jwt.py`
-- All models in single file `models/models.py`; UUID PKs throughout
+- Models split by domain under `models/` (one file per aggregate); `models/models.py` re-exports all of them so `from backend.models.models import X` keeps working everywhere. UUID PKs throughout
 - No Alembic — schema changes require manual DDL or `Base.metadata.create_all()`
 - Paginated responses use generic `Page[T]` schema (fields: `items`, `total`, `currentPage`, `totalPages`, etc.)
 
