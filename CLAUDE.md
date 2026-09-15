@@ -108,4 +108,7 @@ backend-dev # FastAPI --reload on port 8001
 frontend-dev# Vite dev server on port 5173
 ```
 
-Production services (`backend`, `frontend`) use built images.
+`backend`, `backend-dev` and `frontend` all build from a Dockerfile (`backend-dev`
+reuses `backend/Dockerfile`, just with `--reload` and a live-reload volume mount for
+`backend/`) — dependencies get installed once at `docker compose build`, not on every
+`up`. Only `frontend-dev` still installs live (`npm install` on each start).

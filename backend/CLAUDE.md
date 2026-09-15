@@ -60,18 +60,82 @@ backend/
 │   └── autocomplete.py
 ├── auth/
 │   └── jwt.py                # Token creation, verification, auth dependencies
-├── services/
+├── services/                  # One file per resource — see "Architecture: 3 Layers" below
 │   ├── occurrence_filters.py    # Filter dependency + SQLAlchemy filter builder
-│   └── collection_permissions.py  # Single source of truth for Collection authorization
-│                                   # (view / edit / manage-permissions); used by
-│                                   # routers/occurrence.py, routers/collections.py and
-│                                   # routers/upload/*
+│   ├── collection_permissions.py  # Collection authorization (view/edit/manage-permissions)
+│   ├── occurrences.py         # Business logic for routers/occurrence.py
+│   ├── collections.py         # Business logic for routers/collections.py
+│   ├── taxon.py               # Business logic for routers/taxon.py
+│   ├── users.py               # Business logic for routers/users.py
+│   ├── institutions.py        # Business logic for routers/institutions.py
+│   ├── auth.py                # Business logic for routers/auth.py
+│   ├── admin_metrics.py       # Business logic for routers/admin.py
+│   ├── autocomplete.py        # Business logic for routers/autocomplete.py
+│   ├── dwc_import.py          # Business logic for routers/upload/dwc_csv.py
+│   ├── images.py              # Business logic for routers/upload/images.py
+│   └── taxon_flora_import.py  # Business logic for routers/upload/taxon_flora.py
 ├── utils/
 │   ├── dwc.py                # DwC CSV header validation constants
 │   └── security.py           # hash_password, verify_password
 └── scripts/
     └── create_admin.py       # Bootstrap: creates default institution + admin user
 ```
+
+---
+
+## Architecture: 3 Layers
+
+The backend is organized in 3 layers, each with one job:
+
+```
+routers/*.py    HTTP only: parse the request (Query/Body/Depends), call ONE
+                function in services/, map the result to a response_model
+                (or raise HTTPException for something the service didn't
+                already raise). No SQLAlchemy `select()`/`db.execute()` here.
+     │
+     ▼
+services/*.py   Business logic: permission checks, orchestration across
+                models, query construction. Takes `db: Session` plus plain
+                arguments (UUIDs, strings, already-validated Pydantic
+                schemas); returns ORM model instances, or an already-built
+                `Page[T]` / plain dict when that's the natural response shape.
+     │
+     ▼
+models/*.py     SQLAlchemy ORM entities (already split by domain).
+```
+
+This mirrors the routing/models split already documented above, closing the
+gap that used to exist: before, every router built its own `select()`
+statements and business logic inline, and `services/` only held cross-cutting
+helpers (`occurrence_filters.py`, `collection_permissions.py`) shared by
+several routers. Now each router has a matching `services/<name>.py` that
+owns 100% of that resource's logic — the router is just wiring.
+
+**Deliberate compromise — services may raise `HTTPException` directly.**
+A "pure" service layer wouldn't know about HTTP at all (it would raise plain
+domain exceptions and let the router translate them into status codes). This
+codebase does not do that: services import `fastapi.HTTPException` and raise
+it straight from deep inside business logic (e.g. "Taxon no encontrado" while
+building an Identification). This was a conscious choice, not an oversight:
+FastAPI catches `HTTPException` regardless of how deep in the call stack it's
+raised, so moving a function's body into `services/` verbatim — status codes,
+messages and all — is a zero-risk, mechanically-verifiable change. Inventing
+a parallel exception-translation layer would be "more correct" textbook
+layering, but it means touching every error path by hand with real risk of
+silently changing a status code or message along the way. If this project
+ever needs services usable outside of FastAPI (a CLI, a worker with no HTTP
+context), revisit this — but that need doesn't exist today.
+
+**What this is NOT:** this is not Clean Architecture / hexagonal (4 layers:
+entities, use cases, interface adapters, frameworks). There's no repository
+interface abstracting SQLAlchemy away, and no framework-independent domain
+entity separate from the ORM model — `services/` talks to SQLAlchemy
+directly. That's a deliberate scope call for a single-database, single-team
+FastAPI app: it gets most of the practical benefit (business logic is
+testable without going through HTTP, routers are thin and predictable,
+logic is reusable outside of a single endpoint) at a fraction of the
+indirection cost. Reconsider only if a second persistence backend or a
+second delivery mechanism (gRPC, CLI-as-a-product) actually shows up.
 
 ---
 
@@ -272,9 +336,44 @@ This creates any missing tables but does not run migrations. There is no Alembic
 
 ---
 
-## Adding a New Resource
+## Adding a New Resource / Endpoint
 
-1. Add the ORM model to the right domain file under `models/` (or a new one) and re-export it from `models/models.py`.
-2. Add Pydantic schemas to a new file in `schemas/`.
-3. Create a router file in `routers/`, using `get_db` and auth dependencies.
-4. Register the router in `main.py` with `app.include_router(...)`.
+Follow the 3 layers (see "Architecture" above) in this order:
+
+1. **Model** — add the ORM entity to the right domain file under `models/`
+   (or a new file, for a new aggregate) and re-export it from `models/models.py`.
+2. **Schemas** — add Pydantic input/output schemas to `schemas/<resource>.py`.
+   Output schemas extend `ORMBaseModel`, input schemas extend `StrictBaseModel`
+   (see "Schema Conventions"). Use `Page[T]` for anything paginated.
+3. **Service** — create (or extend) `services/<resource>.py`. Put ALL of the
+   logic here: permission checks (reuse `services/collection_permissions.py`
+   if it's about a `Collection`; write a similar module for a new aggregate
+   that needs its own view/edit rules — don't inline permission checks in a
+   router), query construction, orchestration, and `raise HTTPException(...)`
+   for anything that can go wrong (404/403/409/422/...). A service function
+   signature looks like:
+   ```python
+   def do_the_thing(db: Session, some_id: UUID, payload: SomeIn, current_user: User) -> SomeModel:
+       ...
+   ```
+   Return the ORM instance (or an already-built `Page[T]`/dict) — don't
+   import `fastapi` response schemas into the service just to instantiate
+   them, unless the schema *is* the natural return shape (a service that
+   already needs to hand back paginated, resolved-role data, say).
+4. **Router** — create/extend `routers/<resource>.py`. Each endpoint:
+   - declares its `Query`/`Body`/`Depends` parameters and `response_model`,
+   - keeps its **docstring** — FastAPI uses it as the OpenAPI `description`;
+     move logic to the service, but leave (or copy) the docstring on the
+     router function, otherwise the endpoint silently loses its `/docs` text,
+   - calls exactly one function in `services/<resource>.py`,
+   - maps the result to the response schema when the service returns a raw
+     ORM model (`SomeOut.model_validate(obj, from_attributes=True)`) — for
+     everything else (`Page[T]`, a plain dict, an ORM model whose schema
+     already tolerates `from_attributes` via `response_model=`), just
+     `return` what the service gave you.
+   No `select()`, no `db.execute()`, no business `if` branching in the router.
+5. Register the router in `main.py` with `app.include_router(..., prefix="/api")`.
+
+If a new endpoint's logic is trivial (a single lookup, no branching) it's
+still worth a one-line service function — consistency beats saving one file,
+and it keeps `routers/` reliably free of direct DB access.

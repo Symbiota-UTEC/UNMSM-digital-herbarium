@@ -33,21 +33,22 @@ services:
         condition: service_healthy
     ports: ["8000:8000"]
     command: ["sh", "-c", "python -m backend.scripts.create_models && python -m backend.scripts.create_admin && exec python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000"]
+    healthcheck:
+      # Chequea que el puerto acepte conexiones (sin hacer un request HTTP)
+      test: ["CMD", "python", "-c", "import socket,sys; s=socket.socket(); s.settimeout(2); sys.exit(0 if s.connect_ex(('127.0.0.1', 8000)) == 0 else 1)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
     networks: [appnet]
 
   backend-dev:
-    image: python:3.10-slim
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: herbarium_backend_dev
-    working_dir: /app
-    command: >
-      sh -c "apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev curl &&
-             rm -rf /var/lib/apt/lists/* &&
-             pip install --no-cache-dir -r requirements.txt &&
-             python -m backend.scripts.create_models &&
-             python -m backend.scripts.create_admin &&
-             exec python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload"
+    command: ["sh", "-c", "python -m backend.scripts.create_models && python -m backend.scripts.create_admin && exec python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload"]
     volumes:
-      - ./backend/requirements.txt:/app/requirements.txt:ro
       - ./backend:/app/backend
     env_file:
       - backend/config/.env
@@ -60,6 +61,12 @@ services:
       db:
         condition: service_healthy
     ports: ["8001:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket,sys; s=socket.socket(); s.settimeout(2); sys.exit(0 if s.connect_ex(('127.0.0.1', 8000)) == 0 else 1)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
     networks: [appnet]
 
   frontend-dev:
@@ -77,7 +84,7 @@ services:
       - "5173:5173"
     depends_on:
       backend-dev:
-        condition: service_started
+        condition: service_healthy
     networks: [appnet]
 
   frontend:
@@ -92,7 +99,7 @@ services:
     container_name: herbarium_frontend
     depends_on:
       backend:
-        condition: service_started
+        condition: service_healthy
     ports:
       - "3000:80"   # http://localhost:3000
     networks: [appnet]
