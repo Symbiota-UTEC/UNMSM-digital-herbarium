@@ -191,6 +191,11 @@ const AUTO_MAP_RULES: Array<{ pattern: RegExp; target: string }> = [
     pattern: /\b(identified by|identificado por|determinado por|det\.)\b/,
     target: "Identification.identifiedBy",
   },
+  {
+    pattern:
+      /\b(identification verification status|estado de verificacion|estado de verificación|verificacion de identificacion|verificación de identificación)\b/,
+    target: "Identification.identificationVerificationStatus",
+  },
 ];
 
 // ==============================

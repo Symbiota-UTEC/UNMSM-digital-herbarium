@@ -387,7 +387,7 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
   ],
 
   // ============================================================
-  // IDENTIFICATION (solo identifiedBy)
+  // IDENTIFICATION
   // ============================================================
   Identification: [
     {
@@ -399,6 +399,15 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       inForm: true,
       helpEs:
         "Persona(s) que identificaron taxonómicamente el espécimen.",
+    },
+    {
+      entity: "Identification",
+      term: "identificationVerificationStatus",
+      value: "Identification.identificationVerificationStatus",
+      label: "dwc:Identification:identificationVerificationStatus",
+      inForm: true,
+      helpEs:
+        "Indicador categórico del grado en que la identificación ha sido verificada como correcta.",
     },
   ],
 };

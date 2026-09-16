@@ -50,6 +50,7 @@ export interface OccurrenceCreatePayload {
     decimalLatitude?: number | null;
     decimalLongitude?: number | null;
     verbatimElevation?: string | null;
+    identificationVerificationStatus?: string | null;
     taxonId?: string | null;
     scientificName?: string | null;
     identifiers?: { name: string; orcid?: string | null }[] | null;
@@ -112,7 +113,7 @@ export const occurrencesService = {
         scientificName?: string | null;
         dateIdentified?: string | null;
         typeStatus?: string | null;
-        isVerified?: boolean;
+        identificationVerificationStatus?: string | null;
         identifiers?: { name: string; orcid?: string | null }[];
         setAsCurrent?: boolean;
     }): Promise<OccurrenceItem> {

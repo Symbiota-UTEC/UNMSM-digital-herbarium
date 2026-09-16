@@ -40,7 +40,7 @@ class OccurrenceIdentificationOut(ORMBaseModel):
     identificationId: UUID
     dateIdentified: Optional[str] = None
     isCurrent: bool
-    isVerified: bool
+    identificationVerificationStatus: Optional[str] = None
     typeStatus: Optional[str] = None
 
     taxon: Optional[OccurrenceTaxonOut] = None
@@ -211,7 +211,7 @@ class OccurrenceCreateIn(StrictBaseModel):
     scientificName: Optional[str] = None
     dateIdentified: Optional[str] = None
     typeStatus: Optional[str] = None
-    isVerified: Optional[bool] = None
+    identificationVerificationStatus: Optional[str] = None
     identifiers: Optional[List[IdentifierIn]] = None
 
     # Dynamic properties dictionary mapped by frontend
@@ -265,7 +265,7 @@ class OccurrenceUpdateIn(StrictBaseModel):
     scientificName: Optional[str] = None
     dateIdentified: Optional[str] = None
     typeStatus: Optional[str] = None
-    isVerified: Optional[bool] = None
+    identificationVerificationStatus: Optional[str] = None
     identifiers: Optional[List[IdentifierIn]] = None
 
 
@@ -274,7 +274,7 @@ class IdentificationCreateIn(StrictBaseModel):
     scientificName: Optional[str] = None
     dateIdentified: Optional[str] = None
     typeStatus: Optional[str] = None
-    isVerified: Optional[bool] = None
+    identificationVerificationStatus: Optional[str] = None
     identifiers: Optional[List[IdentifierIn]] = None
     setAsCurrent: Optional[bool] = False
 

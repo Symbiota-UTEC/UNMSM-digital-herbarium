@@ -35,7 +35,7 @@ export interface OccurrenceIdentificationOut {
   identificationId: string;
   dateIdentified: string | null;
   isCurrent: boolean;
-  isVerified: boolean;
+  identificationVerificationStatus: string | null;
   typeStatus: string | null;
 
   scientificName: string | null;

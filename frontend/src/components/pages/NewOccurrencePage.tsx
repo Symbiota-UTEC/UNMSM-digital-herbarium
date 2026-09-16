@@ -209,7 +209,7 @@ export function NewOccurrencePage({
   const [taxonLoading, setTaxonLoading] = useState(false);
   const [dateIdentified, setDateIdentified] = useState("");
   const [typeStatus, setTypeStatus] = useState("");
-  const [isVerified, setIsVerified] = useState(false);
+  const [identificationVerificationStatus, setIdentificationVerificationStatus] = useState("");
   const [identifiers, setIdentifiers] = useState<{ name: string; orcid: string }[]>([]);
   const [identifierNameInput, setIdentifierNameInput] = useState("");
   const [identifierOrcidInput, setIdentifierOrcidInput] = useState("");
@@ -279,6 +279,7 @@ export function NewOccurrencePage({
       }
       setExistingImages(occ.images ?? []);
       setExistingIdentifications(occ.identifications ?? []);
+      setIdentificationVerificationStatus(occ.currentIdentification?.identificationVerificationStatus ?? "");
     }).catch(() => {
       toast.error("No se pudo cargar la ocurrencia");
     });
@@ -469,6 +470,7 @@ export function NewOccurrencePage({
       decimalLatitude: decimalLatitude ? parseFloat(decimalLatitude) : null,
       decimalLongitude: decimalLongitude ? parseFloat(decimalLongitude) : null,
       verbatimElevation: verbatimElevation || null,
+      identificationVerificationStatus: identificationVerificationStatus || null,
       occurrenceRemarks: occurrenceRemarks || null,
       lifeStage: lifeStage || null,
       establishmentMeans: establishmentMeans || null,
@@ -510,7 +512,7 @@ export function NewOccurrencePage({
             scientificName: scientificNameInput || null,
             dateIdentified: dateIdentified || null,
             typeStatus: typeStatus || null,
-            isVerified,
+            identificationVerificationStatus: identificationVerificationStatus || null,
             identifiers: identifiers.length > 0 ? identifiers.map((i) => ({ name: i.name, orcid: i.orcid || null })) : undefined,
             setAsCurrent: existingIdentifications.length === 0,
           });
@@ -532,7 +534,7 @@ export function NewOccurrencePage({
           scientificName: scientificNameInput || null,
           dateIdentified: dateIdentified || null,
           typeStatus: typeStatus || null,
-          isVerified,
+          identificationVerificationStatus: identificationVerificationStatus || null,
           identifiers: identifiers.length > 0 ? identifiers.map((i) => ({ name: i.name, orcid: i.orcid || null })) : null,
         };
 
@@ -835,7 +837,11 @@ export function NewOccurrencePage({
                   )}
                   <div className="ml-auto flex items-center gap-1.5 flex-wrap">
                     {ident.isCurrent && <Badge variant="default" className="text-xs">Vigente</Badge>}
-                    {ident.isVerified && <Badge variant="outline" className="text-xs">Verificada</Badge>}
+                    {ident.identificationVerificationStatus && (
+                      <Badge variant="outline" className="text-xs">
+                        {ident.identificationVerificationStatus}
+                      </Badge>
+                    )}
                   </div>
                 </div>
                 {ident.identifiers.length > 0 && (
@@ -1043,17 +1049,17 @@ export function NewOccurrencePage({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <input
-            id="isVerified"
-            type="checkbox"
-            checked={isVerified}
-            onChange={(e) => setIsVerified(e.target.checked)}
-            className="h-4 w-4 rounded border-input accent-[rgb(117,26,29)]"
-          />
-          <Label htmlFor="isVerified" className="cursor-pointer">
-            Identificación verificada por especialista
+        <div className="space-y-2">
+          <Label htmlFor="identificationVerificationStatus" className="flex items-center gap-2">
+            Estado de verificación
+            <span className="text-xs text-muted-foreground">dwc:identificationVerificationStatus</span>
           </Label>
+          <Input
+            id="identificationVerificationStatus"
+            value={identificationVerificationStatus}
+            onChange={(e) => setIdentificationVerificationStatus(e.target.value)}
+            placeholder="Ej: Verificada por especialista"
+          />
         </div>
       </div>
     </div>

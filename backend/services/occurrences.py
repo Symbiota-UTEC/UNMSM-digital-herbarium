@@ -134,7 +134,7 @@ def create_occurrence(
 
     # Preparamos los datos del modelo Occurrence
     occ_data = payload.model_dump(
-        exclude={"taxonId", "scientificName", "collectionId", "dateIdentified", "typeStatus", "isVerified", "identifiers"},
+        exclude={"taxonId", "scientificName", "collectionId", "dateIdentified", "typeStatus", "identificationVerificationStatus", "identifiers"},
         exclude_unset=True
     )
 
@@ -173,7 +173,7 @@ def create_occurrence(
             dateIdentified=payload.dateIdentified,
             typeStatus=payload.typeStatus,
             isCurrent=True,
-            isVerified=payload.isVerified or False,
+            identificationVerificationStatus=payload.identificationVerificationStatus,
         )
         db.add(ident)
         db.flush()
@@ -359,7 +359,7 @@ def update_occurrence(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para editar esta ocurrencia")
 
     # Campos de identificación separados del resto
-    ID_FIELDS = {"taxonId", "scientificName", "dateIdentified", "typeStatus", "isVerified", "identifiers"}
+    ID_FIELDS = {"taxonId", "scientificName", "dateIdentified", "typeStatus", "identificationVerificationStatus", "identifiers"}
 
     update_data = payload.model_dump(exclude=ID_FIELDS, exclude_unset=True)
 
@@ -373,8 +373,8 @@ def update_occurrence(
 
     # Actualizar identificación vigente si se envió algún campo de identificación
     ident_sent = any(
-        getattr(payload, f, None) is not None
-        for f in ("taxonId", "scientificName", "dateIdentified", "typeStatus", "isVerified", "identifiers")
+        f in payload.model_fields_set
+        for f in ("taxonId", "scientificName", "dateIdentified", "typeStatus", "identificationVerificationStatus", "identifiers")
     )
     if ident_sent:
         if occ.currentIdentificationId:
@@ -394,8 +394,8 @@ def update_occurrence(
                     current_ident.dateIdentified = payload.dateIdentified
                 if payload.typeStatus is not None:
                     current_ident.typeStatus = payload.typeStatus
-                if payload.isVerified is not None:
-                    current_ident.isVerified = payload.isVerified
+                if "identificationVerificationStatus" in payload.model_fields_set:
+                    current_ident.identificationVerificationStatus = payload.identificationVerificationStatus
 
                 if payload.identifiers is not None:
                     # Reemplazar identificadores: borrar los viejos y crear los nuevos
@@ -425,7 +425,7 @@ def update_occurrence(
                     dateIdentified=payload.dateIdentified,
                     typeStatus=payload.typeStatus,
                     isCurrent=True,
-                    isVerified=payload.isVerified or False,
+                    identificationVerificationStatus=payload.identificationVerificationStatus,
                 )
                 db.add(new_ident)
                 db.flush()
@@ -479,7 +479,7 @@ def add_identification(
         dateIdentified=payload.dateIdentified,
         typeStatus=payload.typeStatus,
         isCurrent=payload.setAsCurrent or not occ.currentIdentificationId,
-        isVerified=payload.isVerified or False,
+        identificationVerificationStatus=payload.identificationVerificationStatus,
     )
     db.add(new_ident)
     db.flush()

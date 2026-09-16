@@ -52,7 +52,7 @@ class Identification(Base):
     - Cuándo
     - A qué taxón
     - Si es la identificación vigente
-    - Si fue verificada
+    - Estado de verificación
     - typeStatus (si el ejemplar es tipo)
     """
 
@@ -138,13 +138,14 @@ class Identification(Base):
         doc="True si esta es la identificación actualmente aceptada para la ocurrencia.",
     )
 
-    # ¿Está verificada/revisada?
-    isVerified: Mapped[bool] = mapped_column(
-        "is_verified",
-        Boolean,
-        nullable=False,
-        default=False,
-        doc="True si la identificación ha sido verificada/revisada por un especialista.",
+    # Estado de verificación de la identificación
+    identificationVerificationStatus: Mapped[Optional[str]] = mapped_column(
+        "identification_verification_status",
+        String(255),
+        doc=(
+            "DwC identificationVerificationStatus: indicador categórico del grado "
+            "en que la identificación ha sido verificada como correcta."
+        ),
     )
 
     # Estado de tipo nomenclatural
