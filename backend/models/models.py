@@ -39,6 +39,16 @@ __all__ = [
 ]
 
 Index("ix_identification_occurrence_current", Identification.occurrenceId, Identification.isCurrent)
+
+# Una sola identificación vigente por ocurrencia: índice único parcial
+# (no puede ser DEFERRABLE, así que los servicios deben demotar antes de promover).
+Index(
+    "uq_identification_one_current_per_occurrence",
+    Identification.occurrenceId,
+    unique=True,
+    postgresql_where=Identification.isCurrent,
+)
+
 Index("ix_occurrence_latlon", Occurrence.decimalLatitude, Occurrence.decimalLongitude)
 Index("ix_occurrence_catalog", Occurrence.catalogNumber, Occurrence.collectionId)
 Index("ix_occurrence_event_date", Occurrence.year, Occurrence.month, Occurrence.day)

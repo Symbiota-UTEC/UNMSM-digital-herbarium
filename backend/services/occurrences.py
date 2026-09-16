@@ -7,7 +7,7 @@ from datetime import datetime, date
 from typing import Optional, Any, Dict, List
 
 from fastapi import HTTPException, status
-from sqlalchemy import select, delete, or_, func, and_
+from sqlalchemy import select, delete, update, or_, func, and_
 from sqlalchemy.orm import Session, selectinload
 
 from backend.models.models import (
@@ -418,6 +418,14 @@ def update_occurrence(
                     if not taxon_obj:
                         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Taxon no encontrado")
 
+                # Demotar por si quedó alguna marcada vigente con el puntero en
+                # NULL (el índice único parcial se evalúa por sentencia).
+                db.execute(
+                    update(Identification)
+                    .where(Identification.occurrenceId == occ.occurrenceId)
+                    .values(isCurrent=False)
+                )
+
                 new_ident = Identification(
                     occurrenceId=occ.occurrenceId,
                     taxonId=payload.taxonId,
@@ -461,16 +469,17 @@ def add_identification(
         if not taxon_obj:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Taxon no encontrado")
 
-    # If setAsCurrent, mark all existing identifications as not current
-    if payload.setAsCurrent:
-        db.execute(
-            select(Identification).where(Identification.occurrenceId == occurrence_id)
-        )
+    # La nueva identificación es vigente si se pide explícitamente o si aún no
+    # hay ninguna; en ese caso demotar las existentes (con flush) antes de
+    # insertar: el índice único parcial se evalúa por sentencia.
+    make_current = payload.setAsCurrent or not occ.currentIdentificationId
+    if make_current:
         for ident in db.execute(
             select(Identification).where(Identification.occurrenceId == occurrence_id)
         ).scalars().all():
             ident.isCurrent = False
             db.add(ident)
+        db.flush()
 
     new_ident = Identification(
         occurrenceId=occurrence_id,
@@ -478,7 +487,7 @@ def add_identification(
         scientificName=payload.scientificName,
         dateIdentified=payload.dateIdentified,
         typeStatus=payload.typeStatus,
-        isCurrent=payload.setAsCurrent or not occ.currentIdentificationId,
+        isCurrent=make_current,
         identificationVerificationStatus=payload.identificationVerificationStatus,
     )
     db.add(new_ident)
@@ -540,19 +549,23 @@ def set_current_identification(
     if not user_can_edit_collection(db, current_user, occ.collection):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para editar esta ocurrencia")
 
-    target_ident = None
-    for ident in db.execute(
+    # El índice único parcial uq_identification_one_current_per_occurrence se
+    # evalúa por sentencia: demotar todas y hacer flush antes de promover el target.
+    idents = db.execute(
         select(Identification).where(Identification.occurrenceId == occurrence_id)
-    ).scalars().all():
-        if ident.identificationId == identification_id:
-            ident.isCurrent = True
-            target_ident = ident
-        else:
-            ident.isCurrent = False
+    ).scalars().all()
+    for ident in idents:
+        ident.isCurrent = False
         db.add(ident)
+    db.flush()
 
+    target_ident = next(
+        (ident for ident in idents if ident.identificationId == identification_id), None
+    )
     if not target_ident:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Identification not found")
+    target_ident.isCurrent = True
+    db.add(target_ident)
 
     occ.currentIdentificationId = identification_id
     db.add(occ)

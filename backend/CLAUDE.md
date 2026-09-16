@@ -219,6 +219,7 @@ Identification ──< IdentificationIdentifier >── Identifier
 - **Occurrence** is a denormalized/flattened DwC record: contains fields from the DwC *Occurrence*, *Event*, and *Location* classes in a single table.
 - **Taxon** is loaded from the WFO (World Flora Online) backbone via CSV import (`/api/upload/taxon-flora-csv`). Has a `isCurrent` flag to mark the active Flora version.
 - **Identification** links an Occurrence to a Taxon. `isCurrent=True` marks the accepted determination.
+- **One current identification per occurrence** is enforced by the partial unique index `uq_identification_one_current_per_occurrence` (on `identification(occurrence_id) WHERE is_current`, defined in `models/models.py`). It is not DEFERRABLE — write paths in `services/occurrences.py` demote the previous current row and flush before promoting the new one; keep that ordering in any new code that touches `isCurrent`.
 
 ### UUID primary keys
 
