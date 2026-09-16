@@ -199,7 +199,6 @@ export function NewOccurrencePage({
   const [decimalLatitude, setDecimalLatitude] = useState("");
   const [decimalLongitude, setDecimalLongitude] = useState("");
   const [verbatimElevation, setVerbatimElevation] = useState("");
-  const [hydrographicContext, setHydrographicContext] = useState("");
   const [georeferenceVerificationStatus, setGeoreferenceVerificationStatus] = useState("");
   const [locationRemarks, setLocationRemarks] = useState("");
 
@@ -272,7 +271,6 @@ export function NewOccurrencePage({
       setDecimalLatitude(occ.decimalLatitude != null ? String(occ.decimalLatitude) : "");
       setDecimalLongitude(occ.decimalLongitude != null ? String(occ.decimalLongitude) : "");
       setVerbatimElevation(occ.verbatimElevation ?? "");
-      setHydrographicContext(occ.hydrographicContext ?? "");
       setGeoreferenceVerificationStatus(occ.georeferenceVerificationStatus ?? "");
       setLocationRemarks(occ.locationRemarks ?? "");
       const dp = occ.dynamicProperties;
@@ -471,7 +469,6 @@ export function NewOccurrencePage({
       decimalLatitude: decimalLatitude ? parseFloat(decimalLatitude) : null,
       decimalLongitude: decimalLongitude ? parseFloat(decimalLongitude) : null,
       verbatimElevation: verbatimElevation || null,
-      hydrographicContext: hydrographicContext || null,
       occurrenceRemarks: occurrenceRemarks || null,
       lifeStage: lifeStage || null,
       establishmentMeans: establishmentMeans || null,
@@ -791,29 +788,6 @@ export function NewOccurrencePage({
       </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
-        <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
-          <Label htmlFor="hydrographicContext" className="flex items-center gap-2">
-            Contexto hidrográfico
-            <span className="text-xs text-muted-foreground">dwc:hydrographicContext</span>
-          </Label>
-          <Select value={hydrographicContext} onValueChange={setHydrographicContext}>
-            <SelectTrigger id="hydrographicContext"><SelectValue placeholder="Selecciona" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="No aplica">No aplica</SelectItem>
-              <SelectItem value="Río">Río</SelectItem>
-              <SelectItem value="Lago">Lago</SelectItem>
-              <SelectItem value="Laguna">Laguna</SelectItem>
-              <SelectItem value="Pantano">Pantano</SelectItem>
-              <SelectItem value="Quebrada">Quebrada</SelectItem>
-              <SelectItem value="Océano">Océano</SelectItem>
-              <SelectItem value="Mar">Mar</SelectItem>
-              <SelectItem value="Bahía">Bahía</SelectItem>
-              <SelectItem value="Estuario">Estuario</SelectItem>
-              <SelectItem value="Archipiélago">Archipiélago</SelectItem>
-              <SelectItem value="Isla">Isla</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
         <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
           <Label htmlFor="georeferenceVerificationStatus" className="flex flex-wrap items-center gap-2">
             Estado de Verificación

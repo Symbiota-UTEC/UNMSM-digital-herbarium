@@ -340,7 +340,6 @@ export function OccurrenceDetailPage({
       </div>
 
       <div className="grid md:grid-cols-2 gap-4">
-        <Field label="Contexto hidrográfico" value={data.hydrographicContext} />
         <Field label="Estado de verificación de georreferenciación" value={data.georeferenceVerificationStatus} />
       </div>
 

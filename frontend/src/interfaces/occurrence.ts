@@ -93,7 +93,6 @@ export interface OccurrenceItem {
   verbatimElevation: string | null;
 
   countryCode: string | null;
-  hydrographicContext: string | null;
   footprintWKT: string | null;
 
   // Datos biológicos / occurrence extra

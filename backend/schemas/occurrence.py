@@ -106,7 +106,6 @@ class OccurrenceOut(ORMBaseModel):
     verbatimElevation: Optional[str] = None
 
     countryCode: Optional[str] = None
-    hydrographicContext: Optional[str] = None
     footprintWKT: Optional[str] = None
 
     organismQuantity: Optional[str] = None
@@ -192,7 +191,6 @@ class OccurrenceCreateIn(StrictBaseModel):
     decimalLatitude: Optional[float] = None
     decimalLongitude: Optional[float] = None
     verbatimElevation: Optional[str] = None
-    hydrographicContext: Optional[str] = None
 
     # Extra mapped directly (if exist in models)
     organismQuantity: Optional[str] = None
@@ -245,7 +243,6 @@ class OccurrenceUpdateIn(StrictBaseModel):
     decimalLatitude: Optional[float] = None
     decimalLongitude: Optional[float] = None
     verbatimElevation: Optional[str] = None
-    hydrographicContext: Optional[str] = None
 
     # Occurrence extra
     organismQuantity: Optional[str] = None

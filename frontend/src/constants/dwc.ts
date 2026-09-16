@@ -349,15 +349,6 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
     },
     {
       entity: "Location",
-      term: "hydrographicContext",
-      value: "Location.hydrographicContext",
-      label: "dwc:Location:hydrographicContext",
-      inForm: true,
-      helpEs:
-        "Contexto hidrográfico: cuerpo de agua, archipiélago o isla específica (unifica waterBody, islandGroup, island).",
-    },
-    {
-      entity: "Location",
       term: "footprintWKT",
       value: "Location.footprintWKT",
       label: "dwc:Location:footprintWKT",

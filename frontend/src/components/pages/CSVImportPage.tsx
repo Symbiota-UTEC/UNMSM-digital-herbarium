@@ -172,11 +172,6 @@ const AUTO_MAP_RULES: Array<{ pattern: RegExp; target: string }> = [
   },
   {
     pattern:
-      /\b(contexto hidrografico|hydrographic context|cuerpo de agua|isla|archipielago)\b/,
-    target: "Location.hydrographicContext",
-  },
-  {
-    pattern:
       /\b(footprint wkt|poligono|area de muestreo|area muestreo)\b/,
     target: "Location.footprintWKT",
   },
