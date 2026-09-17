@@ -6,3 +6,6 @@
 backend/.venv
 
 frontend/node_modules/
+
+# GeoNames dumps: se descargan solos al ejecutar el seed (make seed-admin)
+backend/data/geonames/

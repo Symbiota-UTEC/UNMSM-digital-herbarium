@@ -51,6 +51,10 @@ export const API = {
             SCIENTIFIC_NAME: "/autocomplete/scientific-name",
             ENDPOINT: (endpoint: string) => `/autocomplete/${endpoint}`,
         },
+        ADMIN_DIVISIONS: {
+            COUNTRIES: "/admin-divisions/countries",
+            BASE: "/admin-divisions",
+        },
     },
 };
 

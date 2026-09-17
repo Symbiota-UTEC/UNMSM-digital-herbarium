@@ -1,6 +1,6 @@
 COMPOSE = docker compose
 
-.PHONY: dev prd stop stop-all logs ps
+.PHONY: dev prd stop stop-all logs ps seed-admin
 
 ## Auto-refresh: backend --reload + Vite HMR (sin build, cambios en vivo)
 ## Frontend: http://localhost:5173 | Backend: http://localhost:8001
@@ -27,3 +27,9 @@ logs:
 ## Estado de los contenedores
 ps:
 	$(COMPOSE) ps
+
+## Siembra países y divisiones administrativas (INEI + GeoNames)
+## Uso: make seed-admin [ADM3="BR,MX"] para añadir nivel 3 de otros países
+ADM3 ?=
+seed-admin:
+	$(COMPOSE) exec -T backend-dev python -m backend.scripts.seed_admin_divisions $(if $(ADM3),--adm3 $(ADM3),)

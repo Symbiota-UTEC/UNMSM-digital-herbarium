@@ -42,6 +42,9 @@ import { autocompleteService } from "@services/autocomplete.service";
 import { taxonService } from "@services/taxon.service";
 import { occurrencesService } from "@services/occurrences.service";
 import { uploadService } from "@services/upload.service";
+import { adminDivisionsService } from "@services/adminDivisions.service";
+import { GeographicHierarchy } from "../GeographicHierarchy";
+import type { CatalogCountry } from "@interfaces/adminDivision";
 import {
   Tooltip,
   TooltipContent,
@@ -91,53 +94,6 @@ interface NewImageEntry {
   preview: string;
   blobUrl: string;
 }
-
-/* ─── Country list ──────────────── */
-const COUNTRIES: { code: string; name: string }[] = [
-  { code: "PE", name: "Perú" },
-  { code: "AR", name: "Argentina" },
-  { code: "BO", name: "Bolivia" },
-  { code: "BR", name: "Brasil" },
-  { code: "CL", name: "Chile" },
-  { code: "CO", name: "Colombia" },
-  { code: "CR", name: "Costa Rica" },
-  { code: "CU", name: "Cuba" },
-  { code: "DO", name: "República Dominicana" },
-  { code: "EC", name: "Ecuador" },
-  { code: "SV", name: "El Salvador" },
-  { code: "GT", name: "Guatemala" },
-  { code: "HN", name: "Honduras" },
-  { code: "MX", name: "México" },
-  { code: "NI", name: "Nicaragua" },
-  { code: "PA", name: "Panamá" },
-  { code: "PY", name: "Paraguay" },
-  { code: "PR", name: "Puerto Rico" },
-  { code: "UY", name: "Uruguay" },
-  { code: "VE", name: "Venezuela" },
-  { code: "DE", name: "Alemania" },
-  { code: "AU", name: "Australia" },
-  { code: "BE", name: "Bélgica" },
-  { code: "CA", name: "Canadá" },
-  { code: "CN", name: "China" },
-  { code: "KR", name: "Corea del Sur" },
-  { code: "DK", name: "Dinamarca" },
-  { code: "ES", name: "España" },
-  { code: "US", name: "Estados Unidos" },
-  { code: "FR", name: "Francia" },
-  { code: "GB", name: "Reino Unido" },
-  { code: "IN", name: "India" },
-  { code: "IT", name: "Italia" },
-  { code: "JP", name: "Japón" },
-  { code: "MY", name: "Malasia" },
-  { code: "NL", name: "Países Bajos" },
-  { code: "NO", name: "Noruega" },
-  { code: "NZ", name: "Nueva Zelanda" },
-  { code: "PL", name: "Polonia" },
-  { code: "PT", name: "Portugal" },
-  { code: "RU", name: "Rusia" },
-  { code: "SE", name: "Suecia" },
-  { code: "CH", name: "Suiza" },
-];
 
 /* ─── Tab definitions ───────────── */
 type TabKey = "occurrence" | "event" | "location" | "taxon" | "images";
@@ -190,7 +146,11 @@ export function NewOccurrencePage({
   const [fieldNotes, setFieldNotes] = useState("");
 
   /* ── LOCATION ── */
+  const [countries, setCountries] = useState<CatalogCountry[]>([]);
+  const [catalogUnavailable, setCatalogUnavailable] = useState(false);
+  const [countryNameFallback, setCountryNameFallback] = useState("");
   const [countryCode, setCountryCode] = useState("");
+  const [locationId, setLocationId] = useState("");
   const [stateProvince, setStateProvince] = useState("");
   const [county, setCounty] = useState("");
   const [municipality, setMunicipality] = useState("");
@@ -242,6 +202,36 @@ export function NewOccurrencePage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /* ── Load catalog countries (única fuente de la lista de países) ── */
+  useEffect(() => {
+    adminDivisionsService
+      .countries(apiFetch)
+      .then(setCountries)
+      .catch(() => setCatalogUnavailable(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** Cambio de país: limpia la jerarquía administrativa */
+  const handleCountryChange = (code: string) => {
+    if (code === countryCode) return;
+    setCountryCode(code);
+    setStateProvince("");
+    setCounty("");
+    setMunicipality("");
+    setLocationId("");
+    lastAutoGeo.current = null;
+  };
+
+  /** Parche desde GeographicHierarchy (selecciones en cascada y texto libre) */
+  const handleGeoValuesChange = (
+    patch: Partial<{ stateProvince: string; county: string; municipality: string; locationId: string }>,
+  ) => {
+    if (patch.stateProvince !== undefined) setStateProvince(patch.stateProvince);
+    if (patch.county !== undefined) setCounty(patch.county);
+    if (patch.municipality !== undefined) setMunicipality(patch.municipality);
+    if (patch.locationId !== undefined) setLocationId(patch.locationId);
+  };
+
   /* ── Load edit mode from API ── */
   useEffect(() => {
     if (mode !== "edit" || !occurrenceId) return;
@@ -263,6 +253,7 @@ export function NewOccurrencePage({
       setHabitat(occ.habitat ?? "");
       setEventRemarks(occ.eventRemarks ?? "");
       setCountryCode(occ.countryCode ?? "");
+      setLocationId(occ.locationId ?? "");
       setStateProvince(occ.stateProvince ?? "");
       setCounty(occ.county ?? "");
       setMunicipality(occ.municipality ?? "");
@@ -460,8 +451,12 @@ export function NewOccurrencePage({
       verbatimEventDate: verbatimEventDate || null,
       habitat: habitat || null,
       eventRemarks: eventRemarks || null,
-      country: countryCode ? (COUNTRIES.find((c) => c.code === countryCode)?.name ?? null) : null,
+      country:
+        countryCode
+          ? (countries.find((c) => c.code === countryCode)?.name ?? countryNameFallback) || null
+          : countryNameFallback || null,
       countryCode: countryCode || null,
+      locationId: locationId || null,
       stateProvince: stateProvince || null,
       county: county || null,
       municipality: municipality || null,
@@ -718,45 +713,17 @@ export function NewOccurrencePage({
 
   const renderLocationTab = () => (
     <div className="space-y-6">
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
-        <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
-          <Label htmlFor="countryCode" className="flex flex-wrap items-center gap-2">
-            País <Badge variant="outline" className="text-xs">Recomendado</Badge>
-            <span className="text-[10px] text-muted-foreground">dwc:countryCode</span>
-          </Label>
-          <Select value={countryCode} onValueChange={setCountryCode}>
-            <SelectTrigger id="countryCode"><SelectValue placeholder="Selecciona" /></SelectTrigger>
-            <SelectContent>
-              {COUNTRIES.map((c) => (
-                <SelectItem key={c.code} value={c.code}>
-                  {c.name} <span className="text-muted-foreground ml-1">({c.code})</span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
-          <Label htmlFor="stateProvince" className="flex flex-wrap items-center gap-2">
-            Departamento
-            <span className="text-[10px] text-muted-foreground">dwc:stateProvince</span>
-          </Label>
-          <Input id="stateProvince" value={stateProvince} onChange={(e) => setStateProvince(e.target.value)} placeholder="Ej: Cusco" />
-        </div>
-        <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
-          <Label htmlFor="county" className="flex flex-wrap items-center gap-2">
-            Provincia
-            <span className="text-[10px] text-muted-foreground">dwc:county</span>
-          </Label>
-          <Input id="county" value={county} onChange={(e) => setCounty(e.target.value)} placeholder="Ej: Urubamba" />
-        </div>
-        <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
-          <Label htmlFor="municipality" className="flex flex-wrap items-center gap-2">
-            Distrito
-            <span className="text-[10px] text-muted-foreground">dwc:municipality</span>
-          </Label>
-          <Input id="municipality" value={municipality} onChange={(e) => setMunicipality(e.target.value)} placeholder="Ej: Ollantaytambo" />
-        </div>
-      </div>
+      <GeographicHierarchy
+        apiFetch={apiFetch}
+        countries={countries}
+        catalogUnavailable={catalogUnavailable}
+        countryCode={countryCode}
+        countryNameFallback={countryNameFallback}
+        values={{ stateProvince, county, municipality }}
+        onCountryChange={handleCountryChange}
+        onCountryNameFallbackChange={setCountryNameFallback}
+        onValuesChange={handleGeoValuesChange}
+      />
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem", alignItems: "flex-end" }}>
         <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">

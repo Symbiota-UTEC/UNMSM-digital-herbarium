@@ -58,6 +58,7 @@ ALLOWED_FIELDS: Dict[str, Set[str]] = {
         "decimalLatitude",
         "decimalLongitude",
         "countryCode",
+        "locationID",
         "verbatimElevation",
         "footprintWKT",
     },

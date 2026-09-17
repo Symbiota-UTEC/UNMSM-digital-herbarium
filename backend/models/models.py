@@ -22,6 +22,8 @@ from backend.models.occurrence import Occurrence, OccurrenceImage
 from backend.models.identification import Identification, Identifier
 from backend.models.user import User
 from backend.models.upload_jobs import TaxonFloraImportJob
+from backend.models.country import Country
+from backend.models.admin_division import AdminDivision
 
 __all__ = [
     "Base",
@@ -36,6 +38,8 @@ __all__ = [
     "Identifier",
     "User",
     "TaxonFloraImportJob",
+    "Country",
+    "AdminDivision",
 ]
 
 Index("ix_identification_occurrence_current", Identification.occurrenceId, Identification.isCurrent)

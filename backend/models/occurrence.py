@@ -239,6 +239,12 @@ class Occurrence(Base):
         String(10),
         doc="DwC countryCode: código ISO 3166-1 alfa-2 (p.ej. 'PE') (opcional).",
     )
+    locationId: Mapped[Optional[str]] = mapped_column(
+        "location_id",
+        String(255),
+        doc="DwC locationID: identificador del lugar en un gazetteer "
+        "(p.ej. URI de AdminDivision con ubigeo o GeoNames) (opcional).",
+    )
     footprintWKT: Mapped[Optional[str]] = mapped_column(
         "footprint_wkt",
         Text(),

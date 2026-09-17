@@ -106,6 +106,7 @@ class OccurrenceOut(ORMBaseModel):
     verbatimElevation: Optional[str] = None
 
     countryCode: Optional[str] = None
+    locationId: Optional[str] = None
     footprintWKT: Optional[str] = None
 
     organismQuantity: Optional[str] = None
@@ -205,6 +206,7 @@ class OccurrenceCreateIn(StrictBaseModel):
     georeferenceVerificationStatus: Optional[str] = None
     locationRemarks: Optional[str] = None
     countryCode: Optional[str] = None
+    locationId: Optional[str] = None
 
     # Taxon / Identification
     taxonId: Optional[UUID] = None
@@ -257,6 +259,7 @@ class OccurrenceUpdateIn(StrictBaseModel):
     georeferenceVerificationStatus: Optional[str] = None
     locationRemarks: Optional[str] = None
     countryCode: Optional[str] = None
+    locationId: Optional[str] = None
 
     dynamicProperties: Optional[Dict[str, Any]] = None
 

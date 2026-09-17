@@ -323,7 +323,9 @@ def import_dwc_csv(
                             occ_d[field] = val
 
                 elif entity == "Location":
-                    if field in {
+                    if field == "locationID":
+                        occ_d["locationId"] = val
+                    elif field in {
                         "decimalLatitude",
                         "decimalLongitude",
                     }:
