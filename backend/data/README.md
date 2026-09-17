@@ -9,6 +9,17 @@ Catálogo oficial INEI de divisiones administrativas del Perú
 de 2/4/6 dígitos y enlaces explícitos de parentesco. Procedencia:
 <https://github.com/ernestorivero/Ubigeo-Peru> (dump del catálogo INEI 2016).
 
+## inei/ (ignorado por git; se descarga al sembrar)
+
+Polígonos oficiales de límites distritales del INEI
+(`https://ide.inei.gob.pe/files/Distrito.rar`, GeoPackage dentro del RAR)
+usados para la georreferenciación inversa (coordenada → distrito).
+El script `seed_admin_divisions.py` lo descarga y extrae solo (requiere
+`unrar`/`7z`/`unar`/`bsdtar`), o acepta un GeoPackage colocado aquí a mano.
+Los polígonos provinciales y departamentales se derivan como unión de sus
+distritos. Fuente oficial: <https://ide.inei.gob.pe/> — datos del Estado
+peruano de uso público; atribuir a INEI al publicar derivados.
+
 ## geonames/ (generado al sembrar)
 
 Descargas de GeoNames (<https://www.geonames.org/export/>) que el script

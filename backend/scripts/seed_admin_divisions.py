@@ -22,13 +22,18 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
+import sqlite3
+import ssl
+import subprocess
+import tempfile
 import unicodedata
 import urllib.request
 import zipfile
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from backend.config.database import (
@@ -42,8 +47,13 @@ from backend.models.models import AdminDivision, Country
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 UBIGEO_DIR = DATA_DIR / "ubigeo"
 GEONAMES_DIR = DATA_DIR / "geonames"
+INEI_DIR = DATA_DIR / "inei"
 
 GEONAMES_BASE_URL = "https://download.geonames.org/export/dump"
+
+# Polígonos oficiales de INEI (IDE INEI): RAR con GeoPackage de límites
+# distritales. Los niveles 1 y 2 se derivan como unión de sus distritos.
+INEI_DISTRITO_URL = "https://ide.inei.gob.pe/files/Distrito.rar"
 
 # Único país con catálogo INEI (3 niveles: departamento/provincia/distrito);
 # los demás toman sus divisiones de GeoNames (2 niveles por defecto,
@@ -290,6 +300,142 @@ def io_iter_lines(fh) -> Iterable[str]:
 
 
 # --------------------------------------------------------------------------
+# Perú: polígonos oficiales INEI (PostGIS)
+# --------------------------------------------------------------------------
+
+def _gpkg_wkb(blob: bytes) -> bytes:
+    """Extrae el WKB estándar de un binario GeoPackage (cabecera 'GP')."""
+    flags = blob[3]
+    envelope_sizes = {0: 0, 1: 32, 2: 48, 3: 48, 4: 64}
+    header = 8 + envelope_sizes[(flags >> 1) & 0x07]
+    return blob[header:]
+
+
+def _download_inei_rar(dest: Path) -> None:
+    print(f"[seed] Descargando {INEI_DISTRITO_URL} ...")
+    try:
+        with urllib.request.urlopen(INEI_DISTRITO_URL, timeout=300) as resp:
+            dest.write_bytes(resp.read())
+    except ssl.SSLError:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        with urllib.request.urlopen(INEI_DISTRITO_URL, timeout=300, context=ctx) as resp:
+            dest.write_bytes(resp.read())
+
+
+def _ensure_inei_gpkg() -> Path:
+    """Devuelve el GeoPackage de distritos, descargándolo si no existe."""
+    INEI_DIR.mkdir(parents=True, exist_ok=True)
+    existing = sorted(INEI_DIR.glob("*.gpkg"))
+    if existing:
+        return existing[0]
+
+    rar_path = INEI_DIR / "Distrito.rar"
+    if not rar_path.exists():
+        _download_inei_rar(rar_path)
+
+    extractor = next(
+        (b for b in ("unrar", "unar", "7z", "7za", "bsdtar") if shutil.which(b)), None
+    )
+    if extractor is None:
+        raise RuntimeError(
+            "No hay extractor RAR disponible (instala unrar/7z) o coloca el "
+            f"GeoPackage manualmente en {INEI_DIR}/ (descarga: {INEI_DISTRITO_URL})"
+        )
+    with tempfile.TemporaryDirectory() as tmp:
+        if extractor in ("7z", "7za"):
+            subprocess.run([extractor, "x", "-y", f"-o{tmp}", str(rar_path)], check=True,
+                           stdout=subprocess.DEVNULL)
+        elif extractor == "unrar":
+            subprocess.run([extractor, "x", "-y", str(rar_path), tmp], check=True,
+                           stdout=subprocess.DEVNULL)
+        elif extractor == "unar":
+            subprocess.run([extractor, "-q", "-o", tmp, str(rar_path)], check=True,
+                           stdout=subprocess.DEVNULL)
+        else:  # bsdtar
+            subprocess.run([extractor, "-xf", str(rar_path), "-C", tmp], check=True)
+        gpkg = next(Path(tmp).rglob("*.gpkg"))
+        target = INEI_DIR / gpkg.name.upper()
+        shutil.move(str(gpkg), target)
+    return target
+
+
+def seed_inei_boundaries(db: Session) -> int:
+    """Carga los polígonos distritales de INEI y deriva provincias/departamentos.
+
+    Los 16+ distritos creados tras el catálogo ubigeo se añaden a
+    admin_division (parent = prefijo de 4 dígitos del ubigeo).
+    Devuelve el número de distritos con geometría.
+    """
+    gpkg = _ensure_inei_gpkg()
+    con = sqlite3.connect(gpkg)
+    rows = con.execute(
+        "SELECT ubigeo, nombdist, geom FROM DISTRITO WHERE geom IS NOT NULL"
+    ).fetchall()
+    con.close()
+    if not rows:
+        raise RuntimeError(f"{gpkg} no tiene geometrías")
+
+    # Distritos nuevos respecto del catálogo ubigeo: darlos de alta primero
+    existing_codes = {
+        d.code
+        for d in db.scalars(
+            select(AdminDivision).where(
+                AdminDivision.countryCode == "PE", AdminDivision.level == 3
+            )
+        )
+    }
+    nuevos = {
+        r[0]: (str(r[1]).title(), r[0])
+        for r in rows
+        if r[0] not in existing_codes
+    }
+    if nuevos:
+        upsert_divisions(db, "PE", 3, nuevos, source="INEI")
+        link_parents(db, "PE", 3, {code: code[:4] for code in nuevos})
+        print(f"[seed] PE: {len(nuevos)} distritos nuevos añadidos al catálogo")
+
+    update = text(
+        "UPDATE admin_division "
+        "SET boundary = ST_Multi(ST_MakeValid(ST_GeomFromWKB(:wkb, 4326))) "
+        "WHERE country_code = 'PE' AND level = 3 AND code = :ubigeo"
+    )
+    for ubigeo, _name, geom in rows:
+        db.execute(update, {"wkb": _gpkg_wkb(geom), "ubigeo": ubigeo})
+
+    # Provincia y departamento: unión de sus distritos
+    db.execute(text(
+        "UPDATE admin_division p SET boundary = u.g FROM ("
+        "  SELECT substr(code, 1, 4) AS pref, "
+        "         ST_Multi(ST_UnaryUnion(ST_Collect(boundary))) AS g"
+        "  FROM admin_division"
+        "  WHERE country_code = 'PE' AND level = 3 AND boundary IS NOT NULL"
+        "  GROUP BY substr(code, 1, 4)"
+        ") u WHERE p.country_code = 'PE' AND p.level = 2 AND p.code = u.pref"
+    ))
+    db.execute(text(
+        "UPDATE admin_division d SET boundary = u.g FROM ("
+        "  SELECT substr(code, 1, 2) AS pref, "
+        "         ST_Multi(ST_UnaryUnion(ST_Collect(boundary))) AS g"
+        "  FROM admin_division"
+        "  WHERE country_code = 'PE' AND level = 2 AND boundary IS NOT NULL"
+        "  GROUP BY substr(code, 1, 2)"
+        ") u WHERE d.country_code = 'PE' AND d.level = 1 AND d.code = u.pref"
+    ))
+
+    n3 = db.scalar(
+        select(func.count()).select_from(AdminDivision).where(
+            AdminDivision.countryCode == "PE",
+            AdminDivision.level == 3,
+            AdminDivision.boundary.isnot(None),
+        )
+    )
+    print(f"[seed] PE: {n3} distritos con polígono oficial INEI")
+    return n3
+
+
+# --------------------------------------------------------------------------
 # main
 # --------------------------------------------------------------------------
 
@@ -313,6 +459,14 @@ def main() -> None:
         seed_geonames(db, adm3_countries)
         db.commit()
 
+        try:
+            seed_inei_boundaries(db)
+        except Exception as exc:  # sin red/extractor: el catálogo textual queda sembrado
+            db.rollback()
+            print(f"[seed] AVISO: sin polígonos INEI ({exc})")
+        else:
+            db.commit()
+
         countries = db.scalar(select(func.count()).select_from(Country))
         divs = db.scalar(select(func.count()).select_from(AdminDivision))
         print(f"[seed] OK — {countries} países, {divs} divisiones administrativas.")
@@ -328,6 +482,12 @@ def main() -> None:
             )
         )
         print(f"[seed] GeoNames (todos los países): {geonames_count} divisiones.")
+        boundaries = db.scalar(
+            select(func.count()).select_from(AdminDivision).where(
+                AdminDivision.boundary.isnot(None)
+            )
+        )
+        print(f"[seed] Polígonos INEI cargados: {boundaries}.")
     except Exception:
         db.rollback()
         raise

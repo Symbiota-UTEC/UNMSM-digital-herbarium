@@ -2,13 +2,15 @@
 
 Nivel 1 = departamento/región (dwc:stateProvince), nivel 2 = provincia
 (dwc:county), nivel 3 = distrito (dwc:municipality). Perú proviene del
-catálogo INEI (ubigeo); los demás países de GeoNames (ADM1/ADM2).
+catálogo INEI (ubigeo) con polígonos oficiales (PostGIS); los demás países
+de GeoNames (ADM1/ADM2), sin geometría.
 """
 from __future__ import annotations
 
 import uuid
 from typing import Optional
 
+from geoalchemy2 import Geometry
 from sqlalchemy import ForeignKey, Integer, String, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -52,6 +54,12 @@ class AdminDivision(Base):
     source: Mapped[str] = mapped_column("source", String(20), nullable=False)
     # Identificador en la fuente (ubigeo o id numérico de GeoNames)
     sourceId: Mapped[Optional[str]] = mapped_column("source_id", String(20))
+    # Polígono oficial (solo Perú, de INEI); null en el resto de países
+    boundary: Mapped[Optional[bytes]] = mapped_column(
+        "boundary",
+        Geometry(geometry_type="MULTIPOLYGON", srid=4326, spatial_index=False),
+        nullable=True,
+    )
 
     parent: Mapped[Optional["AdminDivision"]] = relationship(
         "AdminDivision", remote_side=[id], lazy="select"

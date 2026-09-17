@@ -232,6 +232,55 @@ export function NewOccurrencePage({
     if (patch.locationId !== undefined) setLocationId(patch.locationId);
   };
 
+  /* ── Autocompletar división administrativa desde las coordenadas ── */
+  const geoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastAutoGeo = useRef<Record<string, string> | null>(null);
+  useEffect(() => {
+    if (countryCode && countryCode !== "PE") return;
+    const lat = parseFloat(decimalLatitude);
+    const lon = parseFloat(decimalLongitude);
+    if (Number.isNaN(lat) || Number.isNaN(lon)) return;
+    // Filtro rápido por bounding box de Perú: evita llamadas inútiles
+    if (lat < -18.5 || lat > 0.5 || lon < -81.5 || lon > -68.5) return;
+    if (geoTimer.current) clearTimeout(geoTimer.current);
+    let cancelled = false;
+    geoTimer.current = setTimeout(async () => {
+      try {
+        const res = await adminDivisionsService.resolve(apiFetch, lat, lon);
+        if (cancelled || !res) return;
+        const prev = lastAutoGeo.current;
+        setCountryCode((cur) => cur || "PE");
+        const setIfFree = (
+          setter: (fn: (cur: string) => string) => void,
+          field: string,
+          value?: string,
+        ) => {
+          if (!value) return;
+          setter((cur) => (cur === "" || cur === prev?.[field] ? value : cur));
+        };
+        setIfFree(setStateProvince, "stateProvince", res.department?.name);
+        setIfFree(setCounty, "county", res.province?.name);
+        setIfFree(setMunicipality, "municipality", res.district?.name);
+        const locId =
+          res.district?.locationId ?? res.province?.locationId ?? res.department?.locationId;
+        setIfFree(setLocationId, "locationId", locId);
+        lastAutoGeo.current = {
+          stateProvince: res.department?.name ?? "",
+          county: res.province?.name ?? "",
+          municipality: res.district?.name ?? "",
+          locationId: locId ?? "",
+        };
+      } catch {
+        /* resolución silenciosa: el usuario puede llenar a mano */
+      }
+    }, 500);
+    return () => {
+      cancelled = true;
+      if (geoTimer.current) clearTimeout(geoTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [decimalLatitude, decimalLongitude, countryCode, catalogUnavailable]);
+
   /* ── Load edit mode from API ── */
   useEffect(() => {
     if (mode !== "edit" || !occurrenceId) return;

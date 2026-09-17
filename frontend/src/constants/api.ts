@@ -53,6 +53,7 @@ export const API = {
         },
         ADMIN_DIVISIONS: {
             COUNTRIES: "/admin-divisions/countries",
+            RESOLVE: "/admin-divisions/resolve",
             BASE: "/admin-divisions",
         },
     },

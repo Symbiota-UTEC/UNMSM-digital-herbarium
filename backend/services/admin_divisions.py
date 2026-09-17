@@ -1,7 +1,7 @@
 # backend/services/admin_divisions.py
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from backend.models.models import AdminDivision, Country
@@ -10,14 +10,20 @@ from backend.schemas.admin_division import (
     AdminDivisionListOut,
     CountryListOut,
     CountryOut,
+    ResolveOut,
+    ResolvedDivision,
 )
 
 
+def _location_id(source: str, code: str) -> str:
+    """URI estable para dwc:locationID según la fuente."""
+    if source == "INEI":
+        return f"urn:inei:ubigeo:{code}"
+    return f"https://www.geonames.org/{code}/"
+
+
 def _division_location_id(division: AdminDivision) -> str:
-    """URI estable para dwc:locationID según la fuente del registro."""
-    if division.source == "INEI":
-        return f"urn:inei:ubigeo:{division.code}"
-    return f"https://www.geonames.org/{division.sourceId}/"
+    return _location_id(division.source, division.sourceId or division.code)
 
 
 def list_countries(db: Session) -> CountryListOut:
@@ -64,4 +70,30 @@ def list_divisions(
             )
             for d in rows
         ]
+    )
+
+
+def resolve_point(db: Session, lat: float, lon: float) -> ResolveOut:
+    """División administrativa que contiene el punto (solo Perú, por ahora)."""
+    rows = db.execute(
+        text(
+            "SELECT level, code, name FROM admin_division "
+            "WHERE country_code = 'PE' AND boundary IS NOT NULL "
+            "AND ST_Covers(boundary, ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)) "
+            "ORDER BY level DESC"
+        ),
+        {"lat": lat, "lon": lon},
+    ).fetchall()
+    by_level = {r.level: r for r in rows}
+    div = (
+        lambda r: ResolvedDivision(
+            name=r.name, code=r.code, locationId=_location_id("INEI", r.code)
+        )
+        if r
+        else None
+    )
+    return ResolveOut(
+        department=div(by_level.get(1)),
+        province=div(by_level.get(2)),
+        district=div(by_level.get(3)),
     )
