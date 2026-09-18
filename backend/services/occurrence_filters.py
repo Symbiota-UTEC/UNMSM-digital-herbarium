@@ -185,11 +185,13 @@ def apply_occurrence_filters(stmt: Select, filters: OccurrenceFilters) -> Select
         if cond is not None:
             stmt = stmt.where(cond)
 
-    # Rango de fechas -> Occurrence.eventDate (string ISO o similar)
-    if f.date_from:
-        stmt = stmt.where(Occurrence.eventDate >= f.date_from)
-    if f.date_to:
-        stmt = stmt.where(Occurrence.eventDate <= f.date_to)
+    if f.date_from or f.date_to:
+        stmt = stmt.where(Occurrence.eventDate.op("~")(r"^\d{4}-\d{2}-\d{2}"))
+        event_day = func.left(Occurrence.eventDate, 10)
+        if f.date_from:
+            stmt = stmt.where(event_day >= f.date_from.isoformat())
+        if f.date_to:
+            stmt = stmt.where(event_day <= f.date_to.isoformat())
 
     if f.collection_id is not None:
         stmt = stmt.where(Occurrence.collectionId == f.collection_id)

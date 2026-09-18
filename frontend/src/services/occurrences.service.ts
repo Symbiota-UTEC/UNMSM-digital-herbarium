@@ -29,6 +29,24 @@ export interface OccurrenceFilters {
     collectionId?: string;
 }
 
+type CategoricalFilters = Pick<
+    OccurrenceFilters,
+    "code" | "scientificName" | "family" | "institution" | "location" | "collector" | "dateFrom" | "dateTo" | "collectionId"
+>;
+
+// Los mismos filtros por atributos los usan el listado y el mapa.
+function appendCategoricalParams(params: URLSearchParams, f: CategoricalFilters) {
+    if (f.code?.trim()) params.set("code", f.code.trim());
+    if (f.scientificName?.trim()) params.set("scientificName", f.scientificName.trim());
+    if (f.family?.trim()) params.set("family", f.family.trim());
+    if (f.institution?.trim()) params.set("institution", f.institution.trim());
+    if (f.location?.trim()) params.set("location", f.location.trim());
+    if (f.collector?.trim()) params.set("collector", f.collector.trim());
+    if (f.dateFrom) params.set("dateFrom", f.dateFrom);
+    if (f.dateTo) params.set("dateTo", f.dateTo);
+    if (f.collectionId) params.set("collection_id", f.collectionId);
+}
+
 export type OccurrenceMatchType = "exact" | "representative" | "intersects";
 
 export interface OccurrenceMapPoint {
@@ -46,11 +64,7 @@ export interface OccurrenceMapResponse {
     truncated: boolean;
 }
 
-export interface OccurrenceMapFilters {
-    scientificName?: string;
-    family?: string;
-    collector?: string;
-    collectionId?: string;
+export interface OccurrenceMapFilters extends CategoricalFilters {
     nearLat?: number;
     nearLon?: number;
     radiusKm?: number;
@@ -97,15 +111,7 @@ export const occurrencesService = {
             page: String(filters.page ?? 1),
             page_size: String(filters.pageSize ?? 20),
         });
-        if (filters.code?.trim()) params.set("code", filters.code.trim());
-        if (filters.scientificName?.trim()) params.set("scientificName", filters.scientificName.trim());
-        if (filters.family?.trim()) params.set("family", filters.family.trim());
-        if (filters.institution?.trim()) params.set("institution", filters.institution.trim());
-        if (filters.location?.trim()) params.set("location", filters.location.trim());
-        if (filters.collector?.trim()) params.set("collector", filters.collector.trim());
-        if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
-        if (filters.dateTo) params.set("dateTo", filters.dateTo);
-        if (filters.collectionId) params.set("collection_id", filters.collectionId);
+        appendCategoricalParams(params, filters);
 
         const res = await apiFetch(`${API.BASE_URL}${API.PATHS.OCCURRENCES.BASE}?${params.toString()}`);
         await throwIfError(res);
@@ -117,10 +123,7 @@ export const occurrencesService = {
         filters: OccurrenceMapFilters,
     ): Promise<OccurrenceMapResponse> {
         const params = new URLSearchParams();
-        if (filters.scientificName?.trim()) params.set("scientificName", filters.scientificName.trim());
-        if (filters.family?.trim()) params.set("family", filters.family.trim());
-        if (filters.collector?.trim()) params.set("collector", filters.collector.trim());
-        if (filters.collectionId) params.set("collection_id", filters.collectionId);
+        appendCategoricalParams(params, filters);
         if (filters.nearLat != null) params.set("nearLat", String(filters.nearLat));
         if (filters.nearLon != null) params.set("nearLon", String(filters.nearLon));
         if (filters.radiusKm != null) params.set("radiusKm", String(filters.radiusKm));

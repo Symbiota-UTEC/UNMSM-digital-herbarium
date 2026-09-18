@@ -5,9 +5,7 @@ import {
   Eraser,
   Hexagon,
   MapPin,
-  Search,
   Undo2,
-  X,
 } from "lucide-react";
 
 import Map from "ol/Map";
@@ -25,9 +23,14 @@ import { fromLonLat, toLonLat } from "ol/proj";
 import { Style, Fill, Stroke, Circle as CircleStyle } from "ol/style";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
-import { Label } from "../ui/label";
-import { Input } from "../ui/input";
 import { Button } from "../ui/button";
+import { FiltersCard, filterInputClass, filterLabelClass } from "../ui/filters";
+import {
+  OccurrenceFilterFields,
+  EMPTY_OCCURRENCE_FILTERS,
+  hasActiveOccurrenceFilters,
+  type OccurrenceFilterValues,
+} from "../OccurrenceFilterFields";
 import { useAuth } from "../../contexts/AuthContext";
 import {
   occurrencesService,
@@ -105,7 +108,7 @@ const errorMessage = (err: any): string => {
 export function MapPage({ onNavigate }: MapPageProps) {
   const { apiFetch } = useAuth();
 
-  const [filters, setFilters] = useState({ scientificName: "", family: "", collector: "" });
+  const [filters, setFilters] = useState<OccurrenceFilterValues>(EMPTY_OCCURRENCE_FILTERS);
   const [areaMode, setAreaMode] = useState<AreaMode>("none");
   const [radiusKm, setRadiusKm] = useState("10");
   const [center, setCenter] = useState<[number, number] | null>(null); // [lon, lat]
@@ -308,7 +311,7 @@ export function MapPage({ onNavigate }: MapPageProps) {
   };
 
   const handleClear = () => {
-    setFilters({ scientificName: "", family: "", collector: "" });
+    setFilters(EMPTY_OCCURRENCE_FILTERS);
     setAreaMode("none");
     setCenter(null);
     setIncludeIntersecting(false);
@@ -326,251 +329,215 @@ export function MapPage({ onNavigate }: MapPageProps) {
   const countByType = (type: OccurrenceMatchType) =>
     result?.items.filter((p) => p.matchType === type).length ?? 0;
 
+  const filtersActive = hasActiveOccurrenceFilters(filters) || areaMode !== "none";
+
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-6">
+    <div className="container mx-auto px-4 py-8 space-y-6">
+      <div>
         <h1 className="text-3xl font-semibold tracking-tight mb-2">Mapa de Ocurrencias</h1>
         <p className="text-sm text-muted-foreground">
-          Busca ocurrencias dentro de un radio o de un polígono y visualízalas en el mapa
+          Visualiza en el mapa las ocurrencias que cumplen los filtros y el área geográfica elegidos
         </p>
       </div>
 
-      <div className="grid lg:grid-cols-4 gap-6">
-        <div className="lg:col-span-1">
-          <Card>
-            <CardHeader>
-              <CardTitle>Búsqueda</CardTitle>
-              <CardDescription>Área geográfica y filtros</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Área de búsqueda</Label>
-                <div className="grid grid-cols-3 gap-1">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={areaMode === "none" ? "default" : "outline"}
-                    onClick={() => setAreaMode("none")}
-                  >
-                    Sin área
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={areaMode === "radius" ? "default" : "outline"}
-                    onClick={() => setAreaMode("radius")}
-                    className="gap-1"
-                  >
-                    <CircleIcon className="h-3.5 w-3.5" />
-                    Radio
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={areaMode === "polygon" ? "default" : "outline"}
-                    onClick={() => setAreaMode("polygon")}
-                    className="gap-1"
-                  >
-                    <Hexagon className="h-3.5 w-3.5" />
-                    Polígono
-                  </Button>
-                </div>
+      <FiltersCard
+        title="Filtrar ocurrencias"
+        description="Los filtros por atributos y el área geográfica se aplican todos a la vez. Deja vacío lo que no necesites."
+        filtersActive={filtersActive}
+        onClear={handleClear}
+        onApply={handleSearch}
+        loading={loading}
+      >
+        <OccurrenceFilterFields values={filters} onChange={setFilters} />
 
-                {areaMode === "radius" && (
-                  <div className="space-y-2 pt-1">
-                    <p className="text-xs text-muted-foreground">
-                      {center
-                        ? `Centro: ${center[1].toFixed(5)}, ${center[0].toFixed(5)}`
-                        : "Haz clic en el mapa para fijar el centro."}
-                    </p>
-                    <Label htmlFor="radiusKm" className="text-xs">Radio (km)</Label>
-                    <Input
-                      id="radiusKm"
-                      type="number"
-                      min={0}
-                      step="any"
-                      value={radiusKm}
-                      onChange={(e) => setRadiusKm(e.target.value)}
-                    />
-                  </div>
-                )}
+        <div className="space-y-3" style={{ borderTop: "1px dashed var(--border)", paddingTop: "1rem" }}>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className={filterLabelClass}>Área geográfica</span>
+            <div className="flex gap-1">
+              <Button
+                type="button"
+                size="sm"
+                variant={areaMode === "none" ? "default" : "outline"}
+                onClick={() => setAreaMode("none")}
+                className="h-8 text-xs"
+              >
+                Sin área
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={areaMode === "radius" ? "default" : "outline"}
+                onClick={() => setAreaMode("radius")}
+                className="h-8 gap-1 text-xs"
+              >
+                <CircleIcon className="h-3.5 w-3.5" />
+                Radio
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={areaMode === "polygon" ? "default" : "outline"}
+                onClick={() => setAreaMode("polygon")}
+                className="h-8 gap-1 text-xs"
+              >
+                <Hexagon className="h-3.5 w-3.5" />
+                Polígono
+              </Button>
+            </div>
+          </div>
 
-                {areaMode === "polygon" && (
-                  <div className="space-y-2 pt-1">
-                    <p className="text-xs text-muted-foreground">
-                      Clic para agregar vértices, doble clic para cerrar. Puedes dibujar varios
-                      polígonos ({polygonCount} dibujado{polygonCount === 1 ? "" : "s"}).
-                    </p>
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        disabled={polygonCount === 0}
-                        onClick={handleUndoPolygon}
-                        className="gap-1"
-                      >
-                        <Undo2 className="h-3.5 w-3.5" />
-                        Deshacer
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        disabled={polygonCount === 0}
-                        onClick={() => polygonSourceRef.current.clear()}
-                        className="gap-1"
-                      >
-                        <Eraser className="h-3.5 w-3.5" />
-                        Borrar
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                {areaMode !== "none" && (
-                  <div className="flex items-start gap-2 pt-1">
-                    <input
-                      id="includeIntersecting"
-                      type="checkbox"
-                      checked={includeIntersecting}
-                      onChange={(e) => setIncludeIntersecting(e.target.checked)}
-                      className="mt-0.5 h-4 w-4 rounded border-input accent-[rgb(117,26,29)]"
-                    />
-                    <Label htmlFor="includeIntersecting" className="cursor-pointer text-xs font-normal leading-snug">
-                      Incluir también las ocurrencias cuyo polígono interseca el área, aunque su punto
-                      representativo quede fuera
-                    </Label>
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="scientificName">Nombre científico</Label>
-                <Input
-                  id="scientificName"
-                  placeholder="Ej: Heliconia bihai"
-                  value={filters.scientificName}
-                  onChange={(e) => setFilters({ ...filters, scientificName: e.target.value })}
+          {areaMode === "radius" && (
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex flex-col gap-1">
+                <label htmlFor="radiusKm" className={filterLabelClass}>Radio (km)</label>
+                <input
+                  id="radiusKm"
+                  type="number"
+                  min={0}
+                  step="any"
+                  className={filterInputClass}
+                  style={{ width: "7.5rem" }}
+                  value={radiusKm}
+                  onChange={(e) => setRadiusKm(e.target.value)}
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="family">Familia</Label>
-                <Input
-                  id="family"
-                  placeholder="Ej: Heliconiaceae"
-                  value={filters.family}
-                  onChange={(e) => setFilters({ ...filters, family: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="collector">Colector</Label>
-                <Input
-                  id="collector"
-                  placeholder="Nombre del colector"
-                  value={filters.collector}
-                  onChange={(e) => setFilters({ ...filters, collector: e.target.value })}
-                />
-              </div>
+              <p className="text-xs text-muted-foreground" style={{ paddingBottom: "0.55rem" }}>
+                {center
+                  ? `Centro: ${center[1].toFixed(5)}, ${center[0].toFixed(5)} (haz clic en el mapa para moverlo)`
+                  : "Haz clic en el mapa para fijar el centro."}
+              </p>
+            </div>
+          )}
 
+          {areaMode === "polygon" && (
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-xs text-muted-foreground">
+                Dibuja en el mapa: clic para agregar vértices, doble clic para cerrar. Puedes dibujar varios
+                polígonos ({polygonCount} dibujado{polygonCount === 1 ? "" : "s"}).
+              </p>
               <div className="flex gap-2">
-                <Button onClick={handleSearch} disabled={loading} className="flex-1">
-                  <Search className="h-4 w-4 mr-2" />
-                  {loading ? "Buscando..." : "Buscar"}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={polygonCount === 0}
+                  onClick={handleUndoPolygon}
+                  className="h-8 gap-1 text-xs"
+                >
+                  <Undo2 className="h-3.5 w-3.5" />
+                  Deshacer
                 </Button>
-                <Button onClick={handleClear} variant="outline" title="Limpiar">
-                  <X className="h-4 w-4" />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={polygonCount === 0}
+                  onClick={() => polygonSourceRef.current.clear()}
+                  className="h-8 gap-1 text-xs"
+                >
+                  <Eraser className="h-3.5 w-3.5" />
+                  Borrar
                 </Button>
               </div>
+            </div>
+          )}
 
-              <div className="pt-4 border-t space-y-2 text-sm">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <MapPin className="h-4 w-4" />
-                  <span>
-                    {result
-                      ? `${result.total} ocurrencia${result.total === 1 ? "" : "s"}`
-                      : "Sin búsqueda realizada"}
-                  </span>
-                </div>
-                {result?.truncated && (
-                  <p className="text-xs text-amber-600">
-                    Se muestran solo {result.items.length} de {result.total}. Acota la búsqueda para ver el resto.
-                  </p>
-                )}
-                {(Object.keys(MATCH_STYLE) as OccurrenceMatchType[]).map((type) => (
-                  <div key={type} className="flex items-start gap-2 text-xs">
-                    <span
-                      className="mt-0.5 inline-block h-3 w-3 shrink-0 rounded-full border border-white shadow"
-                      style={{ backgroundColor: MATCH_STYLE[type].color }}
-                    />
-                    <span className="text-muted-foreground">
-                      {matchLabel(type, searchedWithArea)}
-                      {result && <strong className="ml-1 text-foreground">({countByType(type)})</strong>}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+          {areaMode !== "none" && (
+            <label className="flex cursor-pointer items-start gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={includeIntersecting}
+                onChange={(e) => setIncludeIntersecting(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-input accent-[rgb(117,26,29)]"
+              />
+              <span className="text-muted-foreground">
+                Incluir también las ocurrencias cuyo polígono interseca el área, aunque su punto representativo
+                quede fuera
+              </span>
+            </label>
+          )}
         </div>
+      </FiltersCard>
 
-        <div className="lg:col-span-3">
-          <Card className="h-full">
-            <CardHeader>
-              <CardTitle>Distribución Geográfica</CardTitle>
-              <CardDescription>Haz clic en un punto para ver sus detalles</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="relative">
-                <div
-                  ref={hostRef}
-                  style={{ height: "600px", width: "100%", borderRadius: "0.5rem" }}
-                  className="border"
+      <Card>
+        <CardHeader>
+          <CardTitle>Distribución Geográfica</CardTitle>
+          <CardDescription>Haz clic en un punto para ver sus detalles</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="relative">
+            <div
+              ref={hostRef}
+              style={{ height: "600px", width: "100%", borderRadius: "0.5rem" }}
+              className="border"
+            />
+            <BasemapSwitcher value={basemap} onChange={setBasemap} />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
+            <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <MapPin className="h-4 w-4" />
+              {result
+                ? `${result.total} ocurrencia${result.total === 1 ? "" : "s"}`
+                : "Sin búsqueda realizada"}
+            </span>
+            {(Object.keys(MATCH_STYLE) as OccurrenceMatchType[]).map((type) => (
+              <span key={type} className="flex items-center gap-2 text-muted-foreground">
+                <span
+                  className="inline-block h-3 w-3 shrink-0 rounded-full border border-white shadow"
+                  style={{ backgroundColor: MATCH_STYLE[type].color }}
                 />
-                <BasemapSwitcher value={basemap} onChange={setBasemap} />
-              </div>
-              {selected && (
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3">
-                  <div className="space-y-0.5 text-sm">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="inline-block h-3 w-3 rounded-full"
-                        style={{ backgroundColor: MATCH_STYLE[selected.matchType].color }}
-                      />
-                      <span className="font-medium">{selected.code ?? "Sin código"}</span>
-                      {selected.scientificName && (
-                        <span className="italic text-muted-foreground">{selected.scientificName}</span>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {matchLabel(selected.matchType, searchedWithArea)} · {selected.lat.toFixed(5)}, {selected.lon.toFixed(5)}
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setAreaMode("radius");
-                        setCenter([selected.lon, selected.lat]);
-                      }}
-                    >
-                      Buscar alrededor
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => onNavigate("occurrence-detail", { occurrenceId: selected.occurrenceId })}
-                    >
-                      Ver detalle
-                    </Button>
-                  </div>
+                {matchLabel(type, searchedWithArea)}
+                {result && <strong className="text-foreground">({countByType(type)})</strong>}
+              </span>
+            ))}
+          </div>
+          {result?.truncated && (
+            <p className="text-xs text-amber-600">
+              Se muestran solo {result.items.length} de {result.total}. Acota la búsqueda para ver el resto.
+            </p>
+          )}
+
+          {selected && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3">
+              <div className="space-y-0.5 text-sm">
+                <div className="flex items-center gap-2">
+                  <span
+                    className="inline-block h-3 w-3 rounded-full"
+                    style={{ backgroundColor: MATCH_STYLE[selected.matchType].color }}
+                  />
+                  <span className="font-medium">{selected.code ?? "Sin código"}</span>
+                  {selected.scientificName && (
+                    <span className="italic text-muted-foreground">{selected.scientificName}</span>
+                  )}
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+                <p className="text-xs text-muted-foreground">
+                  {matchLabel(selected.matchType, searchedWithArea)} · {selected.lat.toFixed(5)}, {selected.lon.toFixed(5)}
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setAreaMode("radius");
+                    setCenter([selected.lon, selected.lat]);
+                  }}
+                >
+                  Buscar alrededor
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onNavigate("occurrence-detail", { occurrenceId: selected.occurrenceId })}
+                >
+                  Ver detalle
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

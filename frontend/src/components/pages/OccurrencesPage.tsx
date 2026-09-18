@@ -6,15 +6,13 @@ import { MapPin, Calendar, Leaf, Eye, University } from "lucide-react";
 import { useAuth } from "@contexts/AuthContext";
 import { occurrencesService } from "@services/occurrences.service";
 import type { OccurrenceListItem } from "@services/occurrences.service";
-import { autocompleteService } from "@services/autocomplete.service";
+import { FiltersCard } from "../ui/filters";
 import {
-  FiltersCard,
-  FilterAutocompleteInput,
-  FilterDateRangePicker,
-  useAutocomplete,
-  filterInputClass,
-  filterLabelClass,
-} from "../ui/filters";
+  OccurrenceFilterFields,
+  EMPTY_OCCURRENCE_FILTERS,
+  hasActiveOccurrenceFilters,
+  type OccurrenceFilterValues,
+} from "../OccurrenceFilterFields";
 import { DataTable, type ColumnDef } from "../ui/data-table";
 
 interface OccurrencesPageProps {
@@ -23,16 +21,7 @@ interface OccurrencesPageProps {
 
 const PAGE_SIZE_DEFAULT = 20;
 
-type FiltersSnapshot = {
-  code: string;
-  scientificName: string;
-  family: string;
-  institution: string;
-  location: string;
-  collector: string;
-  dateFrom: string;
-  dateTo: string;
-};
+type FiltersSnapshot = OccurrenceFilterValues;
 
 export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
   const { apiFetch, user } = useAuth();
@@ -44,62 +33,23 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
 
-  const [codeFilter, setCodeFilter] = useState(() => searchParams.get("code") ?? "");
-  const [scientificNameFilter, setScientificNameFilter] = useState(() => searchParams.get("name") ?? "");
-  const [familyFilter, setFamilyFilter] = useState(() => searchParams.get("family") ?? "");
-  const [institutionFilter, setInstitutionFilter] = useState(() => searchParams.get("institution") ?? "");
-  const [locationFilter, setLocationFilter] = useState(() => searchParams.get("location") ?? "");
-  const [collectorFilter, setCollectorFilter] = useState(() => searchParams.get("collector") ?? "");
-  const [dateFromFilter, setDateFromFilter] = useState(() => searchParams.get("from") ?? "");
-  const [dateToFilter, setDateToFilter] = useState(() => searchParams.get("to") ?? "");
-
-  const [sciNameSuggestions, setSciNameSuggestions] = useState<string[]>([]);
-  const [sciNameLoading, setSciNameLoading] = useState(false);
-  useEffect(() => {
-    const q = scientificNameFilter.trim();
-    if (q.length < 2) { setSciNameSuggestions([]); return; }
-    let cancelled = false;
-    const id = setTimeout(async () => {
-      try {
-        setSciNameLoading(true);
-        const results = await autocompleteService.scientificNames(apiFetch, q, 10);
-        if (!cancelled) setSciNameSuggestions(results.map((r) => r.scientificName));
-      } catch { if (!cancelled) setSciNameSuggestions([]); }
-      finally { if (!cancelled) setSciNameLoading(false); }
-    }, 300);
-    return () => { cancelled = true; clearTimeout(id); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scientificNameFilter]);
-  const { items: familySuggestions, loading: familyLoading } =
-    useAutocomplete(apiFetch, "family", familyFilter);
-  const { items: institutionSuggestions, loading: institutionLoading } =
-    useAutocomplete(apiFetch, "institution", institutionFilter, { minChars: 1 });
-  const { items: locationSuggestions, loading: locationLoading } =
-    useAutocomplete(apiFetch, "location", locationFilter);
-  const { items: collectorSuggestions, loading: collectorLoading } =
-    useAutocomplete(apiFetch, "collector", collectorFilter);
+  const [filters, setFilters] = useState<OccurrenceFilterValues>(() => ({
+    code: searchParams.get("code") ?? "",
+    scientificName: searchParams.get("name") ?? "",
+    family: searchParams.get("family") ?? "",
+    institution: searchParams.get("institution") ?? "",
+    location: searchParams.get("location") ?? "",
+    collector: searchParams.get("collector") ?? "",
+    dateFrom: searchParams.get("from") ?? "",
+    dateTo: searchParams.get("to") ?? "",
+  }));
 
   const totalPages = useMemo(
     () => Math.max(Math.ceil(total / pageSize), 1),
     [total, pageSize],
   );
 
-  const filtersActive = Boolean(
-    codeFilter || scientificNameFilter || familyFilter ||
-    institutionFilter || locationFilter || collectorFilter ||
-    dateFromFilter || dateToFilter,
-  );
-
-  const buildFiltersSnapshot = (): FiltersSnapshot => ({
-    code: codeFilter,
-    scientificName: scientificNameFilter,
-    family: familyFilter,
-    institution: institutionFilter,
-    location: locationFilter,
-    collector: collectorFilter,
-    dateFrom: dateFromFilter,
-    dateTo: dateToFilter,
-  });
+  const filtersActive = hasActiveOccurrenceFilters(filters);
 
   const syncURL = (filters: FiltersSnapshot, pageNum: number) => {
     const p = new URLSearchParams();
@@ -147,7 +97,7 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
 
   useEffect(() => {
     if (!user) return;
-    fetchOccurrences({ page, filters: buildFiltersSnapshot() });
+    fetchOccurrences({ page, filters: filters });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.userId]);
 
@@ -159,25 +109,14 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
   };
 
   const handleClearFilters = () => {
-    setCodeFilter("");
-    setScientificNameFilter("");
-    setFamilyFilter("");
-    setInstitutionFilter("");
-    setLocationFilter("");
-    setCollectorFilter("");
-    setDateFromFilter("");
-    setDateToFilter("");
-    const empty: FiltersSnapshot = {
-      code: "", scientificName: "", family: "", institution: "",
-      location: "", collector: "", dateFrom: "", dateTo: "",
-    };
+    setFilters(EMPTY_OCCURRENCE_FILTERS);
     setPage(1);
-    syncURL(empty, 1);
-    fetchOccurrences({ page: 1, filters: empty });
+    syncURL(EMPTY_OCCURRENCE_FILTERS, 1);
+    fetchOccurrences({ page: 1, filters: EMPTY_OCCURRENCE_FILTERS });
   };
 
   const handleApplyFilters = () => {
-    const snapshot = buildFiltersSnapshot();
+    const snapshot = filters;
     setPage(1);
     syncURL(snapshot, 1);
     fetchOccurrences({ page: 1, filters: snapshot });
@@ -186,7 +125,7 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
   const handlePrevPage = () => {
     if (page <= 1 || loading) return;
     const newPage = page - 1;
-    const snapshot = buildFiltersSnapshot();
+    const snapshot = filters;
     setPage(newPage);
     syncURL(snapshot, newPage);
     fetchOccurrences({ page: newPage, filters: snapshot });
@@ -195,7 +134,7 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
   const handleNextPage = () => {
     if (page >= totalPages || loading) return;
     const newPage = page + 1;
-    const snapshot = buildFiltersSnapshot();
+    const snapshot = filters;
     setPage(newPage);
     syncURL(snapshot, newPage);
     fetchOccurrences({ page: newPage, filters: snapshot });
@@ -296,72 +235,7 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
         onApply={handleApplyFilters}
         loading={loading}
       >
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-3">
-          <div className="flex flex-col gap-1">
-            <label className={filterLabelClass}>Código (exacto)</label>
-            <input
-              className={filterInputClass}
-              placeholder="Ej. 280687"
-              value={codeFilter}
-              onChange={(e) => setCodeFilter(e.target.value)}
-            />
-          </div>
-
-          <FilterAutocompleteInput
-            label="Nombre científico"
-            placeholder="Ej. Lycopersicon hirsutum"
-            value={scientificNameFilter}
-            onChange={setScientificNameFilter}
-            suggestions={sciNameSuggestions}
-            loading={sciNameLoading}
-          />
-
-          <FilterAutocompleteInput
-            label="Familia"
-            placeholder="Ej. Solanaceae"
-            value={familyFilter}
-            onChange={setFamilyFilter}
-            suggestions={familySuggestions}
-            loading={familyLoading}
-          />
-
-          <FilterAutocompleteInput
-            label="Institución"
-            placeholder="Ej. San Marcos"
-            value={institutionFilter}
-            onChange={setInstitutionFilter}
-            suggestions={institutionSuggestions}
-            loading={institutionLoading}
-            minChars={1}
-          />
-
-          <FilterAutocompleteInput
-            label="Localidad"
-            placeholder="Ej. Cajamarca"
-            value={locationFilter}
-            onChange={setLocationFilter}
-            suggestions={locationSuggestions}
-            loading={locationLoading}
-          />
-
-          <FilterAutocompleteInput
-            label="Colector"
-            placeholder="Ej. Antonio Raimondi"
-            value={collectorFilter}
-            onChange={setCollectorFilter}
-            suggestions={collectorSuggestions}
-            loading={collectorLoading}
-          />
-
-          <div className="md:col-span-2 lg:col-span-2">
-            <FilterDateRangePicker
-              from={dateFromFilter}
-              to={dateToFilter}
-              onFromChange={setDateFromFilter}
-              onToChange={setDateToFilter}
-            />
-          </div>
-        </div>
+        <OccurrenceFilterFields values={filters} onChange={setFilters} />
       </FiltersCard>
 
       <DataTable<OccurrenceListItem>
