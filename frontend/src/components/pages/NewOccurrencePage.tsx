@@ -51,6 +51,7 @@ import {
 import { env } from "@config/env";
 import type { OccurrenceIdentificationOut, OccurrenceImageOut } from "@interfaces/occurrence";
 import { LocationPicker } from "../LocationPicker";
+import { formatVerbatimDate } from "@utils/dates";
 
 interface NewOccurrencePageProps {
   onNavigate: (page: string, params?: Record<string, any>) => void;
@@ -186,6 +187,8 @@ export function NewOccurrencePage({
   /* ── EVENT ── */
   const [eventDate, setEventDate] = useState("");
   const [verbatimEventDate, setVerbatimEventDate] = useState("");
+  // Mientras la fecha original no la escriba el usuario, se deriva de la fecha del evento.
+  const [verbatimEdited, setVerbatimEdited] = useState(false);
   const [habitat, setHabitat] = useState("");
   const [eventRemarks, setEventRemarks] = useState("");
   const [fieldNotes, setFieldNotes] = useState("");
@@ -263,6 +266,7 @@ export function NewOccurrencePage({
       setFieldNotes(occ.fieldNotes ?? "");
       setEventDate(occ.eventDate ?? "");
       setVerbatimEventDate(occ.verbatimEventDate ?? "");
+      setVerbatimEdited(!!occ.verbatimEventDate);
       setHabitat(occ.habitat ?? "");
       setEventRemarks(occ.eventRemarks ?? "");
       setCountryCode(occ.countryCode ?? "");
@@ -705,10 +709,27 @@ export function NewOccurrencePage({
           Fecha del evento <Badge variant="outline" className="text-xs">Recomendado</Badge>
           <span className="text-xs text-muted-foreground">dwc:eventDate</span>
         </Label>
-        <Input id="eventDate" type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
+        <Input
+          id="eventDate"
+          type="date"
+          value={eventDate}
+          onChange={(e) => {
+            setEventDate(e.target.value);
+            if (!verbatimEdited) setVerbatimEventDate(formatVerbatimDate(e.target.value));
+          }}
+        />
       
         <Label htmlFor="verbatimEventDate" className="flex items-center gap-2">Fecha original <span className="text-xs text-muted-foreground">dwc:verbatimEventDate</span></Label>
-        <Input id="verbatimEventDate" value={verbatimEventDate} onChange={(e) => setVerbatimEventDate(e.target.value)} placeholder="Ej: Primavera 2024" />
+        <Input
+          id="verbatimEventDate"
+          value={verbatimEventDate}
+          onChange={(e) => {
+            setVerbatimEventDate(e.target.value);
+            // Vaciar el campo devuelve la derivación automática.
+            setVerbatimEdited(e.target.value.trim() !== "");
+          }}
+          placeholder="Ej: Primavera 2024"
+        />
       </div>
       <div className="space-y-3">
         <Label htmlFor="habitat" className="flex items-center gap-2">Hábitat <span className="text-xs text-muted-foreground">dwc:habitat</span></Label>
