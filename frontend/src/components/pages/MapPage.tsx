@@ -10,13 +10,12 @@ import {
   X,
 } from "lucide-react";
 
-import "ol/ol.css";
 import Map from "ol/Map";
 import View from "ol/View";
 import TileLayer from "ol/layer/Tile";
 import VectorLayer from "ol/layer/Vector";
 import VectorSource from "ol/source/Vector";
-import OSM from "ol/source/OSM";
+import XYZ from "ol/source/XYZ";
 import Feature from "ol/Feature";
 import Point from "ol/geom/Point";
 import Polygon, { circular } from "ol/geom/Polygon";
@@ -38,6 +37,15 @@ import {
   type OccurrenceMatchType,
 } from "@services/occurrences.service";
 import { polygonsToWkt } from "@utils/geo";
+import {
+  MAP_MAX_ZOOM,
+  MAP_MIN_ZOOM,
+  createBasemapSource,
+  createMapControls,
+  createMapInteractions,
+  useBasemap,
+} from "@utils/basemaps";
+import { BasemapSwitcher } from "../BasemapSwitcher";
 
 interface MapPageProps {
   onNavigate: (page: string, params?: Record<string, any>) => void;
@@ -108,6 +116,7 @@ export function MapPage({ onNavigate }: MapPageProps) {
   const [selected, setSelected] = useState<OccurrenceMapPoint | null>(null);
   const [loading, setLoading] = useState(false);
   const [searchedWithArea, setSearchedWithArea] = useState(false);
+  const [basemap, setBasemap] = useBasemap();
 
   const hostRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<Map | null>(null);
@@ -117,6 +126,7 @@ export function MapPage({ onNavigate }: MapPageProps) {
   const polygonLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const radiusLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const drawRef = useRef<Draw | null>(null);
+  const baseLayerRef = useRef<TileLayer<XYZ> | null>(null);
   const drawingRef = useRef(false);
   const areaModeRef = useRef<AreaMode>(areaMode);
 
@@ -139,11 +149,16 @@ export function MapPage({ onNavigate }: MapPageProps) {
     polygonLayerRef.current = polygonLayer;
     radiusLayerRef.current = radiusLayer;
 
+    const baseLayer = new TileLayer({ source: createBasemapSource(basemap) });
+    baseLayer.set("basemapId", basemap);
+    baseLayerRef.current = baseLayer;
+
     const map = new Map({
       target: host,
-      layers: [new TileLayer({ source: new OSM() }), polygonLayer, radiusLayer, pointsLayer],
-      view: new View({ center: fromLonLat(LIMA), zoom: 11 }),
-      controls: [],
+      layers: [baseLayer, polygonLayer, radiusLayer, pointsLayer],
+      view: new View({ center: fromLonLat(LIMA), zoom: 11, minZoom: MAP_MIN_ZOOM, maxZoom: MAP_MAX_ZOOM }),
+      controls: createMapControls(),
+      interactions: createMapInteractions(),
     });
     mapRef.current = map;
 
@@ -168,8 +183,17 @@ export function MapPage({ onNavigate }: MapPageProps) {
       polygonSource.un(["addfeature", "removefeature", "clear"], syncPolygonCount);
       map.setTarget(undefined);
       mapRef.current = null;
+      baseLayerRef.current = null;
     };
   }, []);
+
+  // Cambio de mapa base.
+  useEffect(() => {
+    const layer = baseLayerRef.current;
+    if (!layer || layer.get("basemapId") === basemap) return;
+    layer.setSource(createBasemapSource(basemap));
+    layer.set("basemapId", basemap);
+  }, [basemap]);
 
   // Herramienta activa según el modo de área.
   useEffect(() => {
@@ -497,11 +521,14 @@ export function MapPage({ onNavigate }: MapPageProps) {
               <CardDescription>Haz clic en un punto para ver sus detalles</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div
-                ref={hostRef}
-                style={{ height: "600px", width: "100%", borderRadius: "0.5rem" }}
-                className="border"
-              />
+              <div className="relative">
+                <div
+                  ref={hostRef}
+                  style={{ height: "600px", width: "100%", borderRadius: "0.5rem" }}
+                  className="border"
+                />
+                <BasemapSwitcher value={basemap} onChange={setBasemap} />
+              </div>
               {selected && (
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3">
                   <div className="space-y-0.5 text-sm">

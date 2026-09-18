@@ -4,14 +4,13 @@ import { toast } from "sonner";
 import { Crosshair, Eraser, Hexagon, Loader2, MapPin, Undo2 } from "lucide-react";
 import { Button } from "./ui/button";
 
-import "ol/ol.css";
 import Map from "ol/Map";
 import View from "ol/View";
 import TileLayer from "ol/layer/Tile";
 import VectorLayer from "ol/layer/Vector";
 import VectorSource from "ol/source/Vector";
-import OSM from "ol/source/OSM";
 import Feature from "ol/Feature";
+import XYZ from "ol/source/XYZ";
 import Point from "ol/geom/Point";
 import Polygon from "ol/geom/Polygon";
 import Modify from "ol/interaction/Modify";
@@ -21,6 +20,15 @@ import { Style, Fill, Stroke, Circle as CircleStyle } from "ol/style";
 
 import { polygonsToWkt, representativePoint, wktToPolygons } from "@utils/geo";
 import { reverseGeocodeAdminUnits, type AdminUnits } from "@utils/geocoding";
+import {
+    MAP_MAX_ZOOM,
+    MAP_MIN_ZOOM,
+    createBasemapSource,
+    createMapControls,
+    createMapInteractions,
+    useBasemap,
+} from "@utils/basemaps";
+import { BasemapSwitcher } from "./BasemapSwitcher";
 
 type Mode = "point" | "polygon";
 
@@ -76,11 +84,13 @@ export function LocationPicker({ lat, lon, footprintWKT, onLocationChange, onAdm
     const drawRef = useRef<Draw | null>(null);
     const geocodeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const geocodeSeqRef = useRef(0);
+    const baseLayerRef = useRef<TileLayer<XYZ> | null>(null);
 
     const [mode, setMode] = useState<Mode>(() => (wktToPolygons(footprintWKT).length > 0 ? "polygon" : "point"));
     const [polygonCount, setPolygonCount] = useState(0);
     const [locating, setLocating] = useState(false);
     const [geocoding, setGeocoding] = useState(false);
+    const [basemap, setBasemap] = useBasemap();
 
     // Últimos valores para los handlers del mapa, que se registran una sola vez.
     const callbacksRef = useRef({ onLocationChange, onAdminUnits });
@@ -170,18 +180,25 @@ export function LocationPicker({ lat, lon, footprintWKT, onLocationChange, onAdm
         );
         polygonSource.on("addfeature", commitPolygons);
 
+        const baseLayer = new TileLayer({ source: createBasemapSource(basemap) });
+        baseLayer.set("basemapId", basemap);
+        baseLayerRef.current = baseLayer;
+
         const map = new Map({
             target: host,
             layers: [
-                new TileLayer({ source: new OSM() }),
+                baseLayer,
                 new VectorLayer({ source: polygonSource, style: polygonStyle }),
                 new VectorLayer({ source: markerSource }),
             ],
             view: new View({
                 center: fromLonLat(hasPoint ? [initialLon, initialLat] : LIMA),
                 zoom: hasPoint ? 15 : 11,
+                minZoom: MAP_MIN_ZOOM,
+                maxZoom: MAP_MAX_ZOOM,
             }),
-            controls: [],
+            controls: createMapControls(),
+            interactions: createMapInteractions(),
         });
 
         mapRef.current = map;
@@ -208,6 +225,7 @@ export function LocationPicker({ lat, lon, footprintWKT, onLocationChange, onAdm
             resizeObserver.disconnect();
             map.setTarget(undefined);
             mapRef.current = null;
+            baseLayerRef.current = null;
             markerRef.current = null;
             markerSourceRef.current = null;
             polygonSourceRef.current = null;
@@ -216,6 +234,14 @@ export function LocationPicker({ lat, lon, footprintWKT, onLocationChange, onAdm
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // Cambio de mapa base.
+    useEffect(() => {
+        const layer = baseLayerRef.current;
+        if (!layer || layer.get("basemapId") === basemap) return;
+        layer.setSource(createBasemapSource(basemap));
+        layer.set("basemapId", basemap);
+    }, [basemap]);
 
     // Herramienta activa: arrastrar el punto o dibujar polígonos.
     useEffect(() => {
@@ -384,6 +410,7 @@ export function LocationPicker({ lat, lon, footprintWKT, onLocationChange, onAdm
                     className="w-full overflow-hidden rounded-lg border bg-muted/20"
                     style={{ height: "440px" }}
                 />
+                <BasemapSwitcher value={basemap} onChange={setBasemap} />
                 <div className="pointer-events-none absolute bottom-3 left-3 rounded bg-background/80 px-2 py-1 text-xs shadow">
                     {mode === "point"
                         ? "Haz clic o arrastra el punto de colecta"
