@@ -50,6 +50,7 @@ import {
 } from "../ui/tooltip";
 import { env } from "@config/env";
 import type { OccurrenceIdentificationOut, OccurrenceImageOut } from "@interfaces/occurrence";
+import { LocationPicker } from "../LocationPicker";
 
 interface NewOccurrencePageProps {
   onNavigate: (page: string, params?: Record<string, any>) => void;
@@ -198,6 +199,7 @@ export function NewOccurrencePage({
   const [verbatimLocality, setVerbatimLocality] = useState("");
   const [decimalLatitude, setDecimalLatitude] = useState("");
   const [decimalLongitude, setDecimalLongitude] = useState("");
+  const [footprintWKT, setFootprintWKT] = useState("");
   const [verbatimElevation, setVerbatimElevation] = useState("");
   const [hydrographicContext, setHydrographicContext] = useState("");
   const [georeferenceVerificationStatus, setGeoreferenceVerificationStatus] = useState("");
@@ -271,6 +273,7 @@ export function NewOccurrencePage({
       setVerbatimLocality(occ.verbatimLocality ?? "");
       setDecimalLatitude(occ.decimalLatitude != null ? String(occ.decimalLatitude) : "");
       setDecimalLongitude(occ.decimalLongitude != null ? String(occ.decimalLongitude) : "");
+      setFootprintWKT(occ.footprintWKT ?? "");
       setVerbatimElevation(occ.verbatimElevation ?? "");
       setHydrographicContext(occ.hydrographicContext ?? "");
       setGeoreferenceVerificationStatus(occ.georeferenceVerificationStatus ?? "");
@@ -470,6 +473,7 @@ export function NewOccurrencePage({
       verbatimLocality: verbatimLocality || null,
       decimalLatitude: decimalLatitude ? parseFloat(decimalLatitude) : null,
       decimalLongitude: decimalLongitude ? parseFloat(decimalLongitude) : null,
+      footprintWKT: footprintWKT || null,
       verbatimElevation: verbatimElevation || null,
       hydrographicContext: hydrographicContext || null,
       occurrenceRemarks: occurrenceRemarks || null,
@@ -719,6 +723,55 @@ export function NewOccurrencePage({
 
   const renderLocationTab = () => (
     <div className="space-y-6">
+      <LocationPicker
+        lat={decimalLatitude}
+        lon={decimalLongitude}
+        footprintWKT={footprintWKT}
+        onLocationChange={({ lat, lon, footprintWKT: wkt }) => {
+          setDecimalLatitude(lat != null ? String(lat) : "");
+          setDecimalLongitude(lon != null ? String(lon) : "");
+          setFootprintWKT(wkt ?? "");
+        }}
+        onAdminUnits={(admin) => {
+          // Se reemplaza siempre (también si no se pudo deducir) para que estos campos
+          // correspondan al punto actual y no a uno anterior.
+          setCountryCode(admin && COUNTRIES.some((c) => c.code === admin.countryCode) ? admin.countryCode! : "");
+          setStateProvince(admin?.stateProvince ?? "");
+          setCounty(admin?.county ?? "");
+          setMunicipality(admin?.municipality ?? "");
+          setLocality(admin?.locality ?? "");
+          if (!admin) {
+            toast.warning("No se pudo deducir la unidad administrativa", {
+              description: "Completa país, departamento, provincia, distrito y localidad manualmente.",
+            });
+          }
+        }}
+      />
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem", alignItems: "flex-end" }}>
+        <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
+          <Label htmlFor="decimalLatitude" className="flex flex-wrap items-center gap-2">
+            Latitud
+            <span className="text-[10px] text-muted-foreground">dwc:decimalLatitude</span>
+          </Label>
+          <Input id="decimalLatitude" type="number" step="0.000001" value={decimalLatitude} onChange={(e) => setDecimalLatitude(e.target.value)} placeholder="-12.046373" />
+        </div>
+        <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
+          <Label htmlFor="decimalLongitude" className="flex flex-wrap items-center gap-2">
+            Longitud
+            <span className="text-[10px] text-muted-foreground">dwc:decimalLongitude</span>
+          </Label>
+          <Input id="decimalLongitude" type="number" step="0.000001" value={decimalLongitude} onChange={(e) => setDecimalLongitude(e.target.value)} placeholder="-77.042755" />
+        </div>
+        {footprintWKT && (
+          <div style={{ flex: "2 1 260px", minWidth: 0 }}>
+            <Badge variant="secondary" className="whitespace-normal text-xs font-normal">
+              Área dibujada ({footprintWKT.startsWith("MULTI") ? "varios polígonos" : "un polígono"}): latitud y longitud son su punto representativo
+            </Badge>
+          </div>
+        )}
+      </div>
+
       <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
         <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
           <Label htmlFor="countryCode" className="flex flex-wrap items-center gap-2">
@@ -759,7 +812,7 @@ export function NewOccurrencePage({
         </div>
       </div>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem", alignItems: "flex-end" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
         <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
           <Label htmlFor="locality" className="flex flex-wrap items-center gap-2">
             Localidad <Badge variant="outline" className="text-[10px] px-1 py-0">Recomendado</Badge>
@@ -773,20 +826,6 @@ export function NewOccurrencePage({
             <span className="text-[10px] text-muted-foreground">dwc:verbatimLocality</span>
           </Label>
           <Input id="verbatimLocality" value={verbatimLocality} onChange={(e) => setVerbatimLocality(e.target.value)} placeholder="Tal como etiqueta" />
-        </div>
-        <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
-          <Label htmlFor="decimalLatitude" className="flex flex-wrap items-center gap-2">
-            Latitud
-            <span className="text-[10px] text-muted-foreground">dwc:decimalLatitude</span>
-          </Label>
-          <Input id="decimalLatitude" type="number" step="0.000001" value={decimalLatitude} onChange={(e) => setDecimalLatitude(e.target.value)} placeholder="-12.046373" />
-        </div>
-        <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
-          <Label htmlFor="decimalLongitude" className="flex flex-wrap items-center gap-2">
-            Longitud
-            <span className="text-[10px] text-muted-foreground">dwc:decimalLongitude</span>
-          </Label>
-          <Input id="decimalLongitude" type="number" step="0.000001" value={decimalLongitude} onChange={(e) => setDecimalLongitude(e.target.value)} placeholder="-77.042755" />
         </div>
       </div>
 

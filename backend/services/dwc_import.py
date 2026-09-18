@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from backend.models.models import User, Collection, Occurrence, Taxon, Identifier, Identification
 from backend.services.collection_permissions import user_can_edit_collection
+from backend.services.occurrences import sync_geo_columns
 from backend.utils.dwc import DWC_HEADER_RE, ALLOWED_FIELDS
 
 
@@ -370,6 +371,7 @@ def import_dwc_csv(
             occ = Occurrence(**occ_d)
             occ.collectionId = collection_id
             occ.digitizerUserId = current_user.userId
+            sync_geo_columns(occ)
 
             db.add(occ)
             db.flush()  # obtener occ.occurrenceId

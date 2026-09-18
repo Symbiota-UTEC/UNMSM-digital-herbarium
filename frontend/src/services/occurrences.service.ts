@@ -29,6 +29,36 @@ export interface OccurrenceFilters {
     collectionId?: string;
 }
 
+export type OccurrenceMatchType = "exact" | "representative" | "intersects";
+
+export interface OccurrenceMapPoint {
+    occurrenceId: string;
+    code?: string | null;
+    scientificName?: string | null;
+    lat: number;
+    lon: number;
+    matchType: OccurrenceMatchType;
+}
+
+export interface OccurrenceMapResponse {
+    items: OccurrenceMapPoint[];
+    total: number;
+    truncated: boolean;
+}
+
+export interface OccurrenceMapFilters {
+    scientificName?: string;
+    family?: string;
+    collector?: string;
+    collectionId?: string;
+    nearLat?: number;
+    nearLon?: number;
+    radiusKm?: number;
+    withinPolygon?: string;
+    includeIntersecting?: boolean;
+    limit?: number;
+}
+
 export interface OccurrenceCreatePayload {
     collectionId?: string | null;
     occurrenceID?: string | null;
@@ -49,6 +79,7 @@ export interface OccurrenceCreatePayload {
     verbatimLocality?: string | null;
     decimalLatitude?: number | null;
     decimalLongitude?: number | null;
+    footprintWKT?: string | null;
     verbatimElevation?: string | null;
     taxonId?: string | null;
     scientificName?: string | null;
@@ -77,6 +108,27 @@ export const occurrencesService = {
         if (filters.collectionId) params.set("collection_id", filters.collectionId);
 
         const res = await apiFetch(`${API.BASE_URL}${API.PATHS.OCCURRENCES.BASE}?${params.toString()}`);
+        await throwIfError(res);
+        return res.json();
+    },
+
+    async mapPoints(
+        apiFetch: ApiFetch,
+        filters: OccurrenceMapFilters,
+    ): Promise<OccurrenceMapResponse> {
+        const params = new URLSearchParams();
+        if (filters.scientificName?.trim()) params.set("scientificName", filters.scientificName.trim());
+        if (filters.family?.trim()) params.set("family", filters.family.trim());
+        if (filters.collector?.trim()) params.set("collector", filters.collector.trim());
+        if (filters.collectionId) params.set("collection_id", filters.collectionId);
+        if (filters.nearLat != null) params.set("nearLat", String(filters.nearLat));
+        if (filters.nearLon != null) params.set("nearLon", String(filters.nearLon));
+        if (filters.radiusKm != null) params.set("radiusKm", String(filters.radiusKm));
+        if (filters.withinPolygon) params.set("withinPolygon", filters.withinPolygon);
+        if (filters.includeIntersecting) params.set("includeIntersecting", "true");
+        if (filters.limit) params.set("limit", String(filters.limit));
+
+        const res = await apiFetch(`${API.BASE_URL}${API.PATHS.OCCURRENCES.MAP}?${params.toString()}`);
         await throwIfError(res);
         return res.json();
     },

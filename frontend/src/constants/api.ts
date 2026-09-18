@@ -20,6 +20,7 @@ export const API = {
         },
         OCCURRENCES: {
             BASE: "/occurrences",
+            MAP: "/occurrences/map",
             BY_ID: (occurrenceId: string) => `/occurrences/${occurrenceId}`,
             IDENTIFICATIONS: (occurrenceId: string) => `/occurrences/${occurrenceId}/identifications`,
             IDENTIFICATION_BY_ID: (occurrenceId: string, identificationId: string) =>

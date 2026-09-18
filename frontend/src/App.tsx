@@ -339,7 +339,7 @@ function AppContent() {
         <Route path="/taxon/:taxonId" element={<TaxonDetailRoute />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/admin" element={<AdminPage onNavigate={handleNavigation} />} />
-        <Route path="/map" element={<MapPage />} />
+        <Route path="/map" element={<MapPage onNavigate={handleNavigation} />} />
         <Route path="*" element={<HomePage onNavigate={handleNavigation} />} />
       </Routes>
 

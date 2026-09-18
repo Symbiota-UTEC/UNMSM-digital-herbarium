@@ -77,8 +77,10 @@ backend/
 ├── utils/
 │   ├── dwc.py                # DwC CSV header validation constants
 │   └── security.py           # hash_password, verify_password
-└── scripts/
-    └── create_admin.py       # Bootstrap: creates default institution + admin user
+├── scripts/
+│   └── create_admin.py       # Bootstrap: creates default institution + admin user
+└── data/                     # Sample/reference files (not code)
+    └── wfo_classification_solanum_tuberosum_lineage.csv  # 9 WFO taxa: Plantae -> Solanum tuberosum
 ```
 
 ---
@@ -220,9 +222,66 @@ Identification ──< IdentificationIdentifier >── Identifier
 - **Taxon** is loaded from the WFO (World Flora Online) backbone via CSV import (`/api/upload/taxon-flora-csv`). Has a `isCurrent` flag to mark the active Flora version.
 - **Identification** links an Occurrence to a Taxon. `isCurrent=True` marks the accepted determination.
 
-### UUID primary keys
+### Geospatial queries (PostGIS)
 
-All models use `UUID` PKs (Python `uuid.uuid4`).
+`db` runs `postgis/postgis:16-3.4` (not plain `postgres`). `Occurrence` has two
+PostGIS columns that are **never set directly by input schemas** — they're
+derived server-side, the same pattern as `year`/`month`/`day` being derived
+from `eventDate`:
+
+| DwC field (source of truth)            | Derived PostGIS column                  | Used for                                   |
+|-----------------------------------------|------------------------------------------|---------------------------------------------|
+| `decimalLatitude` + `decimalLongitude`  | `location` (`geography(Point)`)          | radius / polygon search (point in area)     |
+| `footprintWKT` (POLYGON/MULTIPOLYGON)   | `footprintGeom` (`geometry`)             | `includeIntersecting` (polygon touches area) |
+
+**The API is agnostic about how a record was located.** It never derives a
+point from a polygon: the client sends `decimalLatitude`/`decimalLongitude`
+(and optionally `footprintWKT`). For a record entered as a polygon, the
+frontend computes the representative point (`getInteriorPoint()`) and sends it
+as lat/lon together with the WKT. A record with `footprintWKT` and no lat/lon
+(e.g. a CSV import) simply has `location = NULL`.
+
+`services/occurrences.py::sync_geo_columns()` recomputes `location`/
+`footprintGeom` on every `create_occurrence`/`update_occurrence` call and on
+every row of the DwC CSV import (`services/dwc_import.py`), regardless of
+which fields changed. Any new code path that creates or edits an `Occurrence`
+must call it too, otherwise those rows are invisible to spatial search.
+
+`footprintWKT` is free text (a user can paste anything), so it is validated on
+the way in: it must be `POLYGON` or `MULTIPOLYGON`; other WKT types such as
+`POINT` are rejected with a `422` (a point already lives in
+`decimalLatitude`/`decimalLongitude`). Syntax errors only fail when PostGIS
+parses the value at flush time; `_flush_with_geo_validation()` catches that and
+turns it into a `422` instead of a raw `DataError`.
+
+**Search filters** (`OccurrenceFilters` / `get_occurrence_filters` /
+`build_geo_conditions` in `services/occurrence_filters.py`), accepted by both
+`GET /api/occurrences` and `GET /api/occurrences/map`:
+
+- **Radius**: `nearLat` + `nearLon` + `radiusKm` (all three or none — a
+  partial combination is a `400`). `ST_DWithin` on `geography`, so distance is
+  true great-circle meters.
+- **Polygon**: `withinPolygon` (WKT `POLYGON(...)` or `MULTIPOLYGON(...)`,
+  WGS84). `ST_Contains` on `location` cast to `geometry` — a planar
+  point-in-polygon check in degree-space, accurate enough at herbarium scale
+  (no antimeridian or polar regions). A malformed WKT is a `400`.
+- **`includeIntersecting=true`** (only meaningful with one of the above): the
+  default matches records whose *point* (`location`) is inside the area. With
+  the flag, also match records whose *polygon* (`footprintGeom`) intersects
+  the area, even if their representative point is outside it.
+
+**`GET /api/occurrences/map`** returns every matching point unpaginated (up to
+`limit`, default 5000, with `truncated` when there were more) for the map view.
+Each point carries a `matchType`: `exact` (no polygon, point inside the area),
+`representative` (has a polygon, its representative point inside the area) or
+`intersects` (polygon touches the area, point outside — only with the flag).
+With no area it returns every record that has coordinates (`exact` if it has
+no polygon, `representative` otherwise). A polygon-only record with no lat/lon
+is drawn at `ST_PointOnSurface` of its polygon — display only, nothing stored.
+
+The paginated list and the map share `_visible_occurrences_select()` in
+`services/occurrences.py`, so they apply identical access rules and filters.
+Keep it that way: don't add a third copy of the permission logic.
 
 ---
 

@@ -12,6 +12,7 @@ from typing import List, Optional, Any
 from sqlalchemy import String, Text, Integer, Float, DateTime, ForeignKey, Uuid
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from geoalchemy2 import Geography, Geometry
 
 from backend.config.database import Base
 from datetime import datetime
@@ -247,10 +248,27 @@ class Occurrence(Base):
             "archipiélago o isla específica (campo unificado del DwC: waterBody, islandGroup, island)."
         ),
     )
+    # WKT (Well-Known Text): geometría como texto, p. ej. POLYGON((lon lat, lon lat, ...)); orden lon lat.
     footprintWKT: Mapped[Optional[str]] = mapped_column(
         "footprint_wkt",
         Text(),
         doc="DwC footprintWKT: polígono/área de la ocurrencia en WKT (opcional).",
+    )
+
+    # ---- Columnas espaciales (PostGIS) ----
+    # services/occurrences.py lo deriva de decimalLatitude/decimalLongitude en cada create/update.
+    location: Mapped[Optional[Any]] = mapped_column(
+        "location",
+        Geography(geometry_type="POINT", srid=4326),
+        nullable=True,
+        doc="Punto (WGS84) derivado de decimalLatitude/decimalLongitude, para búsquedas por radio.",
+    )
+    # services/occurrences.py lo deriva de footprintWKT en cada create/update.
+    footprintGeom: Mapped[Optional[Any]] = mapped_column(
+        "footprint_geom",
+        Geometry(geometry_type="GEOMETRY", srid=4326),
+        nullable=True,
+        doc="POLYGON o MULTIPOLYGON (WGS84) derivado de footprintWKT; el tipo se valida en services/occurrences.py.",
     )
 
     # Trazabilidad de creación / modificación

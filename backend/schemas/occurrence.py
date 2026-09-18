@@ -3,7 +3,7 @@ from uuid import UUID
 # backend/schemas/occurrence.py
 
 from datetime import datetime, date
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from backend.schemas.common.base import ORMBaseModel, StrictBaseModel
 from pydantic import BaseModel, Field
@@ -191,6 +191,7 @@ class OccurrenceCreateIn(StrictBaseModel):
     verbatimLocality: Optional[str] = None
     decimalLatitude: Optional[float] = None
     decimalLongitude: Optional[float] = None
+    footprintWKT: Optional[str] = None
     verbatimElevation: Optional[str] = None
     hydrographicContext: Optional[str] = None
 
@@ -244,6 +245,7 @@ class OccurrenceUpdateIn(StrictBaseModel):
     verbatimLocality: Optional[str] = None
     decimalLatitude: Optional[float] = None
     decimalLongitude: Optional[float] = None
+    footprintWKT: Optional[str] = None
     verbatimElevation: Optional[str] = None
     hydrographicContext: Optional[str] = None
 
@@ -298,3 +300,28 @@ class OccurrenceFilters(BaseModel):
 
     collection_id: Optional[UUID] = None
     institution_id: Optional[UUID] = None
+
+    # Búsqueda geoespacial: radio (near_*/radius_km) o polígono WKT.
+    near_lat: Optional[float] = None
+    near_lon: Optional[float] = None
+    radius_km: Optional[float] = None
+    within_polygon: Optional[str] = None
+    # Incluir también las ocurrencias cuyo polígono interseca el área.
+    include_intersecting: bool = False
+
+
+class OccurrenceMapPointOut(ORMBaseModel):
+    """Punto del mapa. matchType: exact (sin polígono), representative (con polígono,
+    punto dentro del área) o intersects (polígono interseca el área, punto fuera)."""
+    occurrenceId: UUID
+    code: Optional[str] = None
+    scientificName: Optional[str] = None
+    lat: float
+    lon: float
+    matchType: Literal["exact", "representative", "intersects"]
+
+
+class OccurrenceMapOut(ORMBaseModel):
+    items: List[OccurrenceMapPointOut]
+    total: int
+    truncated: bool

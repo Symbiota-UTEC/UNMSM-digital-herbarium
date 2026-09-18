@@ -3,12 +3,16 @@ from __future__ import annotations
 from uuid import UUID
 
 import json
+import re
+from contextlib import contextmanager
 from datetime import datetime, date
 from typing import Optional, Any, Dict, List
 
 from fastapi import HTTPException, status
-from sqlalchemy import select, delete, or_, func, and_
+from sqlalchemy import select, delete, or_, func, and_, case
 from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.exc import DataError, InternalError
+from geoalchemy2.elements import WKTElement
 
 from backend.models.models import (
     Occurrence,
@@ -23,13 +27,15 @@ from backend.models.models import (
 from backend.schemas import Page
 from backend.schemas.occurrence import (
     OccurrenceBriefItem,
+    OccurrenceMapOut,
+    OccurrenceMapPointOut,
     DynamicPropsIn,
     OccurrenceFilters,
     OccurrenceCreateIn,
     OccurrenceUpdateIn,
     IdentificationCreateIn,
 )
-from backend.services.occurrence_filters import apply_occurrence_filters
+from backend.services.occurrence_filters import apply_occurrence_filters, build_geo_conditions
 from backend.services.collection_permissions import (
     user_can_view_collection,
     user_can_edit_collection,
@@ -112,6 +118,40 @@ def _apply_event_date_ymd(occ: Occurrence, event_date: Optional[str]) -> None:
     occ.day = parsed.day
 
 
+_FOOTPRINT_TYPES_RE = re.compile(r"(MULTIPOLYGON|POLYGON)\b", re.IGNORECASE)
+
+
+def sync_geo_columns(occ: Occurrence) -> None:
+    """Deriva `location` y `footprintGeom` (PostGIS) de lat/lon y footprintWKT.
+    Llamar en todo create/update de Occurrence para que no queden desincronizadas."""
+    if occ.decimalLatitude is not None and occ.decimalLongitude is not None:
+        occ.location = WKTElement(
+            f"POINT({occ.decimalLongitude} {occ.decimalLatitude})", srid=4326
+        )
+    else:
+        occ.location = None
+
+    wkt = occ.footprintWKT.strip() if occ.footprintWKT else None
+    if wkt and not _FOOTPRINT_TYPES_RE.match(wkt):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="footprintWKT solo admite POLYGON o MULTIPOLYGON.",
+        )
+    occ.footprintGeom = WKTElement(wkt, srid=4326) if wkt else None
+
+
+def _flush_with_geo_validation(db: Session) -> None:
+    """Flush que convierte un footprintWKT mal formado (PostGIS lo parsea al persistir) en 422."""
+    try:
+        db.flush()
+    except (DataError, InternalError):
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="footprintWKT inválido: debe ser un WKT válido, p. ej. POLYGON((-77.05 -12.04, -77.03 -12.04, -77.03 -12.06, -77.05 -12.06, -77.05 -12.04)).",
+        )
+
+
 # =========================
 # Casos de uso
 # =========================
@@ -149,8 +189,10 @@ def create_occurrence(
     if payload.eventDate and occ.year is None:
         _apply_event_date_ymd(occ, payload.eventDate)
 
+    sync_geo_columns(occ)
+
     db.add(occ)
-    db.flush()
+    _flush_with_geo_validation(db)
 
     # Manejar recordedBy simple si se desea (o dejarlo solo como texto,
     # en la vista de carga de csv creaba un OccurrenceAgent. Como es opcional,
@@ -220,40 +262,17 @@ def get_occurrence_by_id(
     return occ
 
 
-def list_occurrences_basic(
-    db: Session,
-    page: int,
-    page_size: int,
+def _visible_occurrences_select(
+    current_user: User,
     collection_id: Optional[UUID],
     filters: OccurrenceFilters,
-    current_user: User,
-) -> Page[OccurrenceBriefItem]:
-    is_superuser = current_user.isSuperuser
-    is_inst_admin = current_user.isInstitutionAdmin
-    user_inst_id = current_user.institutionId
-
-    code_expr = func.coalesce(Occurrence.catalogNumber, Occurrence.recordNumber)
-    location_expr = func.coalesce(
-        Occurrence.locality,
-        Occurrence.municipality,
-        Occurrence.stateProvince,
-        Occurrence.country,
-    )
-
-    # SELECT principal (para filas)
-    base_select = (
-        select(
-            Occurrence.occurrenceId.label("occ_id"),
-            code_expr.label("code"),
-            Taxon.scientificName.label("scientific_name"),
-            Taxon.family.label("family"),
-            location_expr.label("location"),
-            Occurrence.recordedBy.label("collector"),
-            Occurrence.eventDate.label("date"),
-            Collection.collectionId.label("collection_id"),
-            Collection.institutionId.label("collection_institution_id"),
-            Institution.institutionName.label("institution_name"),
-        )
+    *columns,
+):
+    """SELECT de `columns` sobre las ocurrencias visibles para `current_user`, con
+    `filters` aplicados. Lo comparten el listado y el mapa para usar las mismas reglas de acceso."""
+    stmt = (
+        select(*columns)
+        .select_from(Occurrence)
         .join(Collection, Occurrence.collectionId == Collection.collectionId)
         .outerjoin(
             Identification,
@@ -269,25 +288,7 @@ def list_occurrences_basic(
         )
     )
 
-    # SELECT para conteo (misma estructura de joins)
-    count_select = (
-        select(Occurrence.occurrenceId)
-        .join(Collection, Occurrence.collectionId == Collection.collectionId)
-        .outerjoin(
-            Identification,
-            and_(
-                Identification.occurrenceId == Occurrence.occurrenceId,
-                Identification.isCurrent.is_(True),
-            ),
-        )
-        .outerjoin(Taxon, Taxon.taxonId == Identification.taxonId)
-        .outerjoin(
-            Institution,
-            Collection.institutionId == Institution.institutionId,
-        )
-    )
-
-    if not is_superuser:
+    if not current_user.isSuperuser:
         perm_subq = (
             select(CollectionPermission.collectionId)
             .where(
@@ -298,26 +299,74 @@ def list_occurrences_basic(
 
         conds = [Occurrence.collectionId.in_(perm_subq)]
 
-        if is_inst_admin and user_inst_id:
-            conds.append(Collection.institutionId == user_inst_id)
+        if current_user.isInstitutionAdmin and current_user.institutionId:
+            conds.append(Collection.institutionId == current_user.institutionId)
 
-        base_select = base_select.where(or_(*conds))
-        count_select = count_select.where(or_(*conds))
+        stmt = stmt.where(or_(*conds))
 
-    # Filtrar por colección específica
     if collection_id is not None:
-        base_select = base_select.where(Occurrence.collectionId == collection_id)
-        count_select = count_select.where(Occurrence.collectionId == collection_id)
+        stmt = stmt.where(Occurrence.collectionId == collection_id)
 
-    base_select = apply_occurrence_filters(base_select, filters)
-    count_select = apply_occurrence_filters(count_select, filters)
+    return apply_occurrence_filters(stmt, filters)
+
+
+@contextmanager
+def _polygon_filter_errors(db: Session, filters: OccurrenceFilters):
+    """Convierte un withinPolygon inválido (PostGIS lo parsea al ejecutar) en 400 en vez de 500."""
+    try:
+        yield
+    except (DataError, InternalError):
+        if not filters.within_polygon:
+            raise
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="withinPolygon inválido: debe ser un POLYGON o MULTIPOLYGON en WKT.",
+        )
+
+
+def list_occurrences_basic(
+    db: Session,
+    page: int,
+    page_size: int,
+    collection_id: Optional[UUID],
+    filters: OccurrenceFilters,
+    current_user: User,
+) -> Page[OccurrenceBriefItem]:
+    code_expr = func.coalesce(Occurrence.catalogNumber, Occurrence.recordNumber)
+    location_expr = func.coalesce(
+        Occurrence.locality,
+        Occurrence.municipality,
+        Occurrence.stateProvince,
+        Occurrence.country,
+    )
+
+    base_select = _visible_occurrences_select(
+        current_user,
+        collection_id,
+        filters,
+        Occurrence.occurrenceId.label("occ_id"),
+        code_expr.label("code"),
+        Taxon.scientificName.label("scientific_name"),
+        Taxon.family.label("family"),
+        location_expr.label("location"),
+        Occurrence.recordedBy.label("collector"),
+        Occurrence.eventDate.label("date"),
+        Collection.collectionId.label("collection_id"),
+        Collection.institutionId.label("collection_institution_id"),
+        Institution.institutionName.label("institution_name"),
+    )
+    count_select = _visible_occurrences_select(
+        current_user, collection_id, filters, Occurrence.occurrenceId
+    )
 
     limit = page_size
     offset = (page - 1) * page_size
 
-    total = db.scalar(
-        select(func.count()).select_from(count_select.subquery())
-    ) or 0
+    with _polygon_filter_errors(db, filters):
+        total = db.scalar(
+            select(func.count()).select_from(count_select.subquery())
+        ) or 0
 
     rows = db.execute(
         base_select
@@ -344,6 +393,77 @@ def list_occurrences_basic(
     return Page[OccurrenceBriefItem].of(items, total=total, limit=limit, offset=offset)
 
 
+def list_occurrence_map_points(
+    db: Session,
+    collection_id: Optional[UUID],
+    filters: OccurrenceFilters,
+    current_user: User,
+    limit: int,
+) -> OccurrenceMapOut:
+    """Puntos de las ocurrencias visibles que cumplen `filters`, con `matchType` para el mapa."""
+    location_cond, footprint_cond = build_geo_conditions(filters)
+    has_footprint = Occurrence.footprintGeom.isnot(None)
+
+    # Sin lat/lon, se dibuja en un punto interior del polígono (solo visual).
+    lat = func.coalesce(
+        Occurrence.decimalLatitude, func.ST_Y(func.ST_PointOnSurface(Occurrence.footprintGeom))
+    )
+    lon = func.coalesce(
+        Occurrence.decimalLongitude, func.ST_X(func.ST_PointOnSurface(Occurrence.footprintGeom))
+    )
+
+    if location_cond is None:
+        match_type = case((has_footprint, "representative"), else_="exact")
+    else:
+        match_type = case(
+            (and_(location_cond, has_footprint), "representative"),
+            (location_cond, "exact"),
+            else_="intersects",
+        )
+
+    code_expr = func.coalesce(Occurrence.catalogNumber, Occurrence.recordNumber)
+
+    rows_select = (
+        _visible_occurrences_select(
+            current_user,
+            collection_id,
+            filters,
+            Occurrence.occurrenceId.label("occ_id"),
+            code_expr.label("code"),
+            Taxon.scientificName.label("scientific_name"),
+            lat.label("lat"),
+            lon.label("lon"),
+            match_type.label("match_type"),
+        )
+        .where(lat.isnot(None), lon.isnot(None))
+    )
+    count_select = _visible_occurrences_select(
+        current_user, collection_id, filters, Occurrence.occurrenceId
+    ).where(lat.isnot(None), lon.isnot(None))
+
+    with _polygon_filter_errors(db, filters):
+        total = db.scalar(select(func.count()).select_from(count_select.subquery())) or 0
+        rows = db.execute(
+            rows_select.order_by(Occurrence.occurrenceId.desc()).limit(limit)
+        ).all()
+
+    return OccurrenceMapOut(
+        items=[
+            OccurrenceMapPointOut(
+                occurrenceId=r.occ_id,
+                code=r.code,
+                scientificName=r.scientific_name,
+                lat=r.lat,
+                lon=r.lon,
+                matchType=r.match_type,
+            )
+            for r in rows
+        ],
+        total=total,
+        truncated=total > limit,
+    )
+
+
 def update_occurrence(
     db: Session, occurrence_id: UUID, payload: OccurrenceUpdateIn, current_user: User
 ) -> Occurrence:
@@ -365,6 +485,8 @@ def update_occurrence(
 
     for field, value in update_data.items():
         setattr(occ, field, value)
+
+    sync_geo_columns(occ)
 
     # Recalcular year/month/day si cambió eventDate y no se enviaron explícitamente
     if "eventDate" in update_data and payload.eventDate:
@@ -439,6 +561,7 @@ def update_occurrence(
                 db.add(occ)
 
     db.add(occ)
+    _flush_with_geo_validation(db)
     db.commit()
     db.refresh(occ)
 
