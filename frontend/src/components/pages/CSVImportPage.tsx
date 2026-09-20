@@ -854,7 +854,7 @@ export function CSVImportPage({
       <div className="mb-6">
         <Button variant="ghost" onClick={handleCancel} className="mb-4">
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Volver a {collectionName}
+          Volver a Colección
         </Button>
 
       <div>

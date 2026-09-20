@@ -1374,9 +1374,9 @@ export function NewOccurrencePage({
           <Button variant="ghost" onClick={handleCancel} className="mb-4">
             <ArrowLeft className="h-4 w-4 mr-2" />
             {returnTo === "collection"
-              ? `Volver a ${collectionNameProp}`
+              ? "Volver a Colección"
               : returnTo === "map"
-                ? "Volver al mapa"
+                ? "Volver al Mapa"
                 : "Volver a Ocurrencias"}
           </Button>
           <div className="flex items-start justify-between gap-4">

@@ -509,9 +509,9 @@ export function OccurrenceDetailPage({
         <Button variant="ghost" onClick={handleBack} className="mb-4">
           <ArrowLeft className="h-4 w-4 mr-2" />
           {returnTo === "collection"
-            ? `Volver a ${collectionName}`
+            ? "Volver a Colección"
             : returnTo === "map"
-              ? "Volver al mapa"
+              ? "Volver al Mapa"
               : "Volver a ocurrencias"}
         </Button>
 
