@@ -47,7 +47,8 @@ function appendCategoricalParams(params: URLSearchParams, f: CategoricalFilters)
     if (f.collectionId) params.set("collection_id", f.collectionId);
 }
 
-export type OccurrenceMatchType = "exact" | "representative" | "intersects";
+// Cómo se registró la ubicación: punto exacto, punto con incertidumbre (círculo) o polígono.
+export type OccurrenceLocationType = "point" | "circle" | "polygon";
 
 export interface OccurrenceMapPoint {
     occurrenceId: string;
@@ -55,7 +56,8 @@ export interface OccurrenceMapPoint {
     scientificName?: string | null;
     lat: number;
     lon: number;
-    matchType: OccurrenceMatchType;
+    locationType: OccurrenceLocationType;
+    uncertaintyMeters?: number | null;
 }
 
 export interface OccurrenceMapResponse {
@@ -69,7 +71,6 @@ export interface OccurrenceMapFilters extends CategoricalFilters {
     nearLon?: number;
     radiusKm?: number;
     withinPolygon?: string;
-    includeIntersecting?: boolean;
     limit?: number;
 }
 
@@ -93,6 +94,7 @@ export interface OccurrenceCreatePayload {
     verbatimLocality?: string | null;
     decimalLatitude?: number | null;
     decimalLongitude?: number | null;
+    coordinateUncertaintyInMeters?: number | null;
     footprintWKT?: string | null;
     verbatimElevation?: string | null;
     taxonId?: string | null;
@@ -128,7 +130,6 @@ export const occurrencesService = {
         if (filters.nearLon != null) params.set("nearLon", String(filters.nearLon));
         if (filters.radiusKm != null) params.set("radiusKm", String(filters.radiusKm));
         if (filters.withinPolygon) params.set("withinPolygon", filters.withinPolygon);
-        if (filters.includeIntersecting) params.set("includeIntersecting", "true");
         if (filters.limit) params.set("limit", String(filters.limit));
 
         const res = await apiFetch(`${API.BASE_URL}${API.PATHS.OCCURRENCES.MAP}?${params.toString()}`);

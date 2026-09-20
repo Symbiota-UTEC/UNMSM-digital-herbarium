@@ -51,13 +51,14 @@ import {
 import { env } from "@config/env";
 import type { OccurrenceIdentificationOut, OccurrenceImageOut } from "@interfaces/occurrence";
 import { LocationPicker } from "../LocationPicker";
+import { DwcTerm } from "../DwcTerm";
 import { formatVerbatimDate } from "@utils/dates";
 
 interface NewOccurrencePageProps {
   onNavigate: (page: string, params?: Record<string, any>) => void;
   mode?: "create" | "edit";
   occurrenceId?: string;
-  returnTo?: "occurrences" | "collection" | "taxon";
+  returnTo?: "occurrences" | "collection" | "taxon" | "map";
   collectionId?: string;
   collectionName?: string;
   isOwner?: boolean;
@@ -202,6 +203,7 @@ export function NewOccurrencePage({
   const [verbatimLocality, setVerbatimLocality] = useState("");
   const [decimalLatitude, setDecimalLatitude] = useState("");
   const [decimalLongitude, setDecimalLongitude] = useState("");
+  const [coordinateUncertainty, setCoordinateUncertainty] = useState("");
   const [footprintWKT, setFootprintWKT] = useState("");
   const [verbatimElevation, setVerbatimElevation] = useState("");
   const [hydrographicContext, setHydrographicContext] = useState("");
@@ -277,6 +279,7 @@ export function NewOccurrencePage({
       setVerbatimLocality(occ.verbatimLocality ?? "");
       setDecimalLatitude(occ.decimalLatitude != null ? String(occ.decimalLatitude) : "");
       setDecimalLongitude(occ.decimalLongitude != null ? String(occ.decimalLongitude) : "");
+      setCoordinateUncertainty(occ.coordinateUncertaintyInMeters != null ? String(occ.coordinateUncertaintyInMeters) : "");
       setFootprintWKT(occ.footprintWKT ?? "");
       setVerbatimElevation(occ.verbatimElevation ?? "");
       setHydrographicContext(occ.hydrographicContext ?? "");
@@ -450,6 +453,8 @@ export function NewOccurrencePage({
       onNavigate("taxon-detail", { taxonId });
     } else if (returnTo === "collection" && collectionId) {
       onNavigate("collection-detail", { collectionId, collectionName: collectionNameProp || "", isOwner: isOwner ?? false });
+    } else if (returnTo === "map") {
+      onNavigate("map", { restoreSearch: true });
     } else {
       onNavigate("occurrences");
     }
@@ -477,6 +482,7 @@ export function NewOccurrencePage({
       verbatimLocality: verbatimLocality || null,
       decimalLatitude: decimalLatitude ? parseFloat(decimalLatitude) : null,
       decimalLongitude: decimalLongitude ? parseFloat(decimalLongitude) : null,
+      coordinateUncertaintyInMeters: parseFloat(coordinateUncertainty) > 0 ? parseFloat(coordinateUncertainty) : null,
       footprintWKT: footprintWKT || null,
       verbatimElevation: verbatimElevation || null,
       hydrographicContext: hydrographicContext || null,
@@ -496,6 +502,14 @@ export function NewOccurrencePage({
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+
+    if (coordinateUncertainty.trim() && !(parseFloat(coordinateUncertainty) > 0)) {
+      toast.error("La incertidumbre de la coordenada debe ser mayor que 0", {
+        description: "Déjala vacía si no la conoces.",
+      });
+      setActiveTab("location");
+      return;
+    }
 
     const canSave = mode === "edit" ? !!catalogNumber : (!!catalogNumber && !!selectedTaxonID);
     if (!canSave) {
@@ -578,30 +592,30 @@ export function NewOccurrencePage({
           <Label htmlFor="catalogNumber" className="flex items-center gap-2">
             Número de catálogo <span className="text-destructive">*</span>
             <Badge variant="secondary" className="text-xs">Requerido</Badge>
-            <span className="text-xs text-muted-foreground">dwc:catalogNumber</span>
+            <DwcTerm term="catalogNumber" />
           </Label>
           <Input id="catalogNumber" value={catalogNumber} onChange={(e) => setCatalogNumber(e.target.value)} placeholder="BOT-2024-001" required />
         </div>
         <div className="space-y-3">
           <Label htmlFor="recordNumber" className="flex items-center gap-2">
             Número de registro
-            <span className="text-xs text-muted-foreground">dwc:recordNumber</span>
+            <DwcTerm term="recordNumber" />
           </Label>
           <Input id="recordNumber" value={recordNumber} onChange={(e) => setRecordNumber(e.target.value)} placeholder="Número de colecta" />
         </div>
         <div className="space-y-3">
-          <Label className="flex items-center gap-2">Recolectado por <Badge variant="outline" className="text-xs">Recomendado</Badge> <span className="text-xs text-muted-foreground">dwc:recordedBy</span></Label>
+          <Label className="flex items-center gap-2">Recolectado por <Badge variant="outline" className="text-xs">Recomendado</Badge> <DwcTerm term="recordedBy" /></Label>
           <Input value={recordedBy} onChange={(e) => setRecordedBy(e.target.value)} placeholder="Nombre del recolector" />
         </div>
       </div>
 
       <div className="grid md:grid-cols-3 gap-4">
         <div className="space-y-3">
-          <Label htmlFor="organismQuantity" className="flex items-center gap-2">Cantidad <span className="text-xs text-muted-foreground">dwc:organismQuantity</span></Label>
+          <Label htmlFor="organismQuantity" className="flex items-center gap-2">Cantidad <DwcTerm term="organismQuantity" /></Label>
           <Input id="organismQuantity" type="number" min={0} value={organismQuantity} onChange={(e) => setOrganismQuantity(e.target.value)} placeholder="1" />
         </div>
         <div className="space-y-3">
-          <Label htmlFor="organismQuantityType" className="flex items-center gap-2">Tipo de cantidad <span className="text-xs text-muted-foreground">dwc:organismQuantityType</span></Label>
+          <Label htmlFor="organismQuantityType" className="flex items-center gap-2">Tipo de cantidad <DwcTerm term="organismQuantityType" /></Label>
           <Select value={organismQuantityType} onValueChange={setOrganismQuantityType}>
             <SelectTrigger id="organismQuantityType"><SelectValue placeholder="Selecciona" /></SelectTrigger>
             <SelectContent>
@@ -616,7 +630,7 @@ export function NewOccurrencePage({
           </Select>
         </div>
         <div className="space-y-3">
-          <Label htmlFor="occurrenceStatus" className="flex items-center gap-2">Estado <span className="text-xs text-muted-foreground">dwc:occurrenceStatus</span></Label>
+          <Label htmlFor="occurrenceStatus" className="flex items-center gap-2">Estado <DwcTerm term="occurrenceStatus" /></Label>
           <Select value={occurrenceStatus} onValueChange={setOccurrenceStatus}>
             <SelectTrigger id="occurrenceStatus"><SelectValue placeholder="Selecciona" /></SelectTrigger>
             <SelectContent>
@@ -630,7 +644,7 @@ export function NewOccurrencePage({
 
       <div className="grid md:grid-cols-3 gap-4">
         <div className="space-y-3">
-          <Label htmlFor="lifeStage" className="flex items-center gap-2">Etapa de vida <span className="text-xs text-muted-foreground">dwc:lifeStage</span></Label>
+          <Label htmlFor="lifeStage" className="flex items-center gap-2">Etapa de vida <DwcTerm term="lifeStage" /></Label>
           <Select value={lifeStage} onValueChange={setLifeStage}>
             <SelectTrigger id="lifeStage"><SelectValue placeholder="Selecciona" /></SelectTrigger>
             <SelectContent>
@@ -646,7 +660,7 @@ export function NewOccurrencePage({
           </Select>
         </div>
         <div className="space-y-3">
-          <Label htmlFor="establishmentMeans" className="flex items-center gap-2">Medio de establecimiento <span className="text-xs text-muted-foreground">dwc:establishmentMeans</span></Label>
+          <Label htmlFor="establishmentMeans" className="flex items-center gap-2">Medio de establecimiento <DwcTerm term="establishmentMeans" /></Label>
           <Select value={establishmentMeans} onValueChange={setEstablishmentMeans}>
             <SelectTrigger id="establishmentMeans"><SelectValue placeholder="Selecciona" /></SelectTrigger>
             <SelectContent>
@@ -661,28 +675,28 @@ export function NewOccurrencePage({
           </Select>
         </div>
         <div className="space-y-3">
-          <Label htmlFor="associatedTaxa" className="flex items-center gap-2">Taxa asociados <span className="text-xs text-muted-foreground">dwc:associatedTaxa</span></Label>
+          <Label htmlFor="associatedTaxa" className="flex items-center gap-2">Taxa asociados <DwcTerm term="associatedTaxa" /></Label>
           <Input id="associatedTaxa" value={associatedTaxa} onChange={(e) => setAssociatedTaxa(e.target.value)} placeholder="Ej: huésped: Quercus robur" />
         </div>
       </div>
 
       <div className="grid md:grid-cols-3 gap-4">
         <div className="space-y-3">
-          <Label htmlFor="associatedReferences" className="flex items-center gap-2">Referencias asociadas <span className="text-xs text-muted-foreground">dwc:associatedReferences</span></Label>
+          <Label htmlFor="associatedReferences" className="flex items-center gap-2">Referencias asociadas <DwcTerm term="associatedReferences" /></Label>
           <Textarea id="associatedReferences" value={associatedReferences} onChange={(e) => setAssociatedReferences(e.target.value)} placeholder="Referencias bibliográficas ligadas a esta ocurrencia" rows={3} />
         </div>
         <div className="space-y-3">
-          <Label htmlFor="fieldNotes" className="flex items-center gap-2">Notas de campo <span className="text-xs text-muted-foreground">dwc:fieldNotes</span></Label>
+          <Label htmlFor="fieldNotes" className="flex items-center gap-2">Notas de campo <DwcTerm term="fieldNotes" /></Label>
           <Textarea id="fieldNotes" value={fieldNotes} onChange={(e) => setFieldNotes(e.target.value)} placeholder="Notas tal como aparecen en la libreta de campo" rows={3} />
         </div>
         <div className="space-y-3">
-          <Label htmlFor="occurrenceRemarks" className="flex items-center gap-2">Observaciones <span className="text-xs text-muted-foreground">dwc:occurrenceRemarks</span></Label>
+          <Label htmlFor="occurrenceRemarks" className="flex items-center gap-2">Observaciones <DwcTerm term="occurrenceRemarks" /></Label>
           <Textarea id="occurrenceRemarks" value={occurrenceRemarks} onChange={(e) => setOccurrenceRemarks(e.target.value)} placeholder="Observaciones adicionales sobre la ocurrencia" rows={3} />
         </div>
       </div>
 
       <div className="rounded-md border bg-muted/30 p-3 space-y-2">
-        <p className="text-xs font-medium text-muted-foreground">Propiedades adicionales <span className="font-mono">dwc:dynamicProperties</span></p>
+        <p className="text-xs font-medium text-muted-foreground">Propiedades adicionales <DwcTerm term="dynamicProperties" /></p>
         <div className="flex gap-2">
           <Input placeholder="Atributo" value={dpKey} onChange={(e) => setDpKey(e.target.value)} className="h-8 text-sm" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddDynamicProp(); } }} />
           <Input placeholder="Valor" value={dpValue} onChange={(e) => setDpValue(e.target.value)} className="h-8 text-sm" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddDynamicProp(); } }} />
@@ -707,7 +721,7 @@ export function NewOccurrencePage({
       <div className="space-y-3">
         <Label htmlFor="eventDate" className="flex items-center gap-2">
           Fecha del evento <Badge variant="outline" className="text-xs">Recomendado</Badge>
-          <span className="text-xs text-muted-foreground">dwc:eventDate</span>
+          <DwcTerm term="eventDate" />
         </Label>
         <Input
           id="eventDate"
@@ -719,7 +733,7 @@ export function NewOccurrencePage({
           }}
         />
       
-        <Label htmlFor="verbatimEventDate" className="flex items-center gap-2">Fecha original <span className="text-xs text-muted-foreground">dwc:verbatimEventDate</span></Label>
+        <Label htmlFor="verbatimEventDate" className="flex items-center gap-2">Fecha original <DwcTerm term="verbatimEventDate" /></Label>
         <Input
           id="verbatimEventDate"
           value={verbatimEventDate}
@@ -732,11 +746,11 @@ export function NewOccurrencePage({
         />
       </div>
       <div className="space-y-3">
-        <Label htmlFor="habitat" className="flex items-center gap-2">Hábitat <span className="text-xs text-muted-foreground">dwc:habitat</span></Label>
+        <Label htmlFor="habitat" className="flex items-center gap-2">Hábitat <DwcTerm term="habitat" /></Label>
         <Textarea id="habitat" value={habitat} onChange={(e) => setHabitat(e.target.value)} placeholder="Descripción del hábitat" rows={3} />
       </div>
       <div className="space-y-3">
-        <Label htmlFor="eventRemarks" className="flex items-center gap-2">Observaciones del evento <span className="text-xs text-muted-foreground">dwc:eventRemarks</span></Label>
+        <Label htmlFor="eventRemarks" className="flex items-center gap-2">Observaciones del evento <DwcTerm term="eventRemarks" /></Label>
         <Textarea id="eventRemarks" value={eventRemarks} onChange={(e) => setEventRemarks(e.target.value)} placeholder="Observaciones o notas sobre el evento" rows={3} />
       </div>
     </div>
@@ -748,10 +762,12 @@ export function NewOccurrencePage({
         lat={decimalLatitude}
         lon={decimalLongitude}
         footprintWKT={footprintWKT}
-        onLocationChange={({ lat, lon, footprintWKT: wkt }) => {
+        uncertainty={coordinateUncertainty}
+        onLocationChange={({ lat, lon, footprintWKT: wkt, uncertaintyM }) => {
           setDecimalLatitude(lat != null ? String(lat) : "");
           setDecimalLongitude(lon != null ? String(lon) : "");
           setFootprintWKT(wkt ?? "");
+          if (uncertaintyM !== undefined) setCoordinateUncertainty(uncertaintyM != null ? String(uncertaintyM) : "");
         }}
         onAdminUnits={(admin) => {
           // Se reemplaza siempre (también si no se pudo deducir) para que estos campos
@@ -773,31 +789,75 @@ export function NewOccurrencePage({
         <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
           <Label htmlFor="decimalLatitude" className="flex flex-wrap items-center gap-2">
             Latitud
-            <span className="text-[10px] text-muted-foreground">dwc:decimalLatitude</span>
+            <DwcTerm term="decimalLatitude" />
           </Label>
           <Input id="decimalLatitude" type="number" step="0.000001" value={decimalLatitude} onChange={(e) => setDecimalLatitude(e.target.value)} placeholder="-12.046373" />
         </div>
         <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
           <Label htmlFor="decimalLongitude" className="flex flex-wrap items-center gap-2">
             Longitud
-            <span className="text-[10px] text-muted-foreground">dwc:decimalLongitude</span>
+            <DwcTerm term="decimalLongitude" />
           </Label>
           <Input id="decimalLongitude" type="number" step="0.000001" value={decimalLongitude} onChange={(e) => setDecimalLongitude(e.target.value)} placeholder="-77.042755" />
         </div>
-        {footprintWKT && (
-          <div style={{ flex: "2 1 260px", minWidth: 0 }}>
-            <Badge variant="secondary" className="whitespace-normal text-xs font-normal">
-              Área dibujada ({footprintWKT.startsWith("MULTI") ? "varios polígonos" : "un polígono"}): latitud y longitud son su punto representativo
-            </Badge>
-          </div>
-        )}
+        <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
+          <Label htmlFor="coordinateUncertaintyInMeters" className="flex flex-wrap items-center gap-2">
+            Incertidumbre (m)
+            <DwcTerm term="coordinateUncertaintyInMeters" />
+          </Label>
+          <Input
+            id="coordinateUncertaintyInMeters"
+            type="number"
+            min={0}
+            step="any"
+            value={coordinateUncertainty}
+            onChange={(e) => setCoordinateUncertainty(e.target.value)}
+            placeholder="Ej: 100"
+          />
+        </div>
       </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
+        <span className="text-xs text-muted-foreground">Incertidumbre rápida:</span>
+        {[
+          { label: "30 m", value: 30 },
+          { label: "100 m", value: 100 },
+          { label: "500 m", value: 500 },
+          { label: "1 km", value: 1000 },
+          { label: "5 km", value: 5000 },
+        ].map((preset) => (
+          <button
+            key={preset.value}
+            type="button"
+            onClick={() => setCoordinateUncertainty(String(preset.value))}
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: 9999,
+              padding: "2px 10px",
+              fontSize: 12,
+              background: "transparent",
+              cursor: "pointer",
+            }}
+          >
+            {preset.label}
+          </button>
+        ))}
+        <span className="text-xs text-muted-foreground">
+          Radio del círculo, centrado en el punto, que contiene el lugar de colecta. Vacío si se desconoce.
+        </span>
+      </div>
+
+      {footprintWKT && (
+        <Badge variant="secondary" className="whitespace-normal text-xs font-normal">
+          Polígono dibujado: latitud y longitud son su punto representativo y la incertidumbre es el radio que lo encierra
+        </Badge>
+      )}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
         <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
           <Label htmlFor="countryCode" className="flex flex-wrap items-center gap-2">
             País <Badge variant="outline" className="text-xs">Recomendado</Badge>
-            <span className="text-[10px] text-muted-foreground">dwc:countryCode</span>
+            <DwcTerm term="countryCode" />
           </Label>
           <Select value={countryCode} onValueChange={setCountryCode}>
             <SelectTrigger id="countryCode"><SelectValue placeholder="Selecciona" /></SelectTrigger>
@@ -813,21 +873,21 @@ export function NewOccurrencePage({
         <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
           <Label htmlFor="stateProvince" className="flex flex-wrap items-center gap-2">
             Departamento
-            <span className="text-[10px] text-muted-foreground">dwc:stateProvince</span>
+            <DwcTerm term="stateProvince" />
           </Label>
           <Input id="stateProvince" value={stateProvince} onChange={(e) => setStateProvince(e.target.value)} placeholder="Ej: Cusco" />
         </div>
         <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
           <Label htmlFor="county" className="flex flex-wrap items-center gap-2">
             Provincia
-            <span className="text-[10px] text-muted-foreground">dwc:county</span>
+            <DwcTerm term="county" />
           </Label>
           <Input id="county" value={county} onChange={(e) => setCounty(e.target.value)} placeholder="Ej: Urubamba" />
         </div>
         <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
           <Label htmlFor="municipality" className="flex flex-wrap items-center gap-2">
             Distrito
-            <span className="text-[10px] text-muted-foreground">dwc:municipality</span>
+            <DwcTerm term="municipality" />
           </Label>
           <Input id="municipality" value={municipality} onChange={(e) => setMunicipality(e.target.value)} placeholder="Ej: Ollantaytambo" />
         </div>
@@ -837,14 +897,14 @@ export function NewOccurrencePage({
         <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
           <Label htmlFor="locality" className="flex flex-wrap items-center gap-2">
             Localidad <Badge variant="outline" className="text-[10px] px-1 py-0">Recomendado</Badge>
-            <span className="text-[10px] text-muted-foreground">dwc:locality</span>
+            <DwcTerm term="locality" />
           </Label>
           <Input id="locality" value={locality} onChange={(e) => setLocality(e.target.value)} placeholder="Descripción sitio" />
         </div>
         <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
           <Label htmlFor="verbatimLocality" className="flex flex-wrap items-center gap-2">
             Localidad original
-            <span className="text-[10px] text-muted-foreground">dwc:verbatimLocality</span>
+            <DwcTerm term="verbatimLocality" />
           </Label>
           <Input id="verbatimLocality" value={verbatimLocality} onChange={(e) => setVerbatimLocality(e.target.value)} placeholder="Tal como etiqueta" />
         </div>
@@ -854,7 +914,7 @@ export function NewOccurrencePage({
         <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
           <Label htmlFor="hydrographicContext" className="flex items-center gap-2">
             Contexto hidrográfico
-            <span className="text-xs text-muted-foreground">dwc:hydrographicContext</span>
+            <DwcTerm term="hydrographicContext" />
           </Label>
           <Select value={hydrographicContext} onValueChange={setHydrographicContext}>
             <SelectTrigger id="hydrographicContext"><SelectValue placeholder="Selecciona" /></SelectTrigger>
@@ -877,7 +937,7 @@ export function NewOccurrencePage({
         <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
           <Label htmlFor="georeferenceVerificationStatus" className="flex flex-wrap items-center gap-2">
             Estado de Verificación
-            <span className="text-[10px] text-muted-foreground truncate">dwc:georeferenceVerificationStatus</span>
+            <DwcTerm term="georeferenceVerificationStatus" />
           </Label>
           <Select value={georeferenceVerificationStatus} onValueChange={setGeoreferenceVerificationStatus}>
             <SelectTrigger id="georeferenceVerificationStatus"><SelectValue placeholder="Selecciona" /></SelectTrigger>
@@ -892,11 +952,11 @@ export function NewOccurrencePage({
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
         <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
-          <Label htmlFor="verbatimElevation" className="flex items-center gap-2">Elevación estimada <span className="text-xs text-muted-foreground">dwc:verbatimElevation</span></Label>
+          <Label htmlFor="verbatimElevation" className="flex items-center gap-2">Elevación estimada <DwcTerm term="verbatimElevation" /></Label>
           <Input id="verbatimElevation" value={verbatimElevation} onChange={(e) => setVerbatimElevation(e.target.value)} placeholder="Ej: 1200-1500m" />
         </div>
         <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
-          <Label htmlFor="locationRemarks" className="flex items-center gap-2">Observaciones <span className="text-xs text-muted-foreground">dwc:locationRemarks</span></Label>
+          <Label htmlFor="locationRemarks" className="flex items-center gap-2">Observaciones <DwcTerm term="locationRemarks" /></Label>
           <Textarea id="locationRemarks" value={locationRemarks} onChange={(e) => setLocationRemarks(e.target.value)} placeholder="Comentarios adicionales sobre la ubicación" rows={2} />
         </div>
       </div>
@@ -981,7 +1041,7 @@ export function NewOccurrencePage({
         <Label htmlFor="scientificName" className="flex items-center gap-2">
           Nombre científico {mode === "create" && <span className="text-destructive">*</span>}
           {mode === "create" && <Badge variant="secondary" className="text-xs">Requerido</Badge>}
-          <span className="text-xs text-muted-foreground">dwc:scientificName</span>
+          <DwcTerm term="scientificName" />
         </Label>
         <div className="relative" ref={acRef}>
           <div className="relative">
@@ -1074,14 +1134,14 @@ export function NewOccurrencePage({
           <div className="space-y-2">
             <Label htmlFor="dateIdentified" className="flex items-center gap-2">
               Fecha de identificación
-              <span className="text-xs text-muted-foreground">dwc:dateIdentified</span>
+              <DwcTerm term="dateIdentified" />
             </Label>
             <Input id="dateIdentified" type="date" value={dateIdentified} onChange={(e) => setDateIdentified(e.target.value)} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="typeStatus" className="flex items-center gap-2">
               Estado de tipo
-              <span className="text-xs text-muted-foreground">dwc:typeStatus</span>
+              <DwcTerm term="typeStatus" />
             </Label>
             <Select value={typeStatus} onValueChange={setTypeStatus}>
               <SelectTrigger id="typeStatus"><SelectValue placeholder="Selecciona" /></SelectTrigger>
@@ -1100,7 +1160,7 @@ export function NewOccurrencePage({
 
         <div className="space-y-2">
           <Label className="flex items-center gap-2">
-            Identificadores <span className="text-xs text-muted-foreground">dwc:identifiedBy</span>
+            Identificadores <DwcTerm term="identifiedBy" />
           </Label>
           <div className="flex gap-2">
             <Input
@@ -1313,7 +1373,11 @@ export function NewOccurrencePage({
         <div className="mb-6">
           <Button variant="ghost" onClick={handleCancel} className="mb-4">
             <ArrowLeft className="h-4 w-4 mr-2" />
-            {returnTo === "collection" ? `Volver a ${collectionNameProp}` : "Volver a Ocurrencias"}
+            {returnTo === "collection"
+              ? `Volver a ${collectionNameProp}`
+              : returnTo === "map"
+                ? "Volver al mapa"
+                : "Volver a Ocurrencias"}
           </Button>
           <div className="flex items-start justify-between gap-4">
             <div>

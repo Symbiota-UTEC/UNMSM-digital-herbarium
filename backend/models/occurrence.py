@@ -187,6 +187,14 @@ class Occurrence(Base):
         index=True,
         doc="DwC decimalLongitude: longitud en grados decimales (WGS84) (nice to have).",
     )
+    coordinateUncertaintyInMeters: Mapped[Optional[float]] = mapped_column(
+        "coordinate_uncertainty_in_meters",
+        Float,
+        doc=(
+            "DwC coordinateUncertaintyInMeters: radio (m) del círculo más pequeño, centrado en "
+            "decimalLatitude/decimalLongitude, que contiene la localidad. Mayor que 0; vacío si se desconoce."
+        ),
+    )
     # OPCIONALES
 
     # ---- Occurrence opcionales ----
@@ -263,12 +271,15 @@ class Occurrence(Base):
         nullable=True,
         doc="Punto (WGS84) derivado de decimalLatitude/decimalLongitude, para búsquedas por radio.",
     )
-    # services/occurrences.py lo deriva de footprintWKT en cada create/update.
+    # services/occurrences.py lo deriva en cada create/update.
     footprintGeom: Mapped[Optional[Any]] = mapped_column(
         "footprint_geom",
-        Geometry(geometry_type="GEOMETRY", srid=4326),
+        Geometry(geometry_type="POLYGON", srid=4326),
         nullable=True,
-        doc="POLYGON o MULTIPOLYGON (WGS84) derivado de footprintWKT; el tipo se valida en services/occurrences.py.",
+        doc=(
+            "Forma de la localidad (WGS84): el polígono de footprintWKT (un POLYGON simple) o, "
+            "sin polígono, el círculo de coordinateUncertaintyInMeters. NULL si es un punto exacto."
+        ),
     )
 
     # Trazabilidad de creación / modificación

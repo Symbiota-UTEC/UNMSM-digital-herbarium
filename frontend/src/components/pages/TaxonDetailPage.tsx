@@ -77,6 +77,7 @@ interface TaxonDetailPageProps {
   taxonId: string;
   returnTo?: string;
   returnOccurrenceId?: string;
+  originReturnTo?: string;
   collectionId?: string;
   collectionName?: string;
   isOwner?: boolean;
@@ -87,6 +88,7 @@ export function TaxonDetailPage({
   taxonId,
   returnTo,
   returnOccurrenceId,
+  originReturnTo,
   collectionId,
   collectionName,
   isOwner,
@@ -126,6 +128,7 @@ export function TaxonDetailPage({
     if (returnTo === "occurrence-detail" && returnOccurrenceId) {
       onNavigate("occurrence-detail", {
         occurrenceId: returnOccurrenceId,
+        returnTo: originReturnTo,
         collectionId,
         collectionName,
         isOwner,

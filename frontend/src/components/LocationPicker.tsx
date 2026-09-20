@@ -1,7 +1,7 @@
 // src/components/LocationPicker.tsx
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Crosshair, Eraser, Hexagon, Loader2, MapPin, Undo2 } from "lucide-react";
+import { Crosshair, Eraser, Hexagon, Loader2, MapPin } from "lucide-react";
 import { Button } from "./ui/button";
 
 import Map from "ol/Map";
@@ -12,14 +12,15 @@ import VectorSource from "ol/source/Vector";
 import Feature from "ol/Feature";
 import XYZ from "ol/source/XYZ";
 import Point from "ol/geom/Point";
-import Polygon from "ol/geom/Polygon";
+import Polygon, { circular } from "ol/geom/Polygon";
 import Modify from "ol/interaction/Modify";
-import Draw from "ol/interaction/Draw";
+import type Draw from "ol/interaction/Draw";
 import { fromLonLat, toLonLat } from "ol/proj";
-import { Style, Fill, Stroke, Circle as CircleStyle } from "ol/style";
 
-import { polygonsToWkt, representativePoint, wktToPolygons } from "@utils/geo";
+import { enclosingRadiusMeters, polygonToWkt, representativePoint, wktToPolygon } from "@utils/geo";
+import { createSimplePolygonDraw } from "@utils/polygonDraw";
 import { reverseGeocodeAdminUnits, type AdminUnits } from "@utils/geocoding";
+import { markerStyle, polygonStyle, uncertaintyStyle } from "@utils/mapStyles";
 import {
     MAP_MAX_ZOOM,
     MAP_MIN_ZOOM,
@@ -36,12 +37,15 @@ export interface LocationChange {
     lat: number | null;
     lon: number | null;
     footprintWKT: string | null;
+    // Radio (m) que encierra el polígono. null: borrar la incertidumbre calculada; undefined: no tocarla.
+    uncertaintyM?: number | null;
 }
 
 type Props = {
     lat: string;
     lon: string;
     footprintWKT: string;
+    uncertainty: string;
     onLocationChange: (change: LocationChange) => void;
     // null: no se pudo deducir la unidad administrativa
     onAdminUnits: (admin: AdminUnits | null) => void;
@@ -51,18 +55,8 @@ const LIMA: [number, number] = [-77.0428, -12.0464]; // [lon, lat]
 const GEOCODE_DEBOUNCE_MS = 700;
 const SAME_COORD_EPSILON = 1e-7;
 
-const markerStyle = new Style({
-    image: new CircleStyle({
-        radius: 8,
-        fill: new Fill({ color: "#b91c1c" }),
-        stroke: new Stroke({ color: "#fff", width: 2 }),
-    }),
-});
-
-const polygonStyle = new Style({
-    fill: new Fill({ color: "rgba(185, 28, 28, 0.15)" }),
-    stroke: new Stroke({ color: "#b91c1c", width: 2 }),
-});
+// 7 decimales (~1 cm) bastan y evitan ruido como -12.046400000000006 en el formulario.
+const round7 = (n: number) => Math.round(n * 1e7) / 1e7;
 
 const parseCoord = (v: string) => {
     const n = parseFloat(v);
@@ -74,19 +68,22 @@ const parseCoord = (v: string) => {
  * apenas el usuario los marca, y deduce la unidad administrativa (con debounce).
  * Punto y polígono son excluyentes: marcar uno reemplaza al otro.
  */
-export function LocationPicker({ lat, lon, footprintWKT, onLocationChange, onAdminUnits }: Props) {
+export function LocationPicker({ lat, lon, footprintWKT, uncertainty, onLocationChange, onAdminUnits }: Props) {
     const hostRef = useRef<HTMLDivElement | null>(null);
     const mapRef = useRef<Map | null>(null);
     const markerRef = useRef<Feature<Point> | null>(null);
     const markerSourceRef = useRef<VectorSource | null>(null);
     const polygonSourceRef = useRef<VectorSource | null>(null);
+    const uncertaintySourceRef = useRef<VectorSource | null>(null);
+    // true mientras la incertidumbre del formulario sea la calculada a partir del polígono.
+    const derivedUncertaintyRef = useRef(false);
     const modifyRef = useRef<Modify | null>(null);
     const drawRef = useRef<Draw | null>(null);
     const geocodeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const geocodeSeqRef = useRef(0);
     const baseLayerRef = useRef<TileLayer<XYZ> | null>(null);
 
-    const [mode, setMode] = useState<Mode>(() => (wktToPolygons(footprintWKT).length > 0 ? "polygon" : "point"));
+    const [mode, setMode] = useState<Mode>(() => (wktToPolygon(footprintWKT) ? "polygon" : "point"));
     const [polygonCount, setPolygonCount] = useState(0);
     const [locating, setLocating] = useState(false);
     const [geocoding, setGeocoding] = useState(false);
@@ -133,28 +130,40 @@ export function LocationPicker({ lat, lon, footprintWKT, onLocationChange, onAdm
         polygonSourceRef.current?.clear();
         showMarker(coordinate);
         const [lonValue, latValue] = toLonLat(coordinate);
-        callbacksRef.current.onLocationChange({ lat: latValue, lon: lonValue, footprintWKT: null });
+        callbacksRef.current.onLocationChange({
+            lat: round7(latValue),
+            lon: round7(lonValue),
+            footprintWKT: null,
+            uncertaintyM: derivedUncertaintyRef.current ? null : undefined,
+        });
+        derivedUncertaintyRef.current = false;
         scheduleGeocode(lonValue, latValue);
     };
 
     // El punto de un polígono es su punto representativo.
-    const commitPolygons = () => {
-        const drawn = (polygonSourceRef.current?.getFeatures() ?? [])
-            .map((f) => f.getGeometry() as Polygon | undefined)
-            .filter((g): g is Polygon => !!g);
+    const commitPolygon = () => {
+        const drawn = polygonSourceRef.current?.getFeatures().at(-1)?.getGeometry() as Polygon | undefined;
 
-        if (drawn.length === 0) {
+        if (!drawn) {
             showMarker(null);
             cancelGeocode();
-            callbacksRef.current.onLocationChange({ lat: null, lon: null, footprintWKT: null });
+            callbacksRef.current.onLocationChange({
+                lat: null,
+                lon: null,
+                footprintWKT: null,
+                uncertaintyM: derivedUncertaintyRef.current ? null : undefined,
+            });
+            derivedUncertaintyRef.current = false;
             return;
         }
         const [lonValue, latValue] = representativePoint(drawn)!;
         showMarker(fromLonLat([lonValue, latValue]));
+        derivedUncertaintyRef.current = true;
         callbacksRef.current.onLocationChange({
-            lat: latValue,
-            lon: lonValue,
-            footprintWKT: polygonsToWkt(drawn),
+            lat: round7(latValue),
+            lon: round7(lonValue),
+            footprintWKT: polygonToWkt(drawn),
+            uncertaintyM: enclosingRadiusMeters(drawn, [lonValue, latValue]),
         });
         scheduleGeocode(lonValue, latValue);
     };
@@ -167,18 +176,20 @@ export function LocationPicker({ lat, lon, footprintWKT, onLocationChange, onAdm
         const initialLat = parseCoord(lat);
         const initialLon = parseCoord(lon);
         const hasPoint = initialLat != null && initialLon != null;
-        const initialPolygons = wktToPolygons(footprintWKT);
+        const initialPolygon = wktToPolygon(footprintWKT);
 
         const marker = new Feature<Point>();
         marker.setStyle(markerStyle);
         const markerSource = new VectorSource();
         const polygonSource = new VectorSource();
-        polygonSource.addFeatures(initialPolygons.map((p) => new Feature(p)));
-        setPolygonCount(initialPolygons.length);
+        const uncertaintySource = new VectorSource();
+        derivedUncertaintyRef.current = !!initialPolygon;
+        if (initialPolygon) polygonSource.addFeature(new Feature(initialPolygon));
+        setPolygonCount(polygonSource.getFeatures().length);
         polygonSource.on(["addfeature", "removefeature", "clear"], () =>
             setPolygonCount(polygonSource.getFeatures().length),
         );
-        polygonSource.on("addfeature", commitPolygons);
+        polygonSource.on("addfeature", commitPolygon);
 
         const baseLayer = new TileLayer({ source: createBasemapSource(basemap) });
         baseLayer.set("basemapId", basemap);
@@ -188,6 +199,7 @@ export function LocationPicker({ lat, lon, footprintWKT, onLocationChange, onAdm
             target: host,
             layers: [
                 baseLayer,
+                new VectorLayer({ source: uncertaintySource, style: uncertaintyStyle }),
                 new VectorLayer({ source: polygonSource, style: polygonStyle }),
                 new VectorLayer({ source: markerSource }),
             ],
@@ -205,9 +217,10 @@ export function LocationPicker({ lat, lon, footprintWKT, onLocationChange, onAdm
         markerRef.current = marker;
         markerSourceRef.current = markerSource;
         polygonSourceRef.current = polygonSource;
+        uncertaintySourceRef.current = uncertaintySource;
 
         if (hasPoint) showMarker(fromLonLat([initialLon, initialLat]));
-        if (initialPolygons.length > 0) {
+        if (initialPolygon) {
             map.updateSize();
             map.getView().fit(polygonSource.getExtent(), { padding: [40, 40, 40, 40], maxZoom: 16 });
         }
@@ -229,6 +242,7 @@ export function LocationPicker({ lat, lon, footprintWKT, onLocationChange, onAdm
             markerRef.current = null;
             markerSourceRef.current = null;
             polygonSourceRef.current = null;
+            uncertaintySourceRef.current = null;
             modifyRef.current = null;
             drawRef.current = null;
         };
@@ -242,6 +256,18 @@ export function LocationPicker({ lat, lon, footprintWKT, onLocationChange, onAdm
         layer.setSource(createBasemapSource(basemap));
         layer.set("basemapId", basemap);
     }, [basemap]);
+
+    // Círculo de incertidumbre alrededor del punto; con polígono no se dibuja (manda el polígono).
+    useEffect(() => {
+        const source = uncertaintySourceRef.current;
+        if (!source) return;
+        source.clear();
+        const latValue = parseCoord(lat);
+        const lonValue = parseCoord(lon);
+        const meters = parseCoord(uncertainty);
+        if (polygonCount > 0 || latValue == null || lonValue == null || meters == null || meters <= 0) return;
+        source.addFeature(new Feature(circular([lonValue, latValue], meters, 64).transform("EPSG:4326", "EPSG:3857")));
+    }, [lat, lon, uncertainty, polygonCount]);
 
     // Herramienta activa: arrastrar el punto o dibujar polígonos.
     useEffect(() => {
@@ -262,7 +288,9 @@ export function LocationPicker({ lat, lon, footprintWKT, onLocationChange, onAdm
             map.addInteraction(modify);
             modifyRef.current = modify;
         } else {
-            const draw = new Draw({ source: polygonSourceRef.current!, type: "Polygon" });
+            const { draw } = createSimplePolygonDraw(polygonSourceRef.current!, (message) =>
+                toast.error(message, { id: "polygon-self-intersection" }),
+            );
             map.addInteraction(draw);
             drawRef.current = draw;
         }
@@ -296,18 +324,9 @@ export function LocationPicker({ lat, lon, footprintWKT, onLocationChange, onAdm
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [lat, lon]);
 
-    const handleUndoPolygon = () => {
-        const source = polygonSourceRef.current;
-        const last = source?.getFeatures().at(-1);
-        if (source && last) {
-            source.removeFeature(last);
-            commitPolygons();
-        }
-    };
-
-    const handleClearPolygons = () => {
+    const handleClearPolygon = () => {
         polygonSourceRef.current?.clear();
-        commitPolygons();
+        commitPolygon();
     };
 
     const handleLocateMe = () => {
@@ -377,30 +396,17 @@ export function LocationPicker({ lat, lon, footprintWKT, onLocationChange, onAdm
                         {locating ? "Obteniendo ubicación..." : "Usar mi ubicación actual"}
                     </Button>
                 ) : (
-                    <div className="flex gap-2">
-                        <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            onClick={handleUndoPolygon}
-                            disabled={polygonCount === 0}
-                            className="gap-2"
-                        >
-                            <Undo2 className="h-4 w-4" />
-                            Deshacer último
-                        </Button>
-                        <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            onClick={handleClearPolygons}
-                            disabled={polygonCount === 0}
-                            className="gap-2"
-                        >
-                            <Eraser className="h-4 w-4" />
-                            Borrar todo
-                        </Button>
-                    </div>
+                    <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        onClick={handleClearPolygon}
+                        disabled={polygonCount === 0}
+                        className="gap-2"
+                    >
+                        <Eraser className="h-4 w-4" />
+                        Borrar polígono
+                    </Button>
                 )}
             </div>
 
@@ -411,10 +417,13 @@ export function LocationPicker({ lat, lon, footprintWKT, onLocationChange, onAdm
                     style={{ height: "440px" }}
                 />
                 <BasemapSwitcher value={basemap} onChange={setBasemap} />
-                <div className="pointer-events-none absolute bottom-3 left-3 rounded bg-background/80 px-2 py-1 text-xs shadow">
+                <div
+                    className="pointer-events-none rounded px-2 py-1 text-xs shadow"
+                    style={{ position: "absolute", left: 12, bottom: 12, background: "rgba(255, 255, 255, 0.85)" }}
+                >
                     {mode === "point"
                         ? "Haz clic o arrastra el punto de colecta"
-                        : `Clic para agregar vértices, doble clic para cerrar · Polígonos: ${polygonCount}`}
+                        : "Clic para agregar vértices, doble clic para cerrar; no debe cruzarse consigo mismo"}
                 </div>
             </div>
 

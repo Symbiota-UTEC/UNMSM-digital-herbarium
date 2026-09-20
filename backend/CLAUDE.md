@@ -229,10 +229,16 @@ PostGIS columns that are **never set directly by input schemas** — they're
 derived server-side, the same pattern as `year`/`month`/`day` being derived
 from `eventDate`:
 
-| DwC field (source of truth)            | Derived PostGIS column                  | Used for                                   |
-|-----------------------------------------|------------------------------------------|---------------------------------------------|
-| `decimalLatitude` + `decimalLongitude`  | `location` (`geography(Point)`)          | radius / polygon search (point in area)     |
-| `footprintWKT` (POLYGON/MULTIPOLYGON)   | `footprintGeom` (`geometry`)             | `includeIntersecting` (polygon touches area) |
+| DwC field (source of truth)                                              | Derived PostGIS column          | Used for                                     |
+|---------------------------------------------------------------------------|----------------------------------|-----------------------------------------------|
+| `decimalLatitude` + `decimalLongitude`                                    | `location` (`geography(Point)`)  | search: the point is inside the area           |
+| `footprintWKT` (one simple `POLYGON`) or, without it, `coordinateUncertaintyInMeters` | `footprintGeom` (`geometry`) | search: the shape touches the area |
+
+`footprintGeom` is the record's **shape**, chosen by priority: the polygon if
+`footprintWKT` exists; otherwise the circle of radius `coordinateUncertaintyInMeters`
+(> 0, DwC) around the point; otherwise `NULL` (an exact point). When a polygon exists
+the uncertainty is stored but never turned into a circle — the polygon is more precise
+than the circle that would enclose it.
 
 **The API is agnostic about how a record was located.** It never derives a
 point from a polygon: the client sends `decimalLatitude`/`decimalLongitude`
@@ -247,37 +253,42 @@ every row of the DwC CSV import (`services/dwc_import.py`), regardless of
 which fields changed. Any new code path that creates or edits an `Occurrence`
 must call it too, otherwise those rows are invisible to spatial search.
 
-`footprintWKT` is free text (a user can paste anything), so it is validated on
-the way in: it must be `POLYGON` or `MULTIPOLYGON`; other WKT types such as
-`POINT` are rejected with a `422` (a point already lives in
-`decimalLatitude`/`decimalLongitude`). Syntax errors only fail when PostGIS
-parses the value at flush time; `_flush_with_geo_validation()` catches that and
-turns it into a `422` instead of a raw `DataError`.
+**Polygons are a single, simple `POLYGON`** — never a `MULTIPOLYGON`, never
+self-intersecting (a concave shape is fine, and so is any winding order), and with
+no holes. `services/geometry.py::check_simple_polygon()` enforces it with
+PostGIS (`ST_IsValid`), and it is the one rule shared by `footprintWKT` (`422`
+on create/update, and the whole DwC CSV import is rejected) and by the search
+polygon `withinPolygon` (`400`). `footprintGeom` is typed `geometry(Polygon)`, so
+the database rejects anything else too. The frontend refuses to draw a
+self-crossing polygon (`utils/polygonDraw.ts`), but this backend check is the
+source of truth for other clients and for CSV rows.
 
 **Search filters** (`OccurrenceFilters` / `get_occurrence_filters` /
-`build_geo_conditions` in `services/occurrence_filters.py`), accepted by both
+`build_geo_condition` in `services/occurrence_filters.py`), accepted by both
 `GET /api/occurrences` and `GET /api/occurrences/map`:
 
 - **Radius**: `nearLat` + `nearLon` + `radiusKm` (all three or none — a
   partial combination is a `400`). `ST_DWithin` on `geography`, so distance is
   true great-circle meters.
-- **Polygon**: `withinPolygon` (WKT `POLYGON(...)` or `MULTIPOLYGON(...)`,
+- **Polygon**: `withinPolygon` (one simple WKT `POLYGON(...)`,
   WGS84). `ST_Contains` on `location` cast to `geometry` — a planar
   point-in-polygon check in degree-space, accurate enough at herbarium scale
-  (no antimeridian or polar regions). A malformed WKT is a `400`.
-- **`includeIntersecting=true`** (only meaningful with one of the above): the
-  default matches records whose *point* (`location`) is inside the area. With
-  the flag, also match records whose *polygon* (`footprintGeom`) intersects
-  the area, even if their representative point is outside it.
+  (no antimeridian or polar regions). An invalid polygon is a `400`.
+
+There is **one matching rule, with no options**: a record matches an area if
+its location — the point, the uncertainty circle or the polygon
+(`location` / `footprintGeom`) — touches it. Users don't need to know how a
+record was located. If both a radius and a polygon are sent, both must match;
+attribute filters (collector, family, dates…) are ANDed on top.
 
 **`GET /api/occurrences/map`** returns every matching point unpaginated (up to
 `limit`, default 5000, with `truncated` when there were more) for the map view.
-Each point carries a `matchType`: `exact` (no polygon, point inside the area),
-`representative` (has a polygon, its representative point inside the area) or
-`intersects` (polygon touches the area, point outside — only with the flag).
-With no area it returns every record that has coordinates (`exact` if it has
-no polygon, `representative` otherwise). A polygon-only record with no lat/lon
-is drawn at `ST_PointOnSurface` of its polygon — display only, nothing stored.
+Each point carries a `locationType` (`point` exact, `circle` = point with
+`coordinateUncertaintyInMeters`, `polygon` = `footprintWKT`) and
+`uncertaintyMeters`; the UI only uses them to tell exact from approximate
+locations. With no area it returns every record that has coordinates. A
+polygon-only record with no lat/lon is drawn at `ST_PointOnSurface` of its
+polygon — display only, nothing stored.
 
 The paginated list and the map share `_visible_occurrences_select()` in
 `services/occurrences.py`, so they apply identical access rules and filters.

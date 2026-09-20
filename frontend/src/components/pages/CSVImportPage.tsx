@@ -162,6 +162,10 @@ const AUTO_MAP_RULES: Array<{ pattern: RegExp; target: string }> = [
   { pattern: /\b(latitud|lat)\b/, target: "Location.decimalLatitude" },
   { pattern: /\b(longitud|lon|lng|long)\b/, target: "Location.decimalLongitude" },
   {
+    pattern: /\b(incertidumbre|coordinate uncertainty|uncertainty)\b/,
+    target: "Location.coordinateUncertaintyInMeters",
+  },
+  {
     pattern: /\b(country code|codigo pais|codigo de pais)\b/,
     target: "Location.countryCode",
   },

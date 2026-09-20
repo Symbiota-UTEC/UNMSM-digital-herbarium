@@ -103,6 +103,7 @@ class OccurrenceOut(ORMBaseModel):
 
     decimalLatitude: Optional[float] = None
     decimalLongitude: Optional[float] = None
+    coordinateUncertaintyInMeters: Optional[float] = None
     verbatimElevation: Optional[str] = None
 
     countryCode: Optional[str] = None
@@ -191,6 +192,7 @@ class OccurrenceCreateIn(StrictBaseModel):
     verbatimLocality: Optional[str] = None
     decimalLatitude: Optional[float] = None
     decimalLongitude: Optional[float] = None
+    coordinateUncertaintyInMeters: Optional[float] = Field(default=None, gt=0)
     footprintWKT: Optional[str] = None
     verbatimElevation: Optional[str] = None
     hydrographicContext: Optional[str] = None
@@ -245,6 +247,7 @@ class OccurrenceUpdateIn(StrictBaseModel):
     verbatimLocality: Optional[str] = None
     decimalLatitude: Optional[float] = None
     decimalLongitude: Optional[float] = None
+    coordinateUncertaintyInMeters: Optional[float] = Field(default=None, gt=0)
     footprintWKT: Optional[str] = None
     verbatimElevation: Optional[str] = None
     hydrographicContext: Optional[str] = None
@@ -306,19 +309,18 @@ class OccurrenceFilters(BaseModel):
     near_lon: Optional[float] = None
     radius_km: Optional[float] = None
     within_polygon: Optional[str] = None
-    # Incluir también las ocurrencias cuyo polígono interseca el área.
-    include_intersecting: bool = False
 
 
 class OccurrenceMapPointOut(ORMBaseModel):
-    """Punto del mapa. matchType: exact (sin polígono), representative (con polígono,
-    punto dentro del área) o intersects (polígono interseca el área, punto fuera)."""
+    """Punto del mapa. locationType indica cómo se registró la ubicación: point (exacta),
+    circle (punto con coordinateUncertaintyInMeters) o polygon (footprintWKT)."""
     occurrenceId: UUID
     code: Optional[str] = None
     scientificName: Optional[str] = None
     lat: float
     lon: float
-    matchType: Literal["exact", "representative", "intersects"]
+    locationType: Literal["point", "circle", "polygon"]
+    uncertaintyMeters: Optional[float] = None
 
 
 class OccurrenceMapOut(ORMBaseModel):

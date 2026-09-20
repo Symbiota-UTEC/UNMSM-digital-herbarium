@@ -337,6 +337,15 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       inForm: true,
       helpEs: "Longitud en grados decimales (WGS84).",
     },
+    {
+      entity: "Location",
+      term: "coordinateUncertaintyInMeters",
+      value: "Location.coordinateUncertaintyInMeters",
+      label: "dwc:Location:coordinateUncertaintyInMeters",
+      inForm: true,
+      helpEs:
+        "Radio en metros del círculo más pequeño, centrado en las coordenadas, que contiene la localidad. Debe ser mayor que 0; vacío si se desconoce.",
+    },
     // ---------- OPCIONALES ----------
     {
       entity: "Location",
@@ -363,7 +372,7 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       label: "dwc:Location:footprintWKT",
       inForm: false,
       helpEs:
-        "Polígono o área de la ocurrencia en formato WKT (p. ej., área de muestreo).",
+        "Un único POLYGON en formato WKT (p. ej., área de muestreo); puede ser cóncavo, pero no cruzarse consigo mismo ni tener huecos.",
     },
   ],
 

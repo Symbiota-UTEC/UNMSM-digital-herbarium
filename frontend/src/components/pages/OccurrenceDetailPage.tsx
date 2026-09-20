@@ -27,11 +27,12 @@ import { useAuth } from "@contexts/AuthContext";
 import { occurrencesService } from "@services/occurrences.service";
 import { uploadService } from "@services/upload.service";
 import type { OccurrenceItem } from "@interfaces/occurrence";
+import { OccurrenceLocationMap } from "../OccurrenceLocationMap";
 
 interface OccurrenceDetailPageProps {
   occurrenceId: string;
   onNavigate: (page: string, params?: Record<string, any>) => void;
-  returnTo?: "occurrences" | "collection" | "taxon";
+  returnTo?: "occurrences" | "collection" | "taxon" | "map";
   collectionId?: string;
   collectionName?: string;
   isOwner?: boolean;
@@ -130,6 +131,8 @@ export function OccurrenceDetailPage({
         collectionName: collectionName || "",
         isOwner: isOwner || false,
       });
+    } else if (returnTo === "map") {
+      onNavigate("map", { restoreSearch: true });
     } else {
       onNavigate("occurrences");
     }
@@ -171,6 +174,7 @@ export function OccurrenceDetailPage({
     onNavigate("taxon-detail", {
       taxonId,
       returnTo: "occurrence-detail",
+      originReturnTo: returnTo,
       returnOccurrenceId: occurrenceId,
       collectionId,
       collectionName,
@@ -310,6 +314,13 @@ export function OccurrenceDetailPage({
 
   const renderLocationTab = () => (
     <div className="space-y-6">
+      <OccurrenceLocationMap
+        lat={data.decimalLatitude}
+        lon={data.decimalLongitude}
+        footprintWKT={data.footprintWKT}
+        uncertaintyMeters={data.coordinateUncertaintyInMeters}
+      />
+
       <div className="grid md:grid-cols-4 gap-4">
         <div className="space-y-1">
           <p className="text-xs font-medium text-muted-foreground">País</p>
@@ -336,6 +347,13 @@ export function OccurrenceDetailPage({
       <div className="grid md:grid-cols-3 gap-4">
         <Field label="Latitud decimal" value={data.decimalLatitude} mono />
         <Field label="Longitud decimal" value={data.decimalLongitude} mono />
+        <Field
+          label="Incertidumbre de la coordenada"
+          value={data.coordinateUncertaintyInMeters != null ? `${data.coordinateUncertaintyInMeters} m` : null}
+        />
+      </div>
+
+      <div className="grid md:grid-cols-3 gap-4">
         <Field label="Elevación en etiqueta" value={data.verbatimElevation} />
       </div>
 
@@ -343,13 +361,6 @@ export function OccurrenceDetailPage({
         <Field label="Contexto hidrográfico" value={data.hydrographicContext} />
         <Field label="Estado de verificación de georreferenciación" value={data.georeferenceVerificationStatus} />
       </div>
-
-      {data.footprintWKT && (
-        <div className="space-y-1">
-          <p className="text-xs font-medium text-muted-foreground">Área de la ocurrencia (huella WKT)</p>
-          <p className="text-xs font-mono break-all bg-muted/40 rounded p-2">{data.footprintWKT}</p>
-        </div>
-      )}
     </div>
   );
 
@@ -497,7 +508,11 @@ export function OccurrenceDetailPage({
       <div className="mb-6">
         <Button variant="ghost" onClick={handleBack} className="mb-4">
           <ArrowLeft className="h-4 w-4 mr-2" />
-          {returnTo === "collection" ? `Volver a ${collectionName}` : "Volver a ocurrencias"}
+          {returnTo === "collection"
+            ? `Volver a ${collectionName}`
+            : returnTo === "map"
+              ? "Volver al mapa"
+              : "Volver a ocurrencias"}
         </Button>
 
         <div className="flex items-start justify-between gap-4">

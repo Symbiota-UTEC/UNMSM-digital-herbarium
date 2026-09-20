@@ -4,14 +4,14 @@ from uuid import UUID
 
 import json
 import re
-from contextlib import contextmanager
 from datetime import datetime, date
 from typing import Optional, Any, Dict, List
 
 from fastapi import HTTPException, status
-from sqlalchemy import select, delete, or_, func, and_, case
+from sqlalchemy import select, delete, or_, func, and_, case, cast
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.exc import DataError, InternalError
+from geoalchemy2 import Geography, Geometry
 from geoalchemy2.elements import WKTElement
 
 from backend.models.models import (
@@ -35,7 +35,8 @@ from backend.schemas.occurrence import (
     OccurrenceUpdateIn,
     IdentificationCreateIn,
 )
-from backend.services.occurrence_filters import apply_occurrence_filters, build_geo_conditions
+from backend.services.geometry import InvalidPolygon, check_simple_polygon
+from backend.services.occurrence_filters import apply_occurrence_filters
 from backend.services.collection_permissions import (
     user_can_view_collection,
     user_can_edit_collection,
@@ -118,13 +119,15 @@ def _apply_event_date_ymd(occ: Occurrence, event_date: Optional[str]) -> None:
     occ.day = parsed.day
 
 
-_FOOTPRINT_TYPES_RE = re.compile(r"(MULTIPOLYGON|POLYGON)\b", re.IGNORECASE)
+def sync_geo_columns(db: Session, occ: Occurrence) -> None:
+    """Deriva `location` y `footprintGeom` (PostGIS) de lat/lon, footprintWKT y
+    coordinateUncertaintyInMeters. Llamar en todo create/update de Occurrence para
+    que no queden desincronizadas.
 
-
-def sync_geo_columns(occ: Occurrence) -> None:
-    """Deriva `location` y `footprintGeom` (PostGIS) de lat/lon y footprintWKT.
-    Llamar en todo create/update de Occurrence para que no queden desincronizadas."""
-    if occ.decimalLatitude is not None and occ.decimalLongitude is not None:
+    Forma de la localidad (`footprintGeom`): el polígono si hay footprintWKT; si no,
+    el círculo de incertidumbre alrededor del punto; si no, ninguna (punto exacto)."""
+    has_point = occ.decimalLatitude is not None and occ.decimalLongitude is not None
+    if has_point:
         occ.location = WKTElement(
             f"POINT({occ.decimalLongitude} {occ.decimalLatitude})", srid=4326
         )
@@ -132,12 +135,24 @@ def sync_geo_columns(occ: Occurrence) -> None:
         occ.location = None
 
     wkt = occ.footprintWKT.strip() if occ.footprintWKT else None
-    if wkt and not _FOOTPRINT_TYPES_RE.match(wkt):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="footprintWKT solo admite POLYGON o MULTIPOLYGON.",
+    if wkt:
+        try:
+            check_simple_polygon(db, wkt)
+        except InvalidPolygon as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"footprintWKT inválido: {e}."
+            )
+    uncertainty = occ.coordinateUncertaintyInMeters
+    if wkt:
+        occ.footprintGeom = WKTElement(wkt, srid=4326)
+    elif has_point and uncertainty is not None and uncertainty > 0:
+        point = cast(func.ST_GeomFromText(f"POINT({occ.decimalLongitude} {occ.decimalLatitude})", 4326), Geography)
+        occ.footprintGeom = cast(
+            func.ST_Buffer(point, uncertainty, "quad_segs=16"),
+            Geometry(geometry_type="POLYGON", srid=4326),
         )
-    occ.footprintGeom = WKTElement(wkt, srid=4326) if wkt else None
+    else:
+        occ.footprintGeom = None
 
 
 def _flush_with_geo_validation(db: Session) -> None:
@@ -189,7 +204,7 @@ def create_occurrence(
     if payload.eventDate and occ.year is None:
         _apply_event_date_ymd(occ, payload.eventDate)
 
-    sync_geo_columns(occ)
+    sync_geo_columns(db, occ)
 
     db.add(occ)
     _flush_with_geo_validation(db)
@@ -310,21 +325,6 @@ def _visible_occurrences_select(
     return apply_occurrence_filters(stmt, filters)
 
 
-@contextmanager
-def _polygon_filter_errors(db: Session, filters: OccurrenceFilters):
-    """Convierte un withinPolygon inválido (PostGIS lo parsea al ejecutar) en 400 en vez de 500."""
-    try:
-        yield
-    except (DataError, InternalError):
-        if not filters.within_polygon:
-            raise
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="withinPolygon inválido: debe ser un POLYGON o MULTIPOLYGON en WKT.",
-        )
-
-
 def list_occurrences_basic(
     db: Session,
     page: int,
@@ -363,10 +363,9 @@ def list_occurrences_basic(
     limit = page_size
     offset = (page - 1) * page_size
 
-    with _polygon_filter_errors(db, filters):
-        total = db.scalar(
-            select(func.count()).select_from(count_select.subquery())
-        ) or 0
+    total = db.scalar(
+        select(func.count()).select_from(count_select.subquery())
+    ) or 0
 
     rows = db.execute(
         base_select
@@ -400,10 +399,7 @@ def list_occurrence_map_points(
     current_user: User,
     limit: int,
 ) -> OccurrenceMapOut:
-    """Puntos de las ocurrencias visibles que cumplen `filters`, con `matchType` para el mapa."""
-    location_cond, footprint_cond = build_geo_conditions(filters)
-    has_footprint = Occurrence.footprintGeom.isnot(None)
-
+    """Puntos de las ocurrencias visibles que cumplen `filters`, con `locationType` para el mapa."""
     # Sin lat/lon, se dibuja en un punto interior del polígono (solo visual).
     lat = func.coalesce(
         Occurrence.decimalLatitude, func.ST_Y(func.ST_PointOnSurface(Occurrence.footprintGeom))
@@ -412,14 +408,13 @@ def list_occurrence_map_points(
         Occurrence.decimalLongitude, func.ST_X(func.ST_PointOnSurface(Occurrence.footprintGeom))
     )
 
-    if location_cond is None:
-        match_type = case((has_footprint, "representative"), else_="exact")
-    else:
-        match_type = case(
-            (and_(location_cond, has_footprint), "representative"),
-            (location_cond, "exact"),
-            else_="intersects",
-        )
+    # footprintGeom viene del polígono (footprintWKT) o, sin él, del círculo de incertidumbre.
+    has_wkt = func.coalesce(func.length(func.trim(Occurrence.footprintWKT)), 0) > 0
+    location_type = case(
+        (and_(has_wkt, Occurrence.footprintGeom.isnot(None)), "polygon"),
+        (Occurrence.footprintGeom.isnot(None), "circle"),
+        else_="point",
+    )
 
     code_expr = func.coalesce(Occurrence.catalogNumber, Occurrence.recordNumber)
 
@@ -433,7 +428,8 @@ def list_occurrence_map_points(
             Taxon.scientificName.label("scientific_name"),
             lat.label("lat"),
             lon.label("lon"),
-            match_type.label("match_type"),
+            location_type.label("location_type"),
+            Occurrence.coordinateUncertaintyInMeters.label("uncertainty"),
         )
         .where(lat.isnot(None), lon.isnot(None))
     )
@@ -441,11 +437,10 @@ def list_occurrence_map_points(
         current_user, collection_id, filters, Occurrence.occurrenceId
     ).where(lat.isnot(None), lon.isnot(None))
 
-    with _polygon_filter_errors(db, filters):
-        total = db.scalar(select(func.count()).select_from(count_select.subquery())) or 0
-        rows = db.execute(
-            rows_select.order_by(Occurrence.occurrenceId.desc()).limit(limit)
-        ).all()
+    total = db.scalar(select(func.count()).select_from(count_select.subquery())) or 0
+    rows = db.execute(
+        rows_select.order_by(Occurrence.occurrenceId.desc()).limit(limit)
+    ).all()
 
     return OccurrenceMapOut(
         items=[
@@ -455,7 +450,8 @@ def list_occurrence_map_points(
                 scientificName=r.scientific_name,
                 lat=r.lat,
                 lon=r.lon,
-                matchType=r.match_type,
+                locationType=r.location_type,
+                uncertaintyMeters=r.uncertainty,
             )
             for r in rows
         ],
@@ -486,7 +482,7 @@ def update_occurrence(
     for field, value in update_data.items():
         setattr(occ, field, value)
 
-    sync_geo_columns(occ)
+    sync_geo_columns(db, occ)
 
     # Recalcular year/month/day si cambió eventDate y no se enviaron explícitamente
     if "eventDate" in update_data and payload.eventDate:

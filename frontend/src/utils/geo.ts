@@ -1,39 +1,49 @@
 import Polygon from "ol/geom/Polygon";
-import MultiPolygon from "ol/geom/MultiPolygon";
 import WKT from "ol/format/WKT";
+import { getDistance } from "ol/sphere";
 
 const wktFormat = new WKT();
 
-/** Polígonos (EPSG:3857) -> WKT WGS84: 0 -> null, 1 -> POLYGON, 2+ -> MULTIPOLYGON. */
-export function polygonsToWkt(polygons: Polygon[]): string | null {
-    if (polygons.length === 0) return null;
-    const wgs84 = polygons.map((p) => p.clone().transform("EPSG:3857", "EPSG:4326") as Polygon);
-    const geometry =
-        wgs84.length === 1 ? wgs84[0] : new MultiPolygon(wgs84.map((p) => p.getCoordinates()));
-    return wktFormat.writeGeometry(geometry, { decimals: 6 });
+/** Polígono (EPSG:3857) -> WKT WGS84 (un solo POLYGON); null si no hay polígono. */
+export function polygonToWkt(polygon: Polygon | null): string | null {
+    if (!polygon) return null;
+    const wgs84 = polygon.clone().transform("EPSG:3857", "EPSG:4326");
+    return wktFormat.writeGeometry(wgs84, { decimals: 6 });
 }
 
-/** WKT WGS84 -> polígonos (EPSG:3857). Solo POLYGON/MULTIPOLYGON; si no, []. */
-export function wktToPolygons(wkt: string | null | undefined): Polygon[] {
-    if (!wkt) return [];
+/** WKT WGS84 -> polígono (EPSG:3857). Solo POLYGON; si no, null. */
+export function wktToPolygon(wkt: string | null | undefined): Polygon | null {
+    if (!wkt) return null;
     try {
         const geometry = wktFormat.readGeometry(wkt, {
             dataProjection: "EPSG:4326",
             featureProjection: "EPSG:3857",
         });
-        if (geometry instanceof MultiPolygon) return geometry.getPolygons();
-        if (geometry instanceof Polygon) return [geometry];
+        return geometry instanceof Polygon ? geometry : null;
     } catch {
-        // WKT inválido: sin geometría
+        return null; // WKT inválido: sin geometría
     }
-    return [];
 }
 
-/** Punto interior [lon, lat] del polígono más grande (a diferencia del centroide, siempre cae dentro). */
-export function representativePoint(polygons: Polygon[]): [number, number] | null {
-    if (polygons.length === 0) return null;
-    const largest = polygons.reduce((a, b) => (b.getArea() > a.getArea() ? b : a));
-    const inner = (largest.clone().transform("EPSG:3857", "EPSG:4326") as Polygon).getInteriorPoint();
+/** Punto interior [lon, lat] del polígono (a diferencia del centroide, siempre cae dentro, aunque sea cóncavo). */
+export function representativePoint(polygon: Polygon | null): [number, number] | null {
+    if (!polygon) return null;
+    const inner = (polygon.clone().transform("EPSG:3857", "EPSG:4326") as Polygon).getInteriorPoint();
     const [lon, lat] = inner.getCoordinates();
     return [lon, lat];
+}
+
+/** Radio (m) del círculo centrado en `center` [lon, lat] que contiene al polígono (EPSG:3857). */
+export function enclosingRadiusMeters(polygon: Polygon, center: [number, number]): number {
+    let max = 0;
+    const wgs84 = polygon.clone().transform("EPSG:3857", "EPSG:4326") as Polygon;
+    for (const ring of wgs84.getCoordinates()) {
+        for (const [lon, lat] of ring) max = Math.max(max, getDistance(center, [lon, lat]));
+    }
+    return Math.max(1, Math.ceil(max));
+}
+
+/** 500 -> "500 m", 5000 -> "5 km", 1500 -> "1.5 km". */
+export function formatMeters(m: number): string {
+    return m >= 1000 ? `${Number((m / 1000).toFixed(1))} km` : `${Math.round(m)} m`;
 }

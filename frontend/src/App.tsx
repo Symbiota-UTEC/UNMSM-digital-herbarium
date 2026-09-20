@@ -27,7 +27,11 @@ interface NavigationParams {
   collectionInstitutionId?: string;
   isOwner?: boolean;
   occurrenceId?: string;
-  returnTo?: "occurrences" | "collection" | "taxon";
+  returnTo?: "occurrences" | "collection" | "taxon" | "map";
+  // Origen del detalle de ocurrencia, para conservarlo si se pasa por el detalle de un taxón.
+  originReturnTo?: string;
+  // Al volver al mapa, restaurar la última búsqueda.
+  restoreSearch?: boolean;
   taxonId?: string;
 }
 
@@ -155,6 +159,7 @@ const buildRoute = (page: string, params: NavigationParams = {}) => {
         state: {
           taxonId,
           returnTo: params.returnTo,
+          originReturnTo: params.originReturnTo,
           returnOccurrenceId: params.returnOccurrenceId?.toString(),
           collectionId: params.collectionId?.toString(),
           collectionName: params.collectionName,
@@ -167,7 +172,7 @@ const buildRoute = (page: string, params: NavigationParams = {}) => {
     case "admin":
       return { path: "/admin" };
     case "map":
-      return { path: "/map" };
+      return { path: "/map", state: params.restoreSearch ? { restoreSearch: true } : undefined };
     default:
       return { path: "/" };
   }
@@ -305,6 +310,7 @@ function AppContent() {
       <TaxonDetailPage
         taxonId={taxonId || (state.taxonId?.toString() ?? "")}
         returnTo={state.returnTo?.toString()}
+        originReturnTo={state.originReturnTo?.toString()}
         returnOccurrenceId={state.returnOccurrenceId?.toString()}
         collectionId={state.collectionId?.toString()}
         collectionName={state.collectionName?.toString()}

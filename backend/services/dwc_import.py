@@ -327,9 +327,14 @@ def import_dwc_csv(
                     if field in {
                         "decimalLatitude",
                         "decimalLongitude",
+                        "coordinateUncertaintyInMeters",
                     }:
                         if hasattr(Occurrence, field):
-                            occ_d[field] = _to_float(val)
+                            number = _to_float(val)
+                            # DwC: la incertidumbre debe ser > 0; 0 o negativo se trata como desconocida.
+                            if field == "coordinateUncertaintyInMeters" and number is not None and number <= 0:
+                                number = None
+                            occ_d[field] = number
                     else:
                         if hasattr(Occurrence, field):
                             occ_d[field] = val
@@ -371,7 +376,7 @@ def import_dwc_csv(
             occ = Occurrence(**occ_d)
             occ.collectionId = collection_id
             occ.digitizerUserId = current_user.userId
-            sync_geo_columns(occ)
+            sync_geo_columns(db, occ)
 
             db.add(occ)
             db.flush()  # obtener occ.occurrenceId
