@@ -49,6 +49,19 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "images", label: "Imágenes" },
 ];
 
+const show = (v: unknown) =>
+  v === null || v === undefined || v === "" ? "—" : String(v);
+
+/* Fila etiqueta/valor. A nivel de módulo: dentro del componente se remontaría en cada render. */
+const Field = ({ label, value, mono = false, italic = false }: { label: string; value: unknown; mono?: boolean; italic?: boolean }) => (
+  <div className="space-y-1">
+    <p className="text-xs font-medium text-muted-foreground">{label}</p>
+    <p className={[mono ? "font-mono" : "", italic ? "italic" : "", "text-sm"].join(" ")}>
+      {show(value)}
+    </p>
+  </div>
+);
+
 export function OccurrenceDetailPage({
   occurrenceId,
   onNavigate,
@@ -65,9 +78,6 @@ export function OccurrenceDetailPage({
   const [activeTab, setActiveTab] = useState<TabKey>("occurrence");
   const [pendingDeleteImageId, setPendingDeleteImageId] = useState<string | null>(null);
   const [deletingImageId, setDeletingImageId] = useState<string | null>(null);
-
-  const show = (v: unknown) =>
-    v === null || v === undefined || v === "" ? "—" : String(v);
 
   const formatDateTime = (iso?: string | null) => {
     if (!iso) return "—";
@@ -181,16 +191,6 @@ export function OccurrenceDetailPage({
       isOwner,
     });
   };
-
-  /* ── Field row helper ── */
-  const Field = ({ label, value, mono = false, italic = false }: { label: string; value: unknown; mono?: boolean; italic?: boolean }) => (
-    <div className="space-y-1">
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className={[mono ? "font-mono" : "", italic ? "italic" : "", "text-sm"].join(" ")}>
-        {show(value)}
-      </p>
-    </div>
-  );
 
   if (loading) {
     return (

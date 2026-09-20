@@ -1,10 +1,9 @@
-import { useEffect, useState } from "react";
 import { useAuth } from "@contexts/AuthContext";
-import { autocompleteService } from "@services/autocomplete.service";
 import {
   FilterAutocompleteInput,
   FilterDateRangePicker,
   useAutocomplete,
+  useScientificNameAutocomplete,
   filterInputClass,
   filterLabelClass,
 } from "./ui/filters";
@@ -44,23 +43,8 @@ export function OccurrenceFilterFields({ values, onChange }: Props) {
   const { apiFetch } = useAuth();
   const set = (patch: Partial<OccurrenceFilterValues>) => onChange({ ...values, ...patch });
 
-  const [sciNameSuggestions, setSciNameSuggestions] = useState<string[]>([]);
-  const [sciNameLoading, setSciNameLoading] = useState(false);
-  useEffect(() => {
-    const q = values.scientificName.trim();
-    if (q.length < 2) { setSciNameSuggestions([]); return; }
-    let cancelled = false;
-    const id = setTimeout(async () => {
-      try {
-        setSciNameLoading(true);
-        const results = await autocompleteService.scientificNames(apiFetch, q, 10);
-        if (!cancelled) setSciNameSuggestions(results.map((r) => r.scientificName));
-      } catch { if (!cancelled) setSciNameSuggestions([]); }
-      finally { if (!cancelled) setSciNameLoading(false); }
-    }, 300);
-    return () => { cancelled = true; clearTimeout(id); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [values.scientificName]);
+  const { items: sciNameSuggestions, loading: sciNameLoading } =
+    useScientificNameAutocomplete(apiFetch, values.scientificName);
   const { items: familySuggestions, loading: familyLoading } =
     useAutocomplete(apiFetch, "family", values.family);
   const { items: institutionSuggestions, loading: institutionLoading } =

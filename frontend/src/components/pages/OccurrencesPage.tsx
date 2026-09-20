@@ -31,7 +31,7 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
   const [page, setPage] = useState(() => Math.max(1, Number(searchParams.get("page")) || 1));
   const [pageSize] = useState(PAGE_SIZE_DEFAULT);
   const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const [filters, setFilters] = useState<OccurrenceFilterValues>(() => ({
     code: searchParams.get("code") ?? "",

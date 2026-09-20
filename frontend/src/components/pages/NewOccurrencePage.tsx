@@ -30,7 +30,6 @@ import {
   Image as ImageIcon,
   Loader2,
   CheckCircle2,
-  Leaf,
   Camera,
   Trash2,
   Star,
@@ -38,7 +37,8 @@ import {
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "../ui/alert";
 import { useAuth } from "../../contexts/AuthContext";
-import { autocompleteService } from "@services/autocomplete.service";
+import { autocompleteService, type ScientificNameSuggestion } from "@services/autocomplete.service";
+import { AutocompleteDropdown, useSuggestions } from "../ui/autocomplete";
 import { taxonService } from "@services/taxon.service";
 import { occurrencesService } from "@services/occurrences.service";
 import { uploadService } from "@services/upload.service";
@@ -67,13 +67,6 @@ interface NewOccurrencePageProps {
 
 
 /* ─── Types ─────────────────────── */
-interface ScientificNameSuggestion {
-  scientificName: string;
-  taxonId: string | null;
-  wfoTaxonId: string | null;
-  scientificNameAuthorship?: string | null;
-}
-
 interface TaxonDetail {
   taxonId: string | null;
   scientificName?: string | null;
@@ -223,10 +216,12 @@ export function NewOccurrencePage({
   const [identifierOrcidInput, setIdentifierOrcidInput] = useState("");
 
   // Autocomplete
-  const [acSuggestions, setAcSuggestions] = useState<ScientificNameSuggestion[]>([]);
-  const [acLoading, setAcLoading] = useState(false);
   const [acOpen, setAcOpen] = useState(false);
-  const acTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { items: acSuggestions, loading: acLoading } = useSuggestions<ScientificNameSuggestion>(
+    (q) => autocompleteService.scientificNames(apiFetch, q, 10),
+    scientificNameInput,
+    { enabled: acOpen },
+  );
   const acRef = useRef<HTMLDivElement>(null);
 
   /* ── IMAGES ── */
@@ -310,25 +305,12 @@ export function NewOccurrencePage({
   const handleScientificNameChange = (value: string) => {
     setScientificNameInput(value);
     if (selectedTaxonID) { setSelectedTaxonID(null); setTaxonDetail(null); }
-    if (acTimeout.current) clearTimeout(acTimeout.current);
-    if (value.trim().length < 2) { setAcSuggestions([]); setAcOpen(false); return; }
-    acTimeout.current = setTimeout(async () => {
-      setAcLoading(true);
-      try {
-        const suggestions = await autocompleteService.scientificNames(apiFetch, value.trim(), 10);
-        setAcSuggestions(suggestions);
-        setAcOpen(suggestions.length > 0);
-      } catch {
-        setAcSuggestions([]); setAcOpen(false);
-      } finally {
-        setAcLoading(false);
-      }
-    }, 300);
+    setAcOpen(true);
   };
 
   const handleSelectSuggestion = async (suggestion: ScientificNameSuggestion) => {
     setScientificNameInput(suggestion.scientificName);
-    setAcOpen(false); setAcSuggestions([]);
+    setAcOpen(false);
     if (!suggestion.taxonId) return;
     setSelectedTaxonID(suggestion.taxonId);
     setTaxonLoading(true);
@@ -1049,6 +1031,7 @@ export function NewOccurrencePage({
               id="scientificName"
               value={scientificNameInput}
               onChange={(e) => handleScientificNameChange(e.target.value)}
+              onFocus={() => { if (!selectedTaxonID) setAcOpen(true); }}
               placeholder="Escribe para buscar un nombre científico…"
               autoComplete="off"
               className={selectedTaxonID ? "pr-12 border-green-500 focus-visible:ring-green-500/30" : "pr-12"}
@@ -1061,27 +1044,24 @@ export function NewOccurrencePage({
                   : null}
             </div>
           </div>
-          {acOpen && acSuggestions.length > 0 && (
-            <div className="absolute z-50 w-full mt-1 bg-popover border rounded-lg shadow-lg overflow-hidden">
-              <ul className="max-h-64 overflow-y-auto py-1">
-                {acSuggestions.map((s, i) => (
-                  <li key={i}>
-                    <button
-                      type="button"
-                      className="w-full text-left px-4 py-2.5 hover:bg-accent transition-colors flex items-center gap-3"
-                      onMouseDown={(e) => { e.preventDefault(); handleSelectSuggestion(s); }}
-                    >
-                      <Leaf className="h-3.5 w-3.5 text-green-600 flex-shrink-0" />
-                      <span className="italic text-sm">{s.scientificName}</span>
-                      {s.scientificNameAuthorship && (
-                        <span className="text-xs text-muted-foreground italic">{s.scientificNameAuthorship}</span>
-                      )}
-                      {s.wfoTaxonId && <span className="ml-auto text-xs text-muted-foreground/60 font-mono">{s.wfoTaxonId}</span>}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
+          {acOpen && scientificNameInput.trim().length >= 2 && (
+            <AutocompleteDropdown
+              items={acSuggestions}
+              loading={acLoading}
+              keyOf={(s) => s.taxonId ?? s.scientificName}
+              onSelect={handleSelectSuggestion}
+              renderItem={(s) => (
+                <>
+                  <span className="italic truncate">{s.scientificName}</span>
+                  {s.scientificNameAuthorship && (
+                    <span className="text-xs text-muted-foreground italic truncate">{s.scientificNameAuthorship}</span>
+                  )}
+                  {s.wfoTaxonId && (
+                    <span className="ml-auto pl-2 text-xs text-muted-foreground font-mono">{s.wfoTaxonId}</span>
+                  )}
+                </>
+              )}
+            />
           )}
         </div>
         <p className="text-xs text-muted-foreground">Escribe al menos 2 caracteres para buscar en el backbone taxonómico.</p>

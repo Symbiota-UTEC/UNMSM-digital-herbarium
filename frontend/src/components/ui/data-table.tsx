@@ -16,6 +16,7 @@ import {
 } from "./table";
 import { Button } from "./button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { LoadingOverlay, SkeletonBar, useSettled } from "./loading-overlay";
 
 // ---------------------------------------------------------------------------
 // Column definition
@@ -82,6 +83,7 @@ export interface DataTableProps<T> {
   title?: string;
   description?: string;
   loading?: boolean;
+  skeletonRows?: number;
   emptyMessage?: string;
   page: number;
   totalPages: number;
@@ -98,6 +100,7 @@ export function DataTable<T>({
   title,
   description,
   loading = false,
+  skeletonRows = 5,
   emptyMessage = "No hay datos disponibles.",
   page,
   totalPages,
@@ -108,6 +111,9 @@ export function DataTable<T>({
 }: DataTableProps<T>) {
   const lastColIdx = columns.length - 1;
   const hasHeader = !!(title || description);
+  // Primera carga: skeleton. Refresco: se conservan las filas y solo se atenúan (sin saltos de altura).
+  const settled = useSettled(loading);
+  const showSkeleton = loading && data.length === 0 && !settled;
 
   return (
     <div className="space-y-3">
@@ -130,7 +136,7 @@ export function DataTable<T>({
           </CardHeader>
         )}
         <CardContent className={hasHeader ? "" : "pt-6"}>
-          <div className="overflow-x-auto">
+          <LoadingOverlay active={loading && !showSkeleton} className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -151,15 +157,19 @@ export function DataTable<T>({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {loading ? (
-                  <TableRow>
-                    <TableCell
-                      colSpan={columns.length}
-                      className="py-6 text-center text-sm text-muted-foreground"
-                    >
-                      Cargando…
-                    </TableCell>
-                  </TableRow>
+                {showSkeleton ? (
+                  Array.from({ length: skeletonRows }, (_, r) => (
+                    <TableRow key={`skeleton-${r}`} aria-hidden>
+                      {columns.map((col, i) => (
+                        <TableCell key={col.key} className="align-middle">
+                          <SkeletonBar
+                            width={i === lastColIdx ? "4.5rem" : `${55 + ((r * 7 + i * 13) % 35)}%`}
+                            style={i === lastColIdx ? { marginLeft: "auto" } : undefined}
+                          />
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))
                 ) : data.length === 0 ? (
                   <TableRow>
                     <TableCell
@@ -200,7 +210,7 @@ export function DataTable<T>({
                 )}
               </TableBody>
             </Table>
-          </div>
+          </LoadingOverlay>
           <TablePagination
             page={page}
             totalPages={totalPages}

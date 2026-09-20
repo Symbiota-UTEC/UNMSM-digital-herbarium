@@ -87,6 +87,15 @@ React 18 + TypeScript, Vite, Tailwind v4, shadcn/ui components.
 </div>
 ```
 
+### Loading states (no flicker)
+
+Never swap a list for a "Cargando…" placeholder on refetch — it collapses the page and resets scroll.
+- Lists: use `DataTable` (`ui/data-table.tsx`). Skeleton only on the first load; on refresh the rows stay and are dimmed via `LoadingOverlay` (`ui/loading-overlay.tsx`, dim and spinner delayed 200 ms). For non-table lists wrap them in `LoadingOverlay` and use `SkeletonBar` + `useSettled(loading)` for the first load.
+- Pages that fetch on mount start with `loading = true`; background polling must not toggle `loading`.
+- Autocomplete: `useSuggestions` + `AutocompleteDropdown` (`ui/autocomplete.tsx`); don't build another dropdown. Previous suggestions stay (dimmed) while refetching.
+- Route components with params live at module level in `App.tsx`; never define a component inside another component (it remounts on every render). Context values and `apiFetch` are memoized in `AuthContext`.
+- Styles for this live in `ui/feedback.css` (`index.css` is precompiled).
+
 ### CSS / Theming
 
 **Critical:** `frontend/src/index.css` is the **pre-compiled Tailwind v4 output** — the browser reads this file directly. `frontend/src/styles/globals.css` is the source that needs to be recompiled with Tailwind CLI to update `index.css`.

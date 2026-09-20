@@ -1,8 +1,11 @@
 import React, {
   createContext,
+  useCallback,
   useContext,
-  useState,
   useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from "react";
 
 
@@ -10,7 +13,6 @@ import { User, AuthContextType, mapApiUserToUser } from "@interfaces/auth";
 import { Role } from "@constants/roles";
 import { API } from "@constants/api"
 import { STORAGE_KEYS } from "@constants/storageKeys"
-import { ChartColumnStackedIcon } from "lucide-react";
 
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -31,17 +33,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
 
-  // limpiar cualquier timer de auto-logout
-  const [logoutTimer, setLogoutTimer] = useState<number | null>(null);
+  // Timer de auto-logout. Ref, no estado: así las funciones de abajo mantienen identidad estable.
+  const logoutTimer = useRef<number | null>(null);
 
-  const clearLogoutTimer = () => {
-    if (logoutTimer) {
-      window.clearTimeout(logoutTimer);
-      setLogoutTimer(null);
+  const clearLogoutTimer = useCallback(() => {
+    if (logoutTimer.current) {
+      window.clearTimeout(logoutTimer.current);
+      logoutTimer.current = null;
     }
-  };
+  }, []);
 
-  const scheduleAutoLogout = (jwt: string) => {
+  const logout = useCallback(() => {
+    clearLogoutTimer();
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    setToken(null);
+    setUser(null);
+
+    window.dispatchEvent(new CustomEvent("auth:logged-out"));
+  }, [clearLogoutTimer]);
+
+  const scheduleAutoLogout = useCallback((jwt: string) => {
     clearLogoutTimer();
     const payload = decodeJwtPayload(jwt);
     if (!payload?.exp) return;
@@ -53,11 +65,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
     // pequeño margen de 1s
-    const id = window.setTimeout(() => {
-      logout();
-    }, msUntilExp + 1000);
-    setLogoutTimer(id);
-  };
+    logoutTimer.current = window.setTimeout(logout, msUntilExp + 1000);
+  }, [clearLogoutTimer, logout]);
 
   // recuperar sesión
   useEffect(() => {
@@ -85,7 +94,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const login = async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string) => {
     const formData = new URLSearchParams();
     formData.append("username", email);
     formData.append("password", password);
@@ -121,19 +130,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem("user", JSON.stringify(mappedUser));
 
     window.dispatchEvent(new CustomEvent("auth:logged-in"));
-  };
+  }, [scheduleAutoLogout]);
 
-  const logout = () => {
-    clearLogoutTimer();
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    setToken(null);
-    setUser(null);
-
-    window.dispatchEvent(new CustomEvent("auth:logged-out"));
-  };
-
-  const apiFetch: AuthContextType["apiFetch"] = async (input, init = {}) => {
+  const apiFetch: AuthContextType["apiFetch"] = useCallback(async (input, init = {}) => {
     const headers = new Headers(init.headers || {});
     if (token) headers.set("Authorization", `Bearer ${token}`);
     
@@ -151,19 +150,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw new Error("No autorizado");
     }
     return res;
-  };
+  }, [token, logout]);
+
+  const value = useMemo(
+    () => ({ user, token, login, logout, isAuthenticated: !!user, apiFetch }),
+    [user, token, login, logout, apiFetch],
+  );
 
   return (
-      <AuthContext.Provider
-          value={{
-            user,
-            token,
-            login,
-            logout,
-            isAuthenticated: !!user,
-            apiFetch,
-          }}
-      >
+      <AuthContext.Provider value={value}>
         {children}
       </AuthContext.Provider>
   );

@@ -79,7 +79,7 @@ backend/
 │   └── security.py           # hash_password, verify_password
 ├── scripts/
 │   └── create_admin.py       # Bootstrap: creates default institution + admin user
-└── data/                     # Sample/reference files (not code)
+└── samples/                  # Sample/reference files (not code)
     └── wfo_classification_solanum_tuberosum_lineage.csv  # 9 WFO taxa: Plantae -> Solanum tuberosum
 ```
 

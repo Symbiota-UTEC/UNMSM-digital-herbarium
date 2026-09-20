@@ -22,8 +22,7 @@ import { toast } from "sonner";
 import { useAuth } from "@contexts/AuthContext";
 import { PAGE_SIZE } from "@constants/api";
 import { taxonService, type TaxonTreeNode, type TaxonSearchItem } from "@services/taxon.service";
-import { autocompleteService } from "@services/autocomplete.service";
-import { FiltersCard, FilterAutocompleteInput, filterLabelClass } from "../ui/filters";
+import { FiltersCard, FilterAutocompleteInput, filterLabelClass, useScientificNameAutocomplete } from "../ui/filters";
 import { DataTable, type ColumnDef } from "../ui/data-table";
 
 /* --------------------------- Componente fila ------------------------- */
@@ -230,28 +229,12 @@ export function TaxonPage({ onNavigate }: TaxonPageProps) {
   const [scientificNameFilter, setScientificNameFilter] = useState(() => searchParams.get("q") ?? "");
   const [appliedQuery, setAppliedQuery] = useState(() => searchParams.get("q") ?? "");
 
-  const [sciNameSuggestions, setSciNameSuggestions] = useState<string[]>([]);
-  const [sciNameLoading, setSciNameLoading] = useState(false);
-
-  useEffect(() => {
-    const q = scientificNameFilter.trim();
-    if (q.length < 2) { setSciNameSuggestions([]); return; }
-    let cancelled = false;
-    const id = setTimeout(async () => {
-      try {
-        setSciNameLoading(true);
-        const results = await autocompleteService.scientificNames(apiFetch, q, 10);
-        if (!cancelled) setSciNameSuggestions(results.map((r) => r.scientificName));
-      } catch { if (!cancelled) setSciNameSuggestions([]); }
-      finally { if (!cancelled) setSciNameLoading(false); }
-    }, 300);
-    return () => { cancelled = true; clearTimeout(id); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scientificNameFilter]);
+  const { items: sciNameSuggestions, loading: sciNameLoading } =
+    useScientificNameAutocomplete(apiFetch, scientificNameFilter);
 
   // Search results state
   const [searchResults, setSearchResults] = useState<TaxonSearchItem[]>([]);
-  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(() => !!searchParams.get("q"));
   const [searchCurrentPage, setSearchCurrentPage] = useState(() => Math.max(1, Number(searchParams.get("page")) || 1));
   const [searchTotalPages, setSearchTotalPages] = useState(1);
   const [searchTotal, setSearchTotal] = useState(0);
@@ -288,18 +271,17 @@ export function TaxonPage({ onNavigate }: TaxonPageProps) {
     }
   };
 
-  const handleApplyFilters = () => {
-    const q = scientificNameFilter.trim();
+  // Los resultados previos se conservan (atenuados) hasta que llegue la respuesta.
+  const applySearch = (query: string) => {
+    const q = query.trim();
     setAppliedQuery(q);
     if (q) {
-      setSearchCurrentPage(1);
-      setSearchTotalPages(1);
-      setSearchTotal(0);
-      setSearchResults([]);
       setSearchParams({ q }, { replace: true });
       fetchSearchResults(q, 1);
     }
   };
+
+  const handleApplyFilters = () => applySearch(scientificNameFilter);
 
   const handleClearFilters = () => {
     setScientificNameFilter("");
@@ -423,19 +405,7 @@ export function TaxonPage({ onNavigate }: TaxonPageProps) {
           onChange={setScientificNameFilter}
           suggestions={sciNameSuggestions}
           loading={sciNameLoading}
-          onSelect={(val) => {
-            setScientificNameFilter(val);
-            const q = val.trim();
-            if (q) {
-              setAppliedQuery(q);
-              setSearchCurrentPage(1);
-              setSearchTotalPages(1);
-              setSearchTotal(0);
-              setSearchResults([]);
-              setSearchParams({ q }, { replace: true });
-              fetchSearchResults(q, 1);
-            }
-          }}
+          onSelect={applySearch}
         />
       </FiltersCard>
 

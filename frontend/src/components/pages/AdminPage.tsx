@@ -40,6 +40,7 @@ import {
 } from "../ui/alert-dialog";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { LoadingOverlay, SkeletonBar, useSettled } from "../ui/loading-overlay";
 import {
   Users,
   Database,
@@ -94,6 +95,8 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
   // -------- Institutions list (left column) --------
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [isLoadingInstitutions, setIsLoadingInstitutions] = useState(false);
+  const institutionsSettled = useSettled(isLoadingInstitutions);
+  const showInstitutionsSkeleton = isLoadingInstitutions && institutions.length === 0 && !institutionsSettled;
 
   // UI dialogs / selections
   const [viewInstitutionDetails, setViewInstitutionDetails] =
@@ -1150,11 +1153,12 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
             </div>
 
             {/* Institutions list */}
+            <LoadingOverlay active={isLoadingInstitutions && !showInstitutionsSkeleton}>
             <div className="space-y-2">
-              {isLoadingInstitutions ? (
-                <p className="text-sm text-muted-foreground py-4 text-center">
-                  Cargando instituciones...
-                </p>
+              {showInstitutionsSkeleton ? (
+                Array.from({ length: 3 }, (_, i) => (
+                  <SkeletonBar key={i} width="100%" style={{ height: "3.5rem", borderRadius: "0.5rem" }} />
+                ))
               ) : institutions.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4">
                   No se encontraron instituciones
@@ -1225,6 +1229,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
                 ))
               )}
             </div>
+            </LoadingOverlay>
 
             {/* Pagination */}
             {institutionsTotal > 0 && (

@@ -30,6 +30,7 @@ interface NavigationParams {
   returnTo?: "occurrences" | "collection" | "taxon" | "map";
   // Origen del detalle de ocurrencia, para conservarlo si se pasa por el detalle de un taxón.
   originReturnTo?: string;
+  returnOccurrenceId?: string;
   // Al volver al mapa, restaurar la última búsqueda.
   restoreSearch?: boolean;
   taxonId?: string;
@@ -178,6 +179,95 @@ const buildRoute = (page: string, params: NavigationParams = {}) => {
   }
 };
 
+// Rutas con parámetros. Van a nivel de módulo: si se definieran dentro de AppContent, React las
+// vería como un componente nuevo en cada render y remontaría la página (refetch + parpadeo).
+type NavigateFn = (page: string, params?: NavigationParams) => void;
+
+const useRouteState = () => (useLocation().state as NavigationParams) || {};
+
+const CollectionDetailRoute = ({ onNavigate }: { onNavigate: NavigateFn }) => {
+  const { collectionId = "" } = useParams();
+  const state = useRouteState();
+
+  return (
+    <CollectionDetailPage
+      collectionId={collectionId}
+      collectionName={state.collectionName || ""}
+      collectionInstitutionId={state.collectionInstitutionId}
+      isOwner={Boolean(state.isOwner)}
+      onNavigate={onNavigate}
+    />
+  );
+};
+
+const OccurrenceDetailRoute = ({ onNavigate }: { onNavigate: NavigateFn }) => {
+  const { occurrenceId = "" } = useParams();
+  const state = useRouteState();
+  const collectionId = state.collectionId ? state.collectionId.toString() : undefined;
+
+  return (
+    <OccurrenceDetailPage
+      occurrenceId={occurrenceId}
+      onNavigate={onNavigate}
+      returnTo={state.returnTo || (collectionId ? "collection" : "occurrences")}
+      collectionId={collectionId}
+      collectionName={state.collectionName}
+      isOwner={state.isOwner}
+      taxonId={state.taxonId?.toString()}
+    />
+  );
+};
+
+const NewOccurrenceRoute = ({ mode, onNavigate }: { mode: "create" | "edit"; onNavigate: NavigateFn }) => {
+  const { occurrenceId } = useParams();
+  const state = useRouteState();
+  const collectionId = state.collectionId ? state.collectionId.toString() : undefined;
+
+  return (
+    <NewOccurrencePage
+      onNavigate={onNavigate}
+      mode={mode}
+      occurrenceId={occurrenceId}
+      returnTo={state.returnTo || (collectionId ? "collection" : "occurrences")}
+      collectionId={collectionId}
+      collectionName={state.collectionName}
+      isOwner={state.isOwner}
+      taxonId={state.taxonId?.toString()}
+    />
+  );
+};
+
+const CSVImportRoute = ({ onNavigate }: { onNavigate: NavigateFn }) => {
+  const { collectionId = "" } = useParams();
+  const state = useRouteState();
+
+  return (
+    <CSVImportPage
+      collectionId={collectionId}
+      collectionName={state.collectionName || ""}
+      onNavigate={onNavigate}
+    />
+  );
+};
+
+const TaxonDetailRoute = ({ onNavigate }: { onNavigate: NavigateFn }) => {
+  const { taxonId = "" } = useParams();
+  const state = useRouteState();
+
+  return (
+    <TaxonDetailPage
+      taxonId={taxonId || (state.taxonId?.toString() ?? "")}
+      returnTo={state.returnTo?.toString()}
+      originReturnTo={state.originReturnTo?.toString()}
+      returnOccurrenceId={state.returnOccurrenceId?.toString()}
+      collectionId={state.collectionId?.toString()}
+      collectionName={state.collectionName?.toString()}
+      isOwner={state.isOwner as boolean | undefined}
+      onNavigate={onNavigate}
+    />
+  );
+};
+
 // Pages whose search params should be saved and restored on re-visit
 const FILTER_PAGES = ["/occurrences", "/taxon", "/collections"];
 
@@ -237,89 +327,6 @@ function AppContent() {
 
   const currentPage = resolveCurrentPage(location.pathname);
 
-  const CollectionDetailRoute = () => {
-    const { collectionId = "" } = useParams();
-    const state = (location.state as NavigationParams) || {};
-
-    return (
-      <CollectionDetailPage
-        collectionId={collectionId}
-        collectionName={state.collectionName || ""}
-        collectionInstitutionId={state.collectionInstitutionId}
-        isOwner={Boolean(state.isOwner)}
-        onNavigate={handleNavigation}
-      />
-    );
-  };
-
-  const OccurrenceDetailRoute = () => {
-    const { occurrenceId = "" } = useParams();
-    const state = (location.state as NavigationParams) || {};
-    const collectionId = state.collectionId ? state.collectionId.toString() : undefined;
-
-    return (
-      <OccurrenceDetailPage
-        occurrenceId={occurrenceId}
-        onNavigate={handleNavigation}
-        returnTo={state.returnTo || (collectionId ? "collection" : "occurrences")}
-        collectionId={collectionId}
-        collectionName={state.collectionName}
-        isOwner={state.isOwner}
-        taxonId={state.taxonId?.toString()}
-      />
-    );
-  };
-
-  const NewOccurrenceRoute = ({ mode }: { mode: "create" | "edit" }) => {
-    const { occurrenceId } = useParams();
-    const state = (location.state as NavigationParams) || {};
-    const collectionId = state.collectionId ? state.collectionId.toString() : undefined;
-
-    return (
-      <NewOccurrencePage
-        onNavigate={handleNavigation}
-        mode={mode}
-        occurrenceId={occurrenceId}
-        returnTo={state.returnTo || (collectionId ? "collection" : "occurrences")}
-        collectionId={collectionId}
-        collectionName={state.collectionName}
-        isOwner={state.isOwner}
-        taxonId={state.taxonId?.toString()}
-      />
-    );
-  };
-
-  const CSVImportRoute = () => {
-    const { collectionId = "" } = useParams();
-    const state = (location.state as NavigationParams) || {};
-
-    return (
-      <CSVImportPage
-        collectionId={collectionId}
-        collectionName={state.collectionName || ""}
-        onNavigate={handleNavigation}
-      />
-    );
-  };
-
-  const TaxonDetailRoute = () => {
-    const { taxonId = "" } = useParams();
-    const state = (location.state as NavigationParams) || {};
-
-    return (
-      <TaxonDetailPage
-        taxonId={taxonId || (state.taxonId?.toString() ?? "")}
-        returnTo={state.returnTo?.toString()}
-        originReturnTo={state.originReturnTo?.toString()}
-        returnOccurrenceId={state.returnOccurrenceId?.toString()}
-        collectionId={state.collectionId?.toString()}
-        collectionName={state.collectionName?.toString()}
-        isOwner={state.isOwner as boolean | undefined}
-        onNavigate={handleNavigation}
-      />
-    );
-  };
-
   return (
     <div className="flex h-full overflow-hidden bg-background">
       {isAuthenticated && (
@@ -334,15 +341,15 @@ function AppContent() {
         <Route path="/login" element={<LoginPage onNavigate={handleNavigation} />} />
         <Route path="/register" element={<RegisterPage onNavigate={handleNavigation} />} />
         <Route path="/collections" element={<CollectionsPage onNavigate={handleNavigation} />} />
-        <Route path="/collections/:collectionId" element={<CollectionDetailRoute />} />
-        <Route path="/collections/:collectionId/csv-import" element={<CSVImportRoute />} />
+        <Route path="/collections/:collectionId" element={<CollectionDetailRoute onNavigate={handleNavigation} />} />
+        <Route path="/collections/:collectionId/csv-import" element={<CSVImportRoute onNavigate={handleNavigation} />} />
         <Route path="/occurrences" element={<OccurrencesPage onNavigate={handleNavigation} />} />
-        <Route path="/occurrences/new" element={<NewOccurrenceRoute mode="create" />} />
-        <Route path="/occurrences/:occurrenceId/edit" element={<NewOccurrenceRoute mode="edit" />} />
-        <Route path="/occurrences/:occurrenceId" element={<OccurrenceDetailRoute />} />
+        <Route path="/occurrences/new" element={<NewOccurrenceRoute mode="create" onNavigate={handleNavigation} />} />
+        <Route path="/occurrences/:occurrenceId/edit" element={<NewOccurrenceRoute mode="edit" onNavigate={handleNavigation} />} />
+        <Route path="/occurrences/:occurrenceId" element={<OccurrenceDetailRoute onNavigate={handleNavigation} />} />
         <Route path="/uploads" element={<UploadsPage />} />
         <Route path="/taxon" element={<TaxonPage onNavigate={handleNavigation} />} />
-        <Route path="/taxon/:taxonId" element={<TaxonDetailRoute />} />
+        <Route path="/taxon/:taxonId" element={<TaxonDetailRoute onNavigate={handleNavigation} />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/admin" element={<AdminPage onNavigate={handleNavigation} />} />
         <Route path="/map" element={<MapPage onNavigate={handleNavigation} />} />

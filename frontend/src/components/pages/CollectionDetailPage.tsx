@@ -107,7 +107,7 @@ export function CollectionDetailPage({
   // ================== Estado: ocurrencias ==================
   const [occResp, setOccResp] =
     useState<PaginatedResponse<OccurrenceBriefItem> | null>(null);
-  const [occLoading, setOccLoading] = useState(false);
+  const [occLoading, setOccLoading] = useState(true);
   const [occLimit] = useState(5);
   const [occOffset, setOccOffset] = useState(0);
 

@@ -113,10 +113,11 @@ export function UploadsPage() {
     preferredJobId?: string | null,
     showError = false,
     offset = 0,
+    silent = false,
   ) => {
     if (!isSuperuser) return;
     try {
-      setIsLoadingJobs(true);
+      if (!silent) setIsLoadingJobs(true);
       const data = await uploadService.getTaxonFloraCsvJobs(apiFetch, PAGE_SIZE.TAXON_FLORA_JOBS, offset);
       const jobs = data.items ?? [];
       setJobHistory(jobs);
@@ -126,7 +127,7 @@ export function UploadsPage() {
       console.error(error);
       if (showError) toast.error(error?.message || "Error al cargar el historial de importaciones.");
     } finally {
-      setIsLoadingJobs(false);
+      if (!silent) setIsLoadingJobs(false);
     }
   };
 
@@ -195,7 +196,7 @@ export function UploadsPage() {
 
     const intervalId = window.setInterval(() => {
       fetchJob(activeJob.jobId, false);
-      fetchJobHistory(activeJob.jobId, false, 0);
+      fetchJobHistory(activeJob.jobId, false, 0, true); // silent: el polling no debe parpadear
     }, POLL_MS);
 
     return () => window.clearInterval(intervalId);

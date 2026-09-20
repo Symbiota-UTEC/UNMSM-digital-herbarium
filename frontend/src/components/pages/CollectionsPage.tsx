@@ -69,7 +69,7 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
     () => (searchParams.get("access") as AccessFilter) ?? "owner"
   );
   const [items, setItems] = useState<CollectionListItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(() => Math.max(1, Number(searchParams.get("page")) || 1));
   const [totalPages, setTotalPages] = useState(1);
 

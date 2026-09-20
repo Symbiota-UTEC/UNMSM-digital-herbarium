@@ -1,0 +1,55 @@
+/* Estados de carga compartidos (index.css está precompilado: las clases nuevas van aquí).
+   Regla: al refrescar se conserva el contenido anterior y solo se atenúa; el atenuado y el
+   spinner esperan 200 ms, así una respuesta rápida no produce ningún cambio visible. */
+
+@keyframes hb-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+.hb-skeleton {
+  display: block;
+  height: 1.25rem;
+  border-radius: 0.375rem;
+  background: var(--muted);
+  animation: hb-pulse 1.4s ease-in-out infinite;
+}
+
+.hb-loading-region {
+  position: relative;
+}
+
+.hb-dim {
+  transition: opacity 150ms ease;
+}
+
+.hb-dim[data-loading="true"] {
+  opacity: 0.55;
+  transition-delay: 200ms;
+}
+
+.hb-loading-spinner {
+  position: absolute;
+  top: 0.75rem;
+  left: 50%;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-left: -0.625rem;
+  color: var(--muted-foreground);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms ease;
+}
+
+.hb-loading-region[data-loading="true"] > .hb-loading-spinner {
+  opacity: 1;
+  transition-delay: 200ms;
+}
+
+.hb-option:hover {
+  background: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hb-skeleton { animation: none; }
+}
