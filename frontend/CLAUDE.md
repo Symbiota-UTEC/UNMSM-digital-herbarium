@@ -36,7 +36,7 @@ frontend/
     └── components/
         ├── pages/            # One file per route (XxxPage.tsx)
         ├── ui/               # shadcn primitives + shared building blocks (see below)
-        └── *.tsx             # Feature components shared by pages (LocationPicker, DwcTerm, …)
+        └── *.tsx             # Feature components shared by pages (LocationPicker, DwcTerm, ImageManager + ImageLightbox, …)
 ```
 
 Shared building blocks in `components/ui/` that are **not** stock shadcn: `data-table.tsx`, `filters.tsx`, `autocomplete.tsx`, `loading-overlay.tsx` (+ `feedback.css`). Reuse them; don't rebuild tables, filter cards or dropdowns.

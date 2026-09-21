@@ -70,6 +70,12 @@ class OccurrenceImageOut(ORMBaseModel):
     updatedAt: datetime
 
 
+class ImageUpdateIn(StrictBaseModel):
+    """Datos editables de una imagen ya subida."""
+
+    photographer: Optional[str] = Field(default=None, max_length=255)
+
+
 # -----------------------------
 # Detalle de ocurrencia
 # -----------------------------

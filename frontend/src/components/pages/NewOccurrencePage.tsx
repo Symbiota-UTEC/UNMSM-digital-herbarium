@@ -15,24 +15,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../ui/alert-dialog";
-import {
-  ArrowLeft,
-  Plus,
-  X,
-  AlertCircle,
-  Upload,
-  Image as ImageIcon,
-  Loader2,
-  CheckCircle2,
-  Camera,
-  Trash2,
-  Star,
-} from "lucide-react";
+import { ArrowLeft, Plus, X, AlertCircle, Loader2, CheckCircle2, Trash2, Star } from "lucide-react";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "../ui/alert";
 import { useAuth } from "../../contexts/AuthContext";
 import { autocompleteService, type ScientificNameSuggestion } from "@services/autocomplete.service";
 import { AutocompleteDropdown, useSuggestions } from "../ui/autocomplete";
+import { ImageManager, type PendingImage } from "../ImageManager";
 import { taxonService } from "@services/taxon.service";
 import { occurrencesService } from "@services/occurrences.service";
 import { uploadService } from "@services/upload.service";
@@ -68,12 +57,6 @@ interface TaxonDetail {
   taxonomicStatus?: string | null;
   majorGroup?: string | null;
   namePublishedIn?: string | null;
-}
-
-interface NewImageEntry {
-  file: File;
-  preview: string;
-  blobUrl: string;
 }
 
 /* ─── Country list ──────────────── */
@@ -213,10 +196,11 @@ export function NewOccurrencePage({
   const acRef = useRef<HTMLDivElement>(null);
 
   /* ── IMAGES ── */
-  const [newImages, setNewImages] = useState<NewImageEntry[]>([]);
+  const [newImages, setNewImages] = useState<PendingImage[]>([]);
   const [existingImages, setExistingImages] = useState<OccurrenceImageOut[]>([]);
+  // Fotógrafo editado de las imágenes ya guardadas; se persiste al pulsar "Actualizar ocurrencia".
+  const [existingPhotographers, setExistingPhotographers] = useState<Record<string, string>>({});
   const [pendingDeleteImageId, setPendingDeleteImageId] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   /* ── EDIT MODE ── */
   const [existingIdentifications, setExistingIdentifications] = useState<OccurrenceIdentificationOut[]>([]);
@@ -228,7 +212,7 @@ export function NewOccurrencePage({
   /* ── Cleanup blobs on unmount ── */
   useEffect(() => {
     return () => {
-      newImages.forEach((img) => URL.revokeObjectURL(img.blobUrl));
+      newImages.forEach((img) => URL.revokeObjectURL(img.previewUrl));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -327,24 +311,34 @@ export function NewOccurrencePage({
   };
 
   /* ── Image helpers ── */
-  const addNewImage = (blob: Blob, filename: string) => {
-    const url = URL.createObjectURL(blob);
+  const addNewImages = (files: File[]) => {
     setNewImages((prev) => [
       ...prev,
-      {
-        file: new File([blob], filename, { type: blob.type || "image/jpeg" }),
-        preview: url,
-        blobUrl: url,
-      },
+      ...files.map((file) => ({
+        id: crypto.randomUUID(),
+        file,
+        previewUrl: URL.createObjectURL(file),
+        photographer: "", // lo escribe la persona; vacío = sin dato
+      })),
     ]);
   };
 
-  const removeNewImage = (index: number) => {
+  const removeNewImage = (id: string) => {
     setNewImages((prev) => {
-      URL.revokeObjectURL(prev[index].blobUrl);
-      return prev.filter((_, i) => i !== index);
+      const target = prev.find((img) => img.id === id);
+      if (target) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((img) => img.id !== id);
     });
   };
+
+  const setNewImagePhotographer = (id: string, photographer: string) =>
+    setNewImages((prev) => prev.map((img) => (img.id === id ? { ...img, photographer } : img)));
+
+  const copyPhotographerToAll = (photographer: string) =>
+    setNewImages((prev) => prev.map((img) => ({ ...img, photographer })));
+
+  const setExistingPhotographer = (imageId: string, photographer: string) =>
+    setExistingPhotographers((prev) => ({ ...prev, [imageId]: photographer }));
 
   /* ── Camera ── */
   const handleCapture = async () => {
@@ -358,7 +352,7 @@ export function NewOccurrencePage({
       if (!res.ok) throw new Error(`HTTP ${res.status} — ${res.statusText}`);
       const blob = await res.blob();
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-      addNewImage(blob, `captura-${timestamp}.jpg`);
+      addNewImages([new File([blob], `captura-${timestamp}.jpg`, { type: blob.type || "image/jpeg" })]);
       toast.success("Foto capturada y añadida");
     } catch (err: any) {
       setCameraError(err?.message ?? "Error al capturar la imagen");
@@ -366,11 +360,6 @@ export function NewOccurrencePage({
     } finally {
       setCaptureLoading(false);
     }
-  };
-
-  const handleFileUpload = (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    Array.from(files).forEach((file) => addNewImage(file, file.name));
   };
 
   /* ── Inline actions (edit mode) ── */
@@ -540,9 +529,17 @@ export function NewOccurrencePage({
           });
         }
 
-        // 3. Upload new images
+        // 3. Persist edited photographers of saved images
+        for (const img of existingImages) {
+          const edited = existingPhotographers[img.occurrenceImageId];
+          if (edited !== undefined && edited.trim() !== (img.photographer ?? "")) {
+            await uploadService.updateImagePhotographer(apiFetch, img.occurrenceImageId, edited);
+          }
+        }
+
+        // 4. Upload new images
         for (const img of newImages) {
-          await uploadService.uploadImage(apiFetch, occurrenceId, img.file);
+          await uploadService.uploadImage(apiFetch, occurrenceId, img.file, img.photographer);
         }
 
         toast.success("Ocurrencia actualizada correctamente");
@@ -566,7 +563,7 @@ export function NewOccurrencePage({
 
         for (const img of newImages) {
           try {
-            await uploadService.uploadImage(apiFetch, data.occurrenceId, img.file);
+            await uploadService.uploadImage(apiFetch, data.occurrenceId, img.file, img.photographer);
           } catch (err: any) {
             toast.error("Error al subir imagen", { description: err.message });
           }
@@ -1488,165 +1485,21 @@ export function NewOccurrencePage({
   );
 
   const renderImagesTab = () => (
-    <div className="space-y-6">
-      {/* Existing images (edit mode) */}
-      {mode === "edit" && existingImages.length > 0 && (
-        <div className="space-y-3">
-          <p className="text-sm font-semibold">Imágenes existentes</p>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {existingImages.map((img) => (
-              <div key={img.occurrenceImageId} className="relative group rounded-lg overflow-hidden border bg-muted/20">
-                <img
-                  src={uploadService.imageUrl(img.occurrenceImageId)}
-                  alt={img.imagePath}
-                  className="w-full h-36 object-cover"
-                />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors pointer-events-none" />
-                <button
-                  type="button"
-                  disabled={inlineSaving}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setPendingDeleteImageId(img.occurrenceImageId);
-                  }}
-                  style={{
-                    position: "absolute",
-                    top: "10px",
-                    right: "10px",
-                    zIndex: 9999,
-                    backgroundColor: "rgb(117, 26, 29)",
-                    color: "white",
-                    padding: "6px 10px",
-                    borderRadius: "6px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    border: "none",
-                    cursor: "pointer",
-                    fontSize: "12px",
-                    fontWeight: "bold",
-                    opacity: 1,
-                    visibility: "visible",
-                    boxShadow: "0 2px 4px rgba(0,0,0,0.5)",
-                  }}
-                  title="Eliminar imagen"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Eliminar
-                </button>
-                {img.photographer && (
-                  <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs px-2 py-1 truncate opacity-0 group-hover:opacity-100 transition-opacity">
-                    {img.photographer}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Add new images */}
-      <div className="rounded-xl border bg-card overflow-hidden">
-        <div className="flex flex-wrap items-center gap-2 px-5 py-3.5 border-b bg-muted/30">
-          <Camera className="h-4 w-4 text-muted-foreground" />
-          <p className="text-sm font-medium mr-2">{mode === "edit" ? "Agregar imágenes" : "Imágenes del espécimen"}</p>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={handleCapture}
-            disabled={captureLoading}
-            className="gap-1.5"
-          >
-            {captureLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
-            {captureLoading ? "Capturando…" : "Tomar Foto"}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => fileInputRef.current?.click()}
-            className="gap-1.5"
-          >
-            <Upload className="h-3.5 w-3.5" />
-            Subir Archivos
-          </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/tiff,image/webp"
-            multiple
-            className="hidden"
-            onChange={(e) => handleFileUpload(e.target.files)}
-          />
-        </div>
-
-        {cameraError && (
-          <div className="flex items-center gap-2 px-4 py-2.5 bg-destructive/10 border-t border-destructive/20 text-destructive text-xs">
-            <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
-            {cameraError}
-          </div>
-        )}
-      </div>
-
-      {/* New images preview */}
-      {newImages.length > 0 ? (
-        <div className="space-y-3">
-          <p className="text-sm font-semibold text-muted-foreground">
-            {newImages.length} imagen{newImages.length !== 1 ? "es" : ""} nueva{newImages.length !== 1 ? "s" : ""}{" "}
-            seleccionada{newImages.length !== 1 ? "s" : ""}
-          </p>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {newImages.map((img, index) => (
-              <div key={index} className="relative group rounded-lg overflow-hidden border bg-muted/20">
-                <img src={img.preview} alt={img.file.name} className="w-full h-36 object-cover" />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    removeNewImage(index);
-                  }}
-                  style={{
-                    position: "absolute",
-                    top: "10px",
-                    right: "10px",
-                    zIndex: 9999,
-                    backgroundColor: "rgb(117, 26, 29)",
-                    color: "white",
-                    padding: "6px",
-                    borderRadius: "50%",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    border: "none",
-                    cursor: "pointer",
-                    opacity: 1,
-                    visibility: "visible",
-                    boxShadow: "0 2px 4px rgba(0,0,0,0.5)",
-                  }}
-                  title="Quitar imagen"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-                <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs px-2 py-1 truncate">
-                  {(img.file.size / 1024 / 1024).toFixed(1)} MB
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <div className="rounded-xl border bg-card overflow-hidden">
-          <div className="flex items-center gap-3 p-6 text-muted-foreground">
-            <ImageIcon className="h-5 w-5 flex-shrink-0" />
-            <p className="text-sm">Ninguna imagen nueva seleccionada. Usa Tomar Foto o Subir Archivos.</p>
-          </div>
-        </div>
-      )}
-    </div>
+    <ImageManager
+      pending={newImages}
+      existing={mode === "edit" ? existingImages : []}
+      onAddFiles={addNewImages}
+      onRemovePending={removeNewImage}
+      onPendingPhotographerChange={setNewImagePhotographer}
+      onCopyPhotographerToAll={copyPhotographerToAll}
+      onDeleteExisting={setPendingDeleteImageId}
+      existingPhotographers={existingPhotographers}
+      onExistingPhotographerChange={setExistingPhotographer}
+      onCapture={handleCapture}
+      capturing={captureLoading}
+      cameraError={cameraError}
+      disabled={inlineSaving || isSubmitting}
+    />
   );
 
   /* ══════════════════════════════════════════════════

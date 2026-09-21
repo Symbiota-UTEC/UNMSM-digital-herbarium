@@ -13,12 +13,24 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.config.settings import seaweedfs_internal_url, seaweedfs_public_url
 from backend.models.models import Occurrence, OccurrenceImage, User
+from backend.schemas.occurrence import ImageUpdateIn
 from backend.services.collection_permissions import user_can_edit_collection
 
 logger = logging.getLogger(__name__)
 
 
-def upload_image(db: Session, occurrence_id: UUID, file: UploadFile, current_user: User) -> dict:
+def _clean_photographer(value: str | None) -> str | None:
+    """El fotógrafo lo escribe quien sube la imagen; vacío se guarda como NULL (nunca se autocompleta)."""
+    return (value or "").strip() or None
+
+
+def upload_image(
+    db: Session,
+    occurrence_id: UUID,
+    file: UploadFile,
+    current_user: User,
+    photographer: str | None = None,
+) -> dict:
     occurrence = db.scalar(select(Occurrence).where(Occurrence.occurrenceId == occurrence_id))
     if not occurrence:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Occurrence not found")
@@ -76,7 +88,7 @@ def upload_image(db: Session, occurrence_id: UUID, file: UploadFile, current_use
         occurrenceId=occurrence.occurrenceId,
         imagePath=image_path,
         fileSize=file_size,
-        photographer=current_user.fullName or current_user.username,
+        photographer=_clean_photographer(photographer),
     )
 
     db.add(occ_img)
@@ -88,8 +100,36 @@ def upload_image(db: Session, occurrence_id: UUID, file: UploadFile, current_use
         "occurrenceImageId": occ_img.occurrenceImageId,
         "occurrenceId": occurrence.occurrenceId,
         "imagePath": image_path,
+        "photographer": occ_img.photographer,
         "size": file_size,
         "publicUrl": f"{seaweedfs_public_url}{image_path}",
+    }
+
+
+def update_image(db: Session, image_id: UUID, payload: ImageUpdateIn, current_user: User) -> dict:
+    image = db.scalar(select(OccurrenceImage).where(OccurrenceImage.occurrenceImageId == image_id))
+    if not image:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image not found")
+
+    occurrence = db.scalar(
+        select(Occurrence)
+        .options(selectinload(Occurrence.collection))
+        .where(Occurrence.occurrenceId == image.occurrenceId)
+    )
+    if not occurrence or not occurrence.collection:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    if not user_can_edit_collection(db, current_user, occurrence.collection):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para editar esta imagen",
+        )
+
+    image.photographer = _clean_photographer(payload.photographer)
+    db.commit()
+    db.refresh(image)
+    return {
+        "occurrenceImageId": image.occurrenceImageId,
+        "photographer": image.photographer,
     }
 
 
@@ -128,8 +168,7 @@ def get_image(db: Session, image_id: UUID) -> StreamingResponse:
     if not image:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image not found")
 
-    # URL interna definida para SeaweedFS en docker network
-    download_url = f"http://herbarium_seaweedfs:8888{image.imagePath}"
+    download_url = f"{seaweedfs_internal_url}{image.imagePath}"
 
     try:
         response = requests.get(download_url, stream=True)

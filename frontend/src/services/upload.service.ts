@@ -81,16 +81,31 @@ export const uploadService = {
     return res.json();
   },
 
-  async uploadImage(apiFetch: ApiFetch, occurrenceId: string, file: File): Promise<void> {
+  /** `photographer` lo escribe la persona; si va vacío no se envía y queda sin dato. */
+  async uploadImage(apiFetch: ApiFetch, occurrenceId: string, file: File, photographer?: string): Promise<void> {
     const form = new FormData();
     form.append("occurrence_id", occurrenceId);
     form.append("file", file);
+    if (photographer?.trim()) form.append("photographer", photographer.trim());
 
     const res = await apiFetch(`${API.BASE_URL}${API.PATHS.UPLOAD.IMAGE}`, {
       method: "POST",
       body: form,
     });
     await throwIfError(res);
+  },
+
+  async updateImagePhotographer(
+    apiFetch: ApiFetch,
+    imageId: string,
+    photographer: string,
+  ): Promise<{ occurrenceImageId: string; photographer: string | null }> {
+    const res = await apiFetch(`${API.BASE_URL}${API.PATHS.UPLOAD.IMAGE_BY_ID(imageId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ photographer: photographer.trim() || null }),
+    });
+    await throwIfError(res);
+    return res.json();
   },
 
   async deleteImage(apiFetch: ApiFetch, imageId: string): Promise<void> {

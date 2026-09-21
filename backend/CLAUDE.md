@@ -399,9 +399,17 @@ CREATE EXTENSION IF NOT EXISTS unaccent;
 
 ## Image Storage (SeaweedFS)
 
-- `POST /api/upload/image-seaweedfs` — uploads a file to SeaweedFS, stores the returned `fid` path in `OccurrenceImage.imagePath`.
-- `GET /api/upload/image-seaweedfs?image_path=<fid>` — proxies the file from SeaweedFS (with collection-level access control).
-- Internal SeaweedFS URL is used for server-to-server calls; the public URL is used for direct browser access.
+All under `/api/upload/image` (`routers/upload/images.py`, logic in `services/images.py`):
+
+- `POST` — multipart `occurrence_id`, `file` and an optional `photographer`. Uploads the file to the SeaweedFS Filer and creates an `OccurrenceImage` whose `imagePath` is the Filer path (`/images/<institution>/<collection>/<catalogNumber>/<uuid>_<name>`).
+- `PATCH /{image_id}` — edits the photographer (`ImageUpdateIn`).
+- `GET /{image_id}` — streams the file through the backend. It has no auth dependency on purpose: it is used as `<img src>`, and a browser can't attach the Bearer header there.
+- `DELETE /{image_id}` — removes the file and the row.
+- Upload, edit and delete require edit rights on the collection (`user_can_edit_collection`).
+
+**`photographer` is written by the person, never derived from the logged-in user**: empty or blank is stored as `NULL`.
+
+The backend talks to SeaweedFS through `SEAWEEDFS_INTERNAL_URL` (Docker network hostname); `SEAWEEDFS_PUBLIC_URL` is only echoed back as `publicUrl` on upload.
 
 ---
 
