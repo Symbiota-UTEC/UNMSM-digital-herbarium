@@ -24,7 +24,7 @@ npm run dev            # http://localhost:3000
 npm run build          # production bundle in build/
 ```
 
-There is no lint or test script. To type-check: `npx -p typescript tsc --noEmit -p .`
+Quality checks: `npm run lint`, `npm run format`, `npm run typecheck` (they also run on every commit via pre-commit, see the root [`CLAUDE.md`](../CLAUDE.md)).
 
 ## Configuration
 

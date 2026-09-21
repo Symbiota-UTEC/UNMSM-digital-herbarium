@@ -20,6 +20,7 @@ frontend/
 ├── index.html
 ├── vite.config.ts            # Path aliases, dev server (port 3000)
 ├── tsconfig.json             # Type-check only (Vite does the build); `paths` must mirror the aliases
+├── eslint.config.mjs         # ESLint (flat config) · .prettierrc.json / .prettierignore: Prettier
 ├── .env.sample               # Copy to .env — see "Environment Variables"
 └── src/
     ├── main.tsx              # Entry point
@@ -86,7 +87,14 @@ npm run dev      # http://localhost:3000
 npm run build    # production bundle in build/
 ```
 
-There is no lint or test script. TypeScript is not a dependency, so type-check with `npx -p typescript tsc --noEmit -p .` (should print nothing).
+```bash
+npm run lint          # ESLint (config: eslint.config.mjs)
+npm run lint:fix
+npm run format        # Prettier (config: .prettierrc.json); `format:check` only reports
+npm run typecheck     # tsc --noEmit (should print nothing)
+```
+
+These also run on every commit through pre-commit (see the root `CLAUDE.md`). `src/index.css` is excluded from all of them because it is generated. There is no test script. ESLint starts permissive (`no-explicit-any` off, unused vars and hook dependencies as warnings); tighten it gradually rather than in one go.
 
 ### Start (Docker)
 
