@@ -1,4 +1,4 @@
-import { useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Alert, AlertDescription } from "../ui/alert";
@@ -20,11 +20,12 @@ import { toast } from "sonner";
 import { useAuth } from "@contexts/AuthContext";
 import { ApiError } from "@services/api.error";
 import { uploadService } from "@services/upload.service";
+import { collectionsService } from "@services/collections.service";
+import type { CollectionOut } from "@interfaces/collection";
 import { DWC_FIELDS, DwCFieldOption, DwCEntity } from "@constants/dwc";
 
 interface CSVImportPageProps {
   collectionId: string;
-  collectionName: string;
   onNavigate: (page: string, params?: Record<string, any>) => void;
 }
 
@@ -309,8 +310,24 @@ const labelFor = (opt: DwCFieldOption) => opt.label;
 // ==============================
 // Componente
 // ==============================
-export function CSVImportPage({ collectionId, collectionName, onNavigate }: CSVImportPageProps) {
+export function CSVImportPage({ collectionId, onNavigate }: CSVImportPageProps) {
   const { apiFetch } = useAuth();
+
+  // Nombre y permiso de la colección: los da el backend (así funciona también con un enlace directo).
+  const [collection, setCollection] = useState<CollectionOut | null>(null);
+  const [collectionError, setCollectionError] = useState(false);
+  const collectionName = collection?.collectionName ?? "";
+
+  useEffect(() => {
+    let active = true;
+    collectionsService
+      .getById(apiFetch, collectionId)
+      .then((c) => active && setCollection(c))
+      .catch(() => active && setCollectionError(true));
+    return () => {
+      active = false;
+    };
+  }, [apiFetch, collectionId]);
 
   const [datasetModel, setDatasetModel] = useState<DwCEntity>("Occurrence");
   const [csvFile, setCSVFile] = useState<File | null>(null);
@@ -708,7 +725,7 @@ export function CSVImportPage({ collectionId, collectionName, onNavigate }: CSVI
 
           const msg = `Importadas ${stats.occurrencesInserted} ocurrencias.`;
           toast.success(`${msg} (encabezado usado: ${label})`);
-          onNavigate("collection-detail", { collectionId, collectionName, isOwner: true });
+          onNavigate("collection-detail", { collectionId });
           return;
         } catch (err) {
           if (!(err instanceof ApiError)) throw err;
@@ -751,7 +768,7 @@ export function CSVImportPage({ collectionId, collectionName, onNavigate }: CSVI
   };
 
   const handleCancel = () => {
-    onNavigate("collection-detail", { collectionId, collectionName, isOwner: true });
+    onNavigate("collection-detail", { collectionId });
   };
 
   const mappedCount = useMemo(
@@ -794,6 +811,22 @@ export function CSVImportPage({ collectionId, collectionName, onNavigate }: CSVI
 
     return { alt, req };
   }, [REQUIRED_VALUES, ALL_FIELDS, REQUIRED_FROM_SCHEMA]);
+
+  if (collectionError || (collection && !collection.canEdit)) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <Button variant="ghost" onClick={handleCancel} className="mb-4">
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Volver a Colección
+        </Button>
+        <div className="rounded-lg border bg-card p-8 text-center text-muted-foreground">
+          {collectionError
+            ? "No se pudo cargar la colección (no existe o no tienes acceso)."
+            : "No tienes permiso para importar ocurrencias en esta colección."}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto px-4 py-8">

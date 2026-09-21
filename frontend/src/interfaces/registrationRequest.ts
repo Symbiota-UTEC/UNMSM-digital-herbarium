@@ -1,5 +1,7 @@
 import { PaginatedResponse } from "@interfaces/utils/pagination";
 
+import type { RegistrationStatus } from "@constants/enums";
+
 export interface RegistrationRequest {
   registrationRequestId: string;
   username: string;
@@ -12,7 +14,7 @@ export interface RegistrationRequest {
   orcid?: string | null;
   phone?: string | null;
   address?: string | null;
-  status: "pending" | "approved" | "rejected";
+  status: RegistrationStatus;
   createdAt: string;
   reviewedAt?: string | null;
   reviewedByUserId?: string | null;

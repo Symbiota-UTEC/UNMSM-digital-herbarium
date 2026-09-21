@@ -1,4 +1,5 @@
 import { API } from "@constants/api";
+import type { RegistrationStatus } from "@constants/enums";
 import type { PaginatedResponse } from "@interfaces/utils/pagination";
 import type { RegistrationRequest } from "@interfaces/registrationRequest";
 import type { ApiUserOut } from "@interfaces/auth";
@@ -54,7 +55,7 @@ export const authService = {
   async updateRegistrationRequest(
     apiFetch: ApiFetch,
     registrationRequestId: string,
-    newStatus: "approved" | "rejected",
+    newStatus: RegistrationStatus.Approved | RegistrationStatus.Rejected,
   ): Promise<void> {
     const res = await apiFetch(`${API.BASE_URL}${API.PATHS.AUTH.REG_REQUEST}`, {
       method: "PATCH",

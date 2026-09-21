@@ -7,6 +7,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from backend.models.enums import EffectiveRole
 from backend.schemas.common.base import ORMBaseModel, StrictBaseModel
 
 # -----------------------------
@@ -18,6 +19,10 @@ class OccurrenceCollectionSummaryOut(ORMBaseModel):
     collectionId: UUID
     collectionName: Optional[str] = None
     institutionId: Optional[UUID] = None
+    # Permisos del usuario actual sobre la colección de esta ocurrencia
+    myRole: Optional[EffectiveRole] = None
+    canEdit: bool = False
+    canManage: bool = False
 
 
 class OccurrenceIdentifierOut(ORMBaseModel):

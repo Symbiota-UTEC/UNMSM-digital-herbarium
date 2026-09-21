@@ -78,8 +78,6 @@ interface TaxonDetailPageProps {
   returnOccurrenceId?: string;
   originReturnTo?: string;
   collectionId?: string;
-  collectionName?: string;
-  isOwner?: boolean;
   onNavigate: (page: string, params?: Record<string, any>) => void;
 }
 
@@ -89,8 +87,6 @@ export function TaxonDetailPage({
   returnOccurrenceId,
   originReturnTo,
   collectionId,
-  collectionName,
-  isOwner,
   onNavigate,
 }: TaxonDetailPageProps) {
   const { apiFetch } = useAuth();
@@ -129,8 +125,6 @@ export function TaxonDetailPage({
         occurrenceId: returnOccurrenceId,
         returnTo: originReturnTo,
         collectionId,
-        collectionName,
-        isOwner,
       });
     } else {
       onNavigate("taxon");

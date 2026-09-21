@@ -1,5 +1,5 @@
 # backend/routers/auth.py
-from typing import Literal, Optional
+from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, Query
@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from backend.auth.jwt import get_current_user
 from backend.config.database import get_db
+from backend.models.enums import RegistrationStatus
 from backend.models.models import User
 from backend.schemas.auth import RegistrationRequestItem, UpdateRequestStatusBody
 from backend.schemas.common.pages import Page
@@ -24,7 +25,7 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 def list_registration_requests(
     limit: int = Query(10, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    statusFilter: Optional[Literal["pending", "approved", "rejected"]] = Query(None),
+    statusFilter: Optional[RegistrationStatus] = Query(None),
     institutionId: Optional[UUID] = Query(
         None,
         description="ID de institución (obligatorio para institutionAdmin)",

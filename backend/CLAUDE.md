@@ -209,7 +209,7 @@ All routes are prefixed with `/api`.
 |----------------|-------------------------|---------------------------------------------------------|
 | auth           | `/api/auth`             | Login (JWT), registration requests                      |
 | users          | `/api/users`            | User lookup                                             |
-| collections    | `/api/collections`      | CRUD, permission management, occurrence listing         |
+| collections    | `/api/collections`      | List/detail/create, permission management, occurrence listing |
 | occurrences    | `/api/occurrences`      | CRUD, dynamic properties, filtered listing              |
 | taxon          | `/api/taxon`            | Taxonomic tree, taxon detail with identifications       |
 | upload         | `/api/upload`           | DwC CSV bulk import, Flora CSV, SeaweedFS image upload  |
@@ -341,9 +341,13 @@ Keep it that way: don't add a third copy of the permission logic.
 - **Institution admin** — manages their own institution's data
 - **Collection roles** — `owner`, `editor`, `viewer` stored in `CollectionPermission`. Whether a user can view/edit/manage-permissions-of a given `Collection` is decided by `services/collection_permissions.py` (`user_can_view_collection`, `user_can_edit_collection`, `user_can_manage_collection_permissions`) — don't reimplement this check in a router, import it.
 
+**The client never derives permissions.** `collection_capabilities(user, collection, role)` (pure, in `services/collection_permissions.py`) is the single source of truth, and the API exposes its result: `CollectionOut.canEdit` / `canManage` (from `GET /api/collections/{id}` and the list) and `OccurrenceOut.collection.{myRole, canEdit, canManage}` (built by `occurrences_service.to_occurrence_out`, used by every occurrence endpoint that returns `OccurrenceOut`). `canEdit` = create/edit occurrences and import CSV (superuser, admin of the same institution, editor, owner); `canManage` = access management and the collection itself (superuser, admin of the same institution, owner). Add new permission-dependent UI by extending these flags, not by re-implementing the rule in the frontend.
+
 ---
 
 ## Schema Conventions
+
+**Closed sets of values are enums, never string literals.** They live in `models/enums.py` (`CollectionRole`, `EffectiveRole`, `CollectionAccess`, `RegistrationStatus`, `ImportJobStatus`) as `str` + `Enum`: use the members (`CollectionRole.OWNER`) in services, models and schemas; they still serialize as `"owner"` in JSON and compare equal to it. The PostgreSQL ENUM columns are declared with `db_enum(EnumClass, "type_name")`, which stores the `value`s as labels, so the database already matches. Adding a member means `ALTER TYPE <type_name> ADD VALUE '...'` by hand (there is no Alembic) and mirroring it in `frontend/src/constants/enums.ts`.
 
 - All output schemas extend `ORMBaseModel` (enables `from_attributes=True` for ORM serialization).
 - All input schemas extend `StrictBaseModel` (`extra="forbid"` — unknown fields raise 422).

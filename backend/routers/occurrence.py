@@ -42,7 +42,7 @@ def create_occurrence(
     current_user: User = Depends(get_current_user),
 ):
     occ = occurrences_service.create_occurrence(db, payload, current_user)
-    return OccurrenceOut.model_validate(occ, from_attributes=True)
+    return occurrences_service.to_occurrence_out(db, occ, current_user)
 
 
 @router.get(
@@ -90,7 +90,7 @@ def get_occurrence_by_id(
     - Identificaciones (Identification) + identificadores (Identifier) + taxón.
     """
     occ = occurrences_service.get_occurrence_by_id(db, occurrence_id, current_user)
-    return OccurrenceOut.model_validate(occ, from_attributes=True)
+    return occurrences_service.to_occurrence_out(db, occ, current_user)
 
 
 @router.get(
@@ -134,7 +134,7 @@ def update_occurrence(
     current_user: User = Depends(get_current_user),
 ):
     occ = occurrences_service.update_occurrence(db, occurrence_id, payload, current_user)
-    return OccurrenceOut.model_validate(occ, from_attributes=True)
+    return occurrences_service.to_occurrence_out(db, occ, current_user)
 
 
 @router.post(
@@ -150,7 +150,7 @@ def add_identification(
     current_user: User = Depends(get_current_user),
 ):
     occ = occurrences_service.add_identification(db, occurrence_id, payload, current_user)
-    return OccurrenceOut.model_validate(occ, from_attributes=True)
+    return occurrences_service.to_occurrence_out(db, occ, current_user)
 
 
 @router.delete(
@@ -168,7 +168,7 @@ def delete_identification(
     occ = occurrences_service.delete_identification(
         db, occurrence_id, identification_id, current_user
     )
-    return OccurrenceOut.model_validate(occ, from_attributes=True)
+    return occurrences_service.to_occurrence_out(db, occ, current_user)
 
 
 @router.patch(
@@ -186,7 +186,7 @@ def set_current_identification(
     occ = occurrences_service.set_current_identification(
         db, occurrence_id, identification_id, current_user
     )
-    return OccurrenceOut.model_validate(occ, from_attributes=True)
+    return occurrences_service.to_occurrence_out(db, occ, current_user)
 
 
 @router.patch(
@@ -202,4 +202,4 @@ def set_dynamic_properties(
     current_user: User = Depends(get_current_user),
 ):
     occ = occurrences_service.set_dynamic_properties(db, occurrence_id, payload, current_user)
-    return OccurrenceOut.model_validate(occ, from_attributes=True)
+    return occurrences_service.to_occurrence_out(db, occ, current_user)

@@ -1,4 +1,4 @@
-export type CollectionRole = "viewer" | "editor" | "owner";
+import type { CollectionRole, EffectiveRole } from "@constants/enums";
 
 export interface InstitutionOut {
   institutionId: string;
@@ -18,7 +18,10 @@ export interface CollectionOut {
   description?: string | null;
   institution?: InstitutionOut | null;
   creator?: CreatorOut | null;
-  myRole?: CollectionRole | null;
+  myRole?: EffectiveRole | null;
+  /** Lo calcula el backend: no se deduce en el cliente. */
+  canEdit?: boolean; // crear/editar ocurrencias, importar CSV
+  canManage?: boolean; // gestionar accesos y la colección
   occurrencesCount?: number;
 }
 
@@ -33,7 +36,9 @@ export interface CollectionListItem {
   collectionId: string;
   name: string | null;
   occurrencesCount: number;
-  my_role?: CollectionRole | null;
+  my_role?: EffectiveRole | null;
+  canEdit: boolean;
+  canManage: boolean;
   institutionId?: string | null;
   institutionName?: string | null;
   creatorName?: string | null;
@@ -43,7 +48,7 @@ export interface CollectionUserAccessItem {
   full_name: string;
   email: string;
   institution: string | null;
-  role: "viewer" | "editor" | "owner";
+  role: CollectionRole;
 }
 
 export function toCollectionListItem(c: CollectionOut): CollectionListItem {
@@ -52,6 +57,8 @@ export function toCollectionListItem(c: CollectionOut): CollectionListItem {
     name: c.collectionName ?? null,
     occurrencesCount: c.occurrencesCount ?? 0,
     my_role: c.myRole ?? null,
+    canEdit: c.canEdit ?? false,
+    canManage: c.canManage ?? false,
     institutionId: c.institution?.institutionId ?? null,
     institutionName: c.institution?.institutionName ?? null,
     creatorName: c.creator?.fullName || c.creator?.username || null,

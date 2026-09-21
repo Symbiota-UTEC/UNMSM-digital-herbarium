@@ -12,6 +12,10 @@ export interface CollectionSummary {
   collectionId: string;
   collectionName: string | null;
   institutionId: string | null;
+  /** Permisos del usuario actual sobre esta colección (los calcula el backend). */
+  myRole?: string | null;
+  canEdit?: boolean;
+  canManage?: boolean;
 }
 
 export interface OccurrenceIdentifierOut {

@@ -2,6 +2,7 @@
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
+from backend.models.enums import RegistrationStatus
 from backend.models.models import Collection, Occurrence, RegistrationRequest, User
 from backend.schemas.admin import AdminMetricsOut
 
@@ -44,14 +45,14 @@ def get_admin_metrics(db: Session, current_user: User) -> AdminMetricsOut:
             select(
                 func.sum(
                     case(
-                        (RegistrationRequest.status == "pending", 1),
+                        (RegistrationRequest.status == RegistrationStatus.PENDING, 1),
                         else_=0,
                     )
                 ).label("app"),
                 func.sum(
                     case(
                         (
-                            (RegistrationRequest.status == "pending")
+                            (RegistrationRequest.status == RegistrationStatus.PENDING)
                             & (RegistrationRequest.institutionId == inst_id),
                             1,
                         ),
@@ -100,7 +101,7 @@ def get_admin_metrics(db: Session, current_user: User) -> AdminMetricsOut:
         requests_inst = (
             db.scalar(
                 select(func.count(RegistrationRequest.registrationRequestId)).where(
-                    RegistrationRequest.status == "pending",
+                    RegistrationRequest.status == RegistrationStatus.PENDING,
                     RegistrationRequest.institutionId == inst_id,
                 )
             )

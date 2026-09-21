@@ -6,10 +6,11 @@ import uuid
 from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, UniqueConstraint, Uuid
+from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.config.database import Base
+from backend.models.enums import CollectionRole, db_enum
 
 
 class Collection(Base):
@@ -74,9 +75,9 @@ class CollectionPermission(Base):
         nullable=False,
     )
 
-    role: Mapped[str] = mapped_column(
+    role: Mapped[CollectionRole] = mapped_column(
         "role",
-        Enum("viewer", "editor", "owner", name="collection_permission_enum"),
+        db_enum(CollectionRole, "collection_permission_enum"),
         nullable=False,
         index=True,
     )

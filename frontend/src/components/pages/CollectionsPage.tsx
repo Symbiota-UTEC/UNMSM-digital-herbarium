@@ -15,21 +15,20 @@ import { useAuth } from "@contexts/AuthContext";
 import { PAGE_SIZE } from "@constants/api";
 import { AutocompleteInstitution } from "../AutocompleteInstitution";
 import { Role } from "@constants/roles";
+import { CollectionAccess, EffectiveRole } from "@constants/enums";
 import { collectionsService } from "@services/collections.service";
 import { CollectionCreate, CollectionListItem, toCollectionListItem } from "@interfaces/collection";
-
-type AccessFilter = "owner" | "allowed";
 
 type CollectionsPageProps = {
   onNavigate: (page: string, params?: any) => void;
 };
 
-const ROLE_BADGE: Record<string, { label: string; className: string }> = {
-  superuser: { label: "Superuser", className: "bg-purple-100 text-purple-800" },
-  institution_admin: { label: "Admin institución", className: "bg-orange-100 text-orange-800" },
-  owner: { label: "Propietario", className: "bg-blue-100 text-blue-800" },
-  editor: { label: "Editor", className: "bg-green-50 text-green-700" },
-  viewer: { label: "Lector", className: "bg-gray-100 text-gray-800" },
+const ROLE_BADGE: Record<EffectiveRole, { label: string; className: string }> = {
+  [EffectiveRole.Superuser]: { label: "Superuser", className: "bg-purple-100 text-purple-800" },
+  [EffectiveRole.InstitutionAdmin]: { label: "Admin institución", className: "bg-orange-100 text-orange-800" },
+  [EffectiveRole.Owner]: { label: "Propietario", className: "bg-blue-100 text-blue-800" },
+  [EffectiveRole.Editor]: { label: "Editor", className: "bg-green-50 text-green-700" },
+  [EffectiveRole.Viewer]: { label: "Lector", className: "bg-gray-100 text-gray-800" },
 };
 
 export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
@@ -45,10 +44,12 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
 
   const collectionsPerPage = PAGE_SIZE.COLLECTIONS;
 
-  const [filterAccess, setFilterAccess] = useState<AccessFilter>(
-    () => (searchParams.get("access") as AccessFilter) ?? "owner",
+  const [filterAccess, setFilterAccess] = useState<CollectionAccess>(
+    () => (searchParams.get("access") as CollectionAccess) ?? CollectionAccess.Owner,
   );
-  const [access, setAccess] = useState<AccessFilter>(() => (searchParams.get("access") as AccessFilter) ?? "owner");
+  const [access, setAccess] = useState<CollectionAccess>(
+    () => (searchParams.get("access") as CollectionAccess) ?? CollectionAccess.Owner,
+  );
   const [items, setItems] = useState<CollectionListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(() => Math.max(1, Number(searchParams.get("page")) || 1));
@@ -61,7 +62,7 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
   const [form, setForm] = useState<CollectionCreate>({ collectionName: "", description: "" });
 
   const fetchCollections = useCallback(
-    async (currentAccess: AccessFilter, currentPage: number) => {
+    async (currentAccess: CollectionAccess, currentPage: number) => {
       try {
         setLoading(true);
         const data = await collectionsService.getCollections(apiFetch, currentAccess, currentPage, collectionsPerPage);
@@ -79,9 +80,9 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
     [apiFetch, collectionsPerPage],
   );
 
-  const syncURL = (currentAccess: AccessFilter, pageNum: number) => {
+  const syncURL = (currentAccess: CollectionAccess, pageNum: number) => {
     const p = new URLSearchParams();
-    if (currentAccess !== "owner") p.set("access", currentAccess);
+    if (currentAccess !== CollectionAccess.Owner) p.set("access", currentAccess);
     if (pageNum > 1) p.set("page", String(pageNum));
     setSearchParams(p, { replace: true });
   };
@@ -92,8 +93,8 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
     syncURL(filterAccess, 1);
   };
   const handleClearFilters = () => {
-    setFilterAccess("owner");
-    setAccess("owner");
+    setFilterAccess(CollectionAccess.Owner);
+    setAccess(CollectionAccess.Owner);
     setPage(1);
     setSearchParams({}, { replace: true });
   };
@@ -102,11 +103,6 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
   useEffect(() => {
     fetchCollections(access, page);
   }, [access, page, fetchCollections]);
-
-  const canManageCollection = (c: CollectionListItem) => {
-    const isInstAdminSameInst = user?.role === Role.InstitutionAdmin && user?.institutionId === c.institutionId;
-    return isSuper || isInstAdminSameInst || c.my_role === "owner";
-  };
 
   const resetForm = () => {
     setForm({ collectionName: "", description: "" });
@@ -168,14 +164,11 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
   const goToCollectionDetail = (c: CollectionListItem) => {
     onNavigate("collection-detail", {
       collectionId: c.collectionId,
-      collectionName: c.name,
-      collectionInstitutionId: c.institutionId,
-      isOwner: canManageCollection(c),
     });
   };
 
   const extraColumns: ColumnDef<CollectionListItem>[] =
-    access === "allowed"
+    access === CollectionAccess.Allowed
       ? [
           {
             key: "creator",
@@ -355,13 +348,13 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
       >
         <div className="flex items-center gap-3">
           <Label className="text-xs font-semibold text-foreground whitespace-nowrap">Tipo de Acceso</Label>
-          <Select value={filterAccess} onValueChange={(v: string) => setFilterAccess(v as AccessFilter)}>
+          <Select value={filterAccess} onValueChange={(v: string) => setFilterAccess(v as CollectionAccess)}>
             <SelectTrigger className="w-44">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="owner">Propietario</SelectItem>
-              <SelectItem value="allowed">Permitido</SelectItem>
+              <SelectItem value={CollectionAccess.Owner}>Propietario</SelectItem>
+              <SelectItem value={CollectionAccess.Allowed}>Permitido</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -374,7 +367,9 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
         data={items}
         keyExtractor={(row) => row.collectionId}
         loading={loading}
-        emptyMessage={access === "owner" ? "No tienes colecciones creadas." : "No hay colecciones para mostrar."}
+        emptyMessage={
+          access === CollectionAccess.Owner ? "No tienes colecciones creadas." : "No hay colecciones para mostrar."
+        }
         page={page}
         totalPages={totalPages}
         onPrevPage={() => {

@@ -17,6 +17,7 @@ from sqlalchemy.inspection import inspect
 from sqlalchemy.orm import Session
 
 from backend.config.database import SessionLocal
+from backend.models.enums import ImportJobStatus
 from backend.models.models import Taxon, TaxonFloraImportJob, User
 from backend.schemas.common.pages import Page
 from backend.schemas.upload import TaxonFloraImportJobOut
@@ -68,7 +69,7 @@ def _queue_taxon_flora_job_update(
     db: Session,
     job_id: UUID,
     *,
-    status_value: Optional[str] = None,
+    status_value: Optional[ImportJobStatus] = None,
     stage: Optional[str] = None,
     detail: Optional[str] = None,
     error_message: Optional[str] = None,
@@ -282,7 +283,7 @@ def process_taxon_flora_csv_background(
 
     def publish_progress(
         *,
-        status_value: Optional[str] = None,
+        status_value: Optional[ImportJobStatus] = None,
         stage: Optional[str] = None,
         detail: Optional[str] = None,
         error_message: Optional[str] = None,
@@ -348,7 +349,7 @@ def process_taxon_flora_csv_background(
 
     try:
         publish_progress(
-            status_value="running",
+            status_value=ImportJobStatus.RUNNING,
             stage="Preparando importación",
             detail="Validando encabezados y preparando el archivo.",
             bytes_processed=0,
@@ -390,7 +391,7 @@ def process_taxon_flora_csv_background(
             if not headers:
                 logger.error("CSV vacío (sin headers) en backbone flora: %s", filename)
                 publish_progress(
-                    status_value="failed",
+                    status_value=ImportJobStatus.FAILED,
                     stage="Falló la importación",
                     detail="El archivo no contiene encabezados válidos.",
                     error_message="CSV vacío (sin headers).",
@@ -405,7 +406,7 @@ def process_taxon_flora_csv_background(
             if "taxonID" not in header_index:
                 logger.error("El CSV de flora no tiene columna 'taxonID': %s", filename)
                 publish_progress(
-                    status_value="failed",
+                    status_value=ImportJobStatus.FAILED,
                     stage="Falló la importación",
                     detail="El archivo no contiene la columna taxonID.",
                     error_message="Falta la columna requerida 'taxonID'.",
@@ -422,7 +423,7 @@ def process_taxon_flora_csv_background(
                     ", ".join(missing_filter_cols),
                 )
                 publish_progress(
-                    status_value="failed",
+                    status_value=ImportJobStatus.FAILED,
                     stage="Falló la importación",
                     detail="El archivo no contiene todas las columnas requeridas.",
                     error_message=("Faltan columnas requeridas: " + ", ".join(missing_filter_cols)),
@@ -445,7 +446,7 @@ def process_taxon_flora_csv_background(
                     "Ninguna columna del CSV coincide con atributos del modelo Taxon (aparte de 'id' e 'isCurrent')."
                 )
                 publish_progress(
-                    status_value="failed",
+                    status_value=ImportJobStatus.FAILED,
                     stage="Falló la importación",
                     detail="Ninguna columna del CSV coincide con el modelo Taxon.",
                     error_message="No hay columnas compatibles para importar.",
@@ -541,7 +542,7 @@ def process_taxon_flora_csv_background(
                     stats.update(_merge_staged_taxa(db, mapped_fields))
 
                 publish_progress(
-                    status_value="completed",
+                    status_value=ImportJobStatus.COMPLETED,
                     stage="Completado",
                     detail="La importación terminó correctamente.",
                     bytes_processed=file_size_bytes,
@@ -555,7 +556,7 @@ def process_taxon_flora_csv_background(
             except Exception as e:
                 db.rollback()
                 publish_progress(
-                    status_value="failed",
+                    status_value=ImportJobStatus.FAILED,
                     stage="Falló la importación",
                     detail="La importación falló. El backbone anterior se mantuvo intacto.",
                     error_message=f"Fila {row_number}: {e}",
@@ -570,7 +571,7 @@ def process_taxon_flora_csv_background(
     except Exception as e:
         db.rollback()
         publish_progress(
-            status_value="failed",
+            status_value=ImportJobStatus.FAILED,
             stage="Falló la importación",
             detail="No se pudo iniciar el procesamiento del archivo.",
             error_message=str(e),
@@ -636,7 +637,7 @@ async def upload_taxon_flora_csv(
 
     active_job = db.scalar(
         select(TaxonFloraImportJob)
-        .where(TaxonFloraImportJob.status.in_(["queued", "running"]))
+        .where(TaxonFloraImportJob.status.in_([ImportJobStatus.QUEUED, ImportJobStatus.RUNNING]))
         .order_by(TaxonFloraImportJob.createdAt.desc())
         .limit(1)
     )
@@ -679,7 +680,7 @@ async def upload_taxon_flora_csv(
 
     job = TaxonFloraImportJob(
         filename=original_filename or filename,
-        status="queued",
+        status=ImportJobStatus.QUEUED,
         stage="En cola",
         detail="Archivo recibido. Esperando el procesamiento en segundo plano.",
         fileSizeBytes=os.path.getsize(temp_path),

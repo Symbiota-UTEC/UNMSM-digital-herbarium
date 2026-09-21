@@ -23,6 +23,7 @@ import { autocompleteService, type ScientificNameSuggestion } from "@services/au
 import { AutocompleteDropdown, useSuggestions } from "../ui/autocomplete";
 import { ImageManager, type PendingImage } from "../ImageManager";
 import { cameraService } from "@services/camera.service";
+import { collectionsService } from "@services/collections.service";
 import { taxonService } from "@services/taxon.service";
 import { occurrencesService } from "@services/occurrences.service";
 import { uploadService } from "@services/upload.service";
@@ -41,9 +42,8 @@ interface NewOccurrencePageProps {
   mode?: "create" | "edit";
   occurrenceId?: string;
   returnTo?: "occurrences" | "collection" | "taxon" | "map";
+  /** Crear: colección destino (viene en la URL). Editar: solo para volver a la colección de origen. */
   collectionId?: string;
-  collectionName?: string;
-  isOwner?: boolean;
   taxonId?: string;
 }
 
@@ -128,11 +128,12 @@ export function NewOccurrencePage({
   occurrenceId,
   returnTo = "occurrences",
   collectionId,
-  collectionName: collectionNameProp,
-  isOwner,
   taxonId,
 }: NewOccurrencePageProps) {
   const { apiFetch } = useAuth();
+  // Colección a la que volver: la que trae la navegación o, si se entró por URL directa, la de la ocurrencia.
+  const [loadedCollectionId, setLoadedCollectionId] = useState<string | undefined>();
+  const returnCollectionId = collectionId ?? loadedCollectionId;
   const [activeTab, setActiveTab] = useState<TabKey>("occurrence");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [inlineSaving, setInlineSaving] = useState(false);
@@ -260,6 +261,12 @@ export function NewOccurrencePage({
     occurrencesService
       .getById(apiFetch, occurrenceId)
       .then((occ) => {
+        setLoadedCollectionId(occ.collection?.collectionId);
+        if (occ.collection && !occ.collection.canEdit) {
+          toast.error("No tienes permiso para editar esta ocurrencia");
+          onNavigate("occurrence-detail", { occurrenceId, collectionId: occ.collection.collectionId });
+          return;
+        }
         setCatalogNumber(occ.catalogNumber ?? "");
         setRecordNumber(occ.recordNumber ?? "");
         setRecordedBy(occ.recordedBy ?? "");
@@ -309,9 +316,28 @@ export function NewOccurrencePage({
       })
       .catch(() => {
         toast.error("No se pudo cargar la ocurrencia");
+        onNavigate("occurrences");
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, occurrenceId]);
+
+  /* ── Create mode: la colección destino debe existir y permitir editar ── */
+  useEffect(() => {
+    if (mode !== "create" || !collectionId) return;
+    collectionsService
+      .getById(apiFetch, collectionId)
+      .then((c) => {
+        if (!c.canEdit) {
+          toast.error("No tienes permiso para agregar ocurrencias en esta colección");
+          onNavigate("collection-detail", { collectionId });
+        }
+      })
+      .catch(() => {
+        toast.error("No se pudo verificar la colección");
+        onNavigate("collections");
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, collectionId]);
 
   /* ── Close autocomplete on outside click ── */
   useEffect(() => {
@@ -463,12 +489,8 @@ export function NewOccurrencePage({
   const handleCancel = () => {
     if (returnTo === "taxon" && taxonId) {
       onNavigate("taxon-detail", { taxonId });
-    } else if (returnTo === "collection" && collectionId) {
-      onNavigate("collection-detail", {
-        collectionId,
-        collectionName: collectionNameProp || "",
-        isOwner: isOwner ?? false,
-      });
+    } else if (returnTo === "collection" && returnCollectionId) {
+      onNavigate("collection-detail", { collectionId: returnCollectionId });
     } else if (returnTo === "map") {
       onNavigate("map", { restoreSearch: true });
     } else {

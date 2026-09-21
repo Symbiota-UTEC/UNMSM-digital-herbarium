@@ -30,9 +30,24 @@ function decodeJwtPayload(token: string): any | null {
   }
 }
 
+/**
+ * Sesión guardada en el navegador. Se lee al crear el estado (no en un efecto): así las páginas,
+ * que piden datos en su primer efecto, ya encuentran el token y los enlaces directos funcionan.
+ */
+function readStoredSession(): { token: string; user: User } | null {
+  try {
+    const token = localStorage.getItem("token");
+    const user = localStorage.getItem("user");
+    return token && user ? { token, user: JSON.parse(user) as User } : null;
+  } catch {
+    return null;
+  }
+}
+
 export const AuthProvider: FC<{ children: ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
+  const [stored] = useState(readStoredSession);
+  const [user, setUser] = useState<User | null>(stored?.user ?? null);
+  const [token, setToken] = useState<string | null>(stored?.token ?? null);
 
   // Timer de auto-logout. Ref, no estado: así las funciones de abajo mantienen identidad estable.
   const logoutTimer = useRef<number | null>(null);
@@ -72,28 +87,9 @@ export const AuthProvider: FC<{ children: ReactNode }> = ({ children }) => {
     [clearLogoutTimer, logout],
   );
 
-  // recuperar sesión
+  // Sesión restaurada: programar el cierre automático al vencer el token (o cerrar si ya venció).
   useEffect(() => {
-    const savedToken = localStorage.getItem("token");
-    const savedUser = localStorage.getItem("user");
-
-    if (savedToken) {
-      setToken(savedToken);
-      // si el token está expirado, salir al toque
-      const payload = decodeJwtPayload(savedToken);
-      if (payload?.exp && payload.exp * 1000 <= Date.now()) {
-        logout();
-      } else {
-        scheduleAutoLogout(savedToken);
-      }
-    }
-    if (savedUser) {
-      try {
-        setUser(JSON.parse(savedUser));
-      } catch (e) {
-        console.error("No se pudo parsear el user del storage", e);
-      }
-    }
+    if (stored) scheduleAutoLogout(stored.token);
     return () => clearLogoutTimer();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

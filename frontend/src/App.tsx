@@ -22,11 +22,10 @@ import { Toaster } from "./components/ui/sonner";
 import { TaxonDetailPage } from "./components/pages/TaxonDetailPage";
 import { UploadsPage } from "./components/pages/UploadsPage";
 
+// Solo contexto de navegación (ids y a dónde volver). Los datos y permisos de una colección u
+// ocurrencia se piden a la API con el id de la URL, para que un enlace directo funcione igual.
 interface NavigationParams {
   collectionId?: string;
-  collectionName?: string;
-  collectionInstitutionId?: string;
-  isOwner?: boolean;
   occurrenceId?: string;
   returnTo?: "occurrences" | "collection" | "taxon" | "map";
   // Origen del detalle de ocurrencia, para conservarlo si se pasa por el detalle de un taxón.
@@ -50,7 +49,7 @@ const routeConfigs: RouteConfig[] = [
   { path: "/collections/:collectionId", pageId: "collection-detail" },
   { path: "/collections/:collectionId/csv-import", pageId: "csv-import" },
   { path: "/occurrences", pageId: "occurrences" },
-  { path: "/occurrences/new", pageId: "new-occurrence" },
+  { path: "/collections/:collectionId/occurrences/new", pageId: "new-occurrence" },
   { path: "/occurrences/:occurrenceId/edit", pageId: "edit-occurrence" },
   { path: "/occurrences/:occurrenceId", pageId: "occurrence-detail" },
   { path: "/uploads", pageId: "uploads" },
@@ -91,39 +90,20 @@ const buildRoute = (page: string, params: NavigationParams = {}) => {
     case "collection-detail": {
       const collectionId = params.collectionId?.toString();
       if (!collectionId) return null;
-      return {
-        path: `/collections/${collectionId}`,
-        state: {
-          collectionId,
-          collectionName: params.collectionName,
-          collectionInstitutionId: params.collectionInstitutionId,
-          isOwner: params.isOwner,
-        },
-      };
+      return { path: `/collections/${collectionId}` };
     }
     case "csv-import": {
       const collectionId = params.collectionId?.toString();
       if (!collectionId) return null;
-      return {
-        path: `/collections/${collectionId}/csv-import`,
-        state: {
-          collectionId,
-          collectionName: params.collectionName,
-          isOwner: params.isOwner,
-        },
-      };
+      return { path: `/collections/${collectionId}/csv-import` };
     }
     case "occurrences":
       return { path: "/occurrences" };
-    case "new-occurrence":
-      return {
-        path: "/occurrences/new",
-        state: {
-          collectionId: params.collectionId?.toString(),
-          collectionName: params.collectionName,
-          isOwner: params.isOwner,
-        },
-      };
+    case "new-occurrence": {
+      const collectionId = params.collectionId?.toString();
+      if (!collectionId) return null;
+      return { path: `/collections/${collectionId}/occurrences/new`, state: { returnTo: params.returnTo } };
+    }
     case "edit-occurrence":
       if (!params.occurrenceId) return null;
       return {
@@ -131,8 +111,7 @@ const buildRoute = (page: string, params: NavigationParams = {}) => {
         state: {
           returnTo: params.returnTo ?? (params.collectionId ? "collection" : "occurrences"),
           collectionId: params.collectionId?.toString(),
-          collectionName: params.collectionName,
-          isOwner: params.isOwner,
+          taxonId: params.taxonId?.toString(),
         },
       };
     case "occurrence-detail":
@@ -142,8 +121,6 @@ const buildRoute = (page: string, params: NavigationParams = {}) => {
         state: {
           returnTo: params.returnTo ?? (params.collectionId ? "collection" : "occurrences"),
           collectionId: params.collectionId?.toString(),
-          collectionName: params.collectionName,
-          isOwner: params.isOwner,
           taxonId: params.taxonId?.toString(),
         },
       };
@@ -162,8 +139,6 @@ const buildRoute = (page: string, params: NavigationParams = {}) => {
           originReturnTo: params.originReturnTo,
           returnOccurrenceId: params.returnOccurrenceId?.toString(),
           collectionId: params.collectionId?.toString(),
-          collectionName: params.collectionName,
-          isOwner: params.isOwner,
         },
       };
     }
@@ -186,17 +161,8 @@ const useRouteState = () => (useLocation().state as NavigationParams) || {};
 
 const CollectionDetailRoute = ({ onNavigate }: { onNavigate: NavigateFn }) => {
   const { collectionId = "" } = useParams();
-  const state = useRouteState();
 
-  return (
-    <CollectionDetailPage
-      collectionId={collectionId}
-      collectionName={state.collectionName || ""}
-      collectionInstitutionId={state.collectionInstitutionId}
-      isOwner={Boolean(state.isOwner)}
-      onNavigate={onNavigate}
-    />
-  );
+  return <CollectionDetailPage collectionId={collectionId} onNavigate={onNavigate} />;
 };
 
 const OccurrenceDetailRoute = ({ onNavigate }: { onNavigate: NavigateFn }) => {
@@ -210,17 +176,16 @@ const OccurrenceDetailRoute = ({ onNavigate }: { onNavigate: NavigateFn }) => {
       onNavigate={onNavigate}
       returnTo={state.returnTo || (collectionId ? "collection" : "occurrences")}
       collectionId={collectionId}
-      collectionName={state.collectionName}
-      isOwner={state.isOwner}
       taxonId={state.taxonId?.toString()}
     />
   );
 };
 
 const NewOccurrenceRoute = ({ mode, onNavigate }: { mode: "create" | "edit"; onNavigate: NavigateFn }) => {
-  const { occurrenceId } = useParams();
+  const { occurrenceId, collectionId: collectionIdParam } = useParams();
   const state = useRouteState();
-  const collectionId = state.collectionId ? state.collectionId.toString() : undefined;
+  // Crear: la colección destino va en la URL. Editar: el estado solo dice a dónde volver.
+  const collectionId = collectionIdParam ?? (state.collectionId ? state.collectionId.toString() : undefined);
 
   return (
     <NewOccurrencePage
@@ -229,8 +194,6 @@ const NewOccurrenceRoute = ({ mode, onNavigate }: { mode: "create" | "edit"; onN
       occurrenceId={occurrenceId}
       returnTo={state.returnTo || (collectionId ? "collection" : "occurrences")}
       collectionId={collectionId}
-      collectionName={state.collectionName}
-      isOwner={state.isOwner}
       taxonId={state.taxonId?.toString()}
     />
   );
@@ -238,11 +201,8 @@ const NewOccurrenceRoute = ({ mode, onNavigate }: { mode: "create" | "edit"; onN
 
 const CSVImportRoute = ({ onNavigate }: { onNavigate: NavigateFn }) => {
   const { collectionId = "" } = useParams();
-  const state = useRouteState();
 
-  return (
-    <CSVImportPage collectionId={collectionId} collectionName={state.collectionName || ""} onNavigate={onNavigate} />
-  );
+  return <CSVImportPage collectionId={collectionId} onNavigate={onNavigate} />;
 };
 
 const TaxonDetailRoute = ({ onNavigate }: { onNavigate: NavigateFn }) => {
@@ -256,8 +216,6 @@ const TaxonDetailRoute = ({ onNavigate }: { onNavigate: NavigateFn }) => {
       originReturnTo={state.originReturnTo?.toString()}
       returnOccurrenceId={state.returnOccurrenceId?.toString()}
       collectionId={state.collectionId?.toString()}
-      collectionName={state.collectionName?.toString()}
-      isOwner={state.isOwner as boolean | undefined}
       onNavigate={onNavigate}
     />
   );
@@ -341,7 +299,10 @@ function AppContent() {
             element={<CSVImportRoute onNavigate={handleNavigation} />}
           />
           <Route path="/occurrences" element={<OccurrencesPage onNavigate={handleNavigation} />} />
-          <Route path="/occurrences/new" element={<NewOccurrenceRoute mode="create" onNavigate={handleNavigation} />} />
+          <Route
+            path="/collections/:collectionId/occurrences/new"
+            element={<NewOccurrenceRoute mode="create" onNavigate={handleNavigation} />}
+          />
           <Route
             path="/occurrences/:occurrenceId/edit"
             element={<NewOccurrenceRoute mode="edit" onNavigate={handleNavigation} />}

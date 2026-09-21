@@ -1,6 +1,6 @@
 # backend/services/auth.py
 from datetime import datetime, timedelta
-from typing import List, Literal, Optional
+from typing import List, Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from backend.auth.jwt import create_user_token
 from backend.config.auth import access_token_expire_minutes
+from backend.models.enums import RegistrationStatus
 from backend.models.models import Institution, RegistrationRequest, User
 from backend.schemas.auth import RegistrationRequestItem, UpdateRequestStatusBody
 from backend.schemas.common.pages import Page
@@ -21,7 +22,7 @@ def list_registration_requests(
     db: Session,
     limit: int,
     offset: int,
-    status_filter: Optional[Literal["pending", "approved", "rejected"]],
+    status_filter: Optional[RegistrationStatus],
     institution_id: Optional[UUID],
     full_name_prefix: Optional[str],
     current_user: User,
@@ -144,7 +145,7 @@ def register_user(
         select(RegistrationRequest).where(
             and_(
                 RegistrationRequest.email == email,
-                RegistrationRequest.status == "pending",
+                RegistrationRequest.status == RegistrationStatus.PENDING,
             )
         )
     ).scalar_one_or_none()
@@ -159,7 +160,7 @@ def register_user(
         select(RegistrationRequest).where(
             and_(
                 RegistrationRequest.username == username,
-                RegistrationRequest.status == "pending",
+                RegistrationRequest.status == RegistrationStatus.PENDING,
             )
         )
     ).scalar_one_or_none()
@@ -183,7 +184,7 @@ def register_user(
         orcid=orcid,
         phone=phone,
         address=address,
-        status="pending",
+        status=RegistrationStatus.PENDING,
     )
 
     db.add(req)
@@ -217,7 +218,7 @@ def update_registration_request_status(
         raise HTTPException(status_code=404, detail="Solicitud de registro no encontrada")
 
     # 2) Solo desde 'pending'
-    if registration_request.status != "pending":
+    if registration_request.status != RegistrationStatus.PENDING:
         raise HTTPException(
             status_code=400,
             detail="La solicitud no está en estado 'pending'; no se puede actualizar",
@@ -238,8 +239,8 @@ def update_registration_request_status(
         )
 
     # 4) Rechazo (no crea usuario)
-    if payload.newStatus == "rejected":
-        registration_request.status = "rejected"
+    if payload.newStatus == RegistrationStatus.REJECTED:
+        registration_request.status = RegistrationStatus.REJECTED
         registration_request.reviewedByUserId = current_user.userId
         registration_request.reviewedAt = datetime.utcnow()
         db.add(registration_request)
@@ -304,7 +305,7 @@ def update_registration_request_status(
         )
 
         # c) Marcar solicitud como aprobada
-        registration_request.status = "approved"
+        registration_request.status = RegistrationStatus.APPROVED
         registration_request.reviewedByUserId = current_user.userId
         registration_request.reviewedAt = datetime.utcnow()
         registration_request.resultingUserId = user.userId

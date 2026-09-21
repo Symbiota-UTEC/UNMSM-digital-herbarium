@@ -4,6 +4,7 @@ from uuid import UUID
 
 from pydantic import EmailStr
 
+from backend.models.enums import CollectionRole, EffectiveRole
 from backend.schemas.common.base import ORMBaseModel, StrictBaseModel
 
 
@@ -25,7 +26,10 @@ class CollectionOut(ORMBaseModel):
     description: Optional[str] = None
     institution: Optional[InstitutionOut] = None
     creator: UserSummaryOut
-    myRole: Optional[str] = None
+    myRole: Optional[EffectiveRole] = None
+    # Qué puede hacer el usuario actual (calculado en el servidor; el cliente no debe deducirlo)
+    canEdit: bool = False  # crear/editar ocurrencias, importar CSV
+    canManage: bool = False  # gestionar accesos y la colección
     occurrencesCount: int = 0
 
 
@@ -40,12 +44,12 @@ class CollectionAccessUser(ORMBaseModel):
     fullName: str
     email: EmailStr
     institution: Optional[str] = None
-    role: Literal["viewer", "editor", "owner"]
+    role: CollectionRole
 
 
 class AddUserToCollectionBody(StrictBaseModel):
     email: EmailStr
-    role: Literal["viewer", "editor"] = "viewer"
+    role: Literal[CollectionRole.VIEWER, CollectionRole.EDITOR] = CollectionRole.VIEWER
 
 
 class CollectionPermissionOut(ORMBaseModel):

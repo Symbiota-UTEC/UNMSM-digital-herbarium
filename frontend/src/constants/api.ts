@@ -14,6 +14,7 @@ export const API = {
     },
     COLLECTIONS: {
       BASE: "/collections",
+      BY_ID: (collectionId: string) => `/collections/${collectionId}`,
       ACCESS_USERS: (collectionId: string) => `/collections/${collectionId}/access-users`,
       OCCURRENCES_BRIEF: (collectionId: string) => `/collections/${collectionId}/occurrences/brief`,
       ADD_USER: (collectionId: string) => `/collections/${collectionId}/permissions/add-user`,

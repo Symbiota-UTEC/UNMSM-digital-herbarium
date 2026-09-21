@@ -1,5 +1,5 @@
 # backend/services/collections.py
-from typing import List, Literal, Optional
+from typing import List, Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -7,6 +7,7 @@ from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from backend.models.enums import CollectionAccess, CollectionRole, EffectiveRole
 from backend.models.models import (
     Collection,
     CollectionPermission,
@@ -26,6 +27,9 @@ from backend.schemas.collections import (
 from backend.schemas.common.pages import Page
 from backend.schemas.occurrence import OccurrenceBriefItem
 from backend.services.collection_permissions import (
+    collection_capabilities,
+    get_user_role_in_collection,
+    my_role_label,
     user_can_manage_collection_permissions,
     user_can_view_collection,
 )
@@ -44,6 +48,44 @@ def _bounds(limit: int, offset: int):
     limit = max(1, min(limit or 20, 200))  # límite sensato (1..200)
     offset = max(0, offset or 0)
     return limit, offset
+
+
+def _collection_out(
+    current_user: User, col: Collection, role: Optional[CollectionRole], occ_count: Optional[int]
+) -> CollectionOut:
+    caps = collection_capabilities(current_user, col, role)
+    return CollectionOut(
+        collectionId=col.collectionId,
+        collectionName=col.collectionName,
+        description=col.description,
+        institution=col.institution,
+        creator=col.creator,
+        myRole=my_role_label(current_user, col, role),
+        canEdit=caps.can_edit,
+        canManage=caps.can_manage,
+        occurrencesCount=occ_count or 0,
+    )
+
+
+def get_collection(db: Session, collection_id: UUID, current_user: User) -> CollectionOut:
+    col = db.scalar(
+        select(Collection)
+        .options(selectinload(Collection.institution), selectinload(Collection.creator))
+        .where(Collection.collectionId == collection_id)
+    )
+    if not col:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
+
+    role = get_user_role_in_collection(db, col.collectionId, current_user.userId)
+    if not collection_capabilities(current_user, col, role).can_view:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+    occ_count = db.scalar(
+        select(func.count(Occurrence.occurrenceId)).where(
+            Occurrence.collectionId == col.collectionId
+        )
+    )
+    return _collection_out(current_user, col, role, occ_count)
 
 
 def _build_collections_page(
@@ -96,44 +138,25 @@ def _build_collections_page(
     rows = db.execute(q).all()
     items: List[CollectionOut] = []
     for col, role, occ_count in rows:
-        if current_user.isSuperuser:
-            my_role = "superuser"
-        elif role:
-            my_role = role
-        elif current_user.isInstitutionAdmin and current_user.institutionId == col.institutionId:
-            my_role = "institution_admin"
-        else:
-            my_role = None
-
-        items.append(
-            CollectionOut(
-                collectionId=col.collectionId,
-                collectionName=col.collectionName,
-                description=col.description,
-                institution=col.institution,
-                creator=col.creator,
-                myRole=my_role,
-                occurrencesCount=occ_count or 0,
-            )
-        )
+        items.append(_collection_out(current_user, col, role, occ_count))
 
     return Page[CollectionOut].of(items, total=total, limit=limit, offset=offset)
 
 
 def get_collections(
     db: Session,
-    access: Literal["owner", "allowed"],
+    access: CollectionAccess,
     limit: int,
     offset: int,
     current_user: User,
 ) -> Page[CollectionOut]:
     limit, offset = _bounds(limit, offset)
 
-    if access == "owner":
+    if access == CollectionAccess.OWNER:
         ids_q = select(Collection.collectionId).where(
             Collection.creatorUserId == current_user.userId
         )
-    else:  # "allowed"
+    else:  # CollectionAccess.ALLOWED
         if current_user.isSuperuser:
             ids_q = select(Collection.collectionId)
         elif current_user.isInstitutionAdmin and current_user.institutionId is not None:
@@ -201,7 +224,7 @@ def create_collection(db: Session, payload: CollectionCreate, current_user: User
         CollectionPermission(
             collectionId=col.collectionId,
             userId=current_user.userId,
-            role="owner",
+            role=CollectionRole.OWNER,
             grantedByUserId=current_user.userId,
         )
     )
@@ -218,23 +241,17 @@ def create_collection(db: Session, payload: CollectionCreate, current_user: User
         )
     ).scalar_one()
 
-    # Recién creada: sin ocurrencias
-    return CollectionOut(
-        collectionId=col.collectionId,
-        collectionName=col.collectionName,
-        description=col.description,
-        institution=col.institution,
-        creator=col.creator,
-        myRole="owner",
-        occurrencesCount=0,
-    )
+    # Recién creada: sin ocurrencias, y quien la crea es 'owner'
+    out = _collection_out(current_user, col, CollectionRole.OWNER, 0)
+    out.myRole = EffectiveRole.OWNER
+    return out
 
 
 def list_collection_access_users(
     db: Session,
     collection_id: UUID,
     q: Optional[str],
-    role: Optional[Literal["viewer", "editor", "owner"]],
+    role: Optional[CollectionRole],
     limit: int,
     offset: int,
     current_user: User,
@@ -256,8 +273,8 @@ def list_collection_access_users(
     name_expr = func.coalesce(User.fullName, User.username)
 
     role_order = case(
-        (CollectionPermission.role == "owner", 0),
-        (CollectionPermission.role == "editor", 1),
+        (CollectionPermission.role == CollectionRole.OWNER, 0),
+        (CollectionPermission.role == CollectionRole.EDITOR, 1),
         else_=2,
     )
 

@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Role } from "@constants/roles";
+import { RegistrationStatus } from "@constants/enums";
 import { useAuth } from "@contexts/AuthContext";
 import { PAGE_SIZE } from "@constants/api";
 import { User, ApiUserLookupResponse, mapApiLookupToResult } from "@interfaces/auth";
@@ -170,7 +171,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
         const data = await authService.getRegistrationRequests(apiFetch, {
           limit: requestsPerPage,
           offset: (page - 1) * requestsPerPage,
-          statusFilter: "pending",
+          statusFilter: RegistrationStatus.Pending,
           institutionId: scopedInstitutionId,
           fullNamePrefix: requestNameFilter,
         });
@@ -342,7 +343,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     setRequestsPage(targetPage);
 
     try {
-      await authService.updateRegistrationRequest(apiFetch, requestId, "approved");
+      await authService.updateRegistrationRequest(apiFetch, requestId, RegistrationStatus.Approved);
 
       fetchRequests(targetPage);
       toast.success("Solicitud aprobada correctamente");
@@ -377,7 +378,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     setRequestsPage(targetPage);
 
     try {
-      await authService.updateRegistrationRequest(apiFetch, requestId, "rejected");
+      await authService.updateRegistrationRequest(apiFetch, requestId, RegistrationStatus.Rejected);
 
       fetchRequests(targetPage);
       toast.success("Solicitud rechazada correctamente");

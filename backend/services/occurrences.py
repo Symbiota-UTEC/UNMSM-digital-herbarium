@@ -13,6 +13,7 @@ from sqlalchemy import and_, case, cast, delete, func, or_, select
 from sqlalchemy.exc import DataError, InternalError
 from sqlalchemy.orm import Session, selectinload
 
+from backend.models.enums import CollectionRole
 from backend.models.models import (
     Collection,
     CollectionPermission,
@@ -32,9 +33,13 @@ from backend.schemas.occurrence import (
     OccurrenceFilters,
     OccurrenceMapOut,
     OccurrenceMapPointOut,
+    OccurrenceOut,
     OccurrenceUpdateIn,
 )
 from backend.services.collection_permissions import (
+    collection_capabilities,
+    get_user_role_in_collection,
+    my_role_label,
     user_can_edit_collection,
     user_can_view_collection,
 )
@@ -269,6 +274,18 @@ def create_occurrence(db: Session, payload: OccurrenceCreateIn, current_user: Us
     return _load_occurrence_full(db, occ.occurrenceId)
 
 
+def to_occurrence_out(db: Session, occ: Occurrence, current_user: User) -> OccurrenceOut:
+    """OccurrenceOut con lo que el usuario actual puede hacer en la colección de la ocurrencia."""
+    out = OccurrenceOut.model_validate(occ, from_attributes=True)
+    if out.collection is not None and occ.collection is not None:
+        role = get_user_role_in_collection(db, occ.collection.collectionId, current_user.userId)
+        caps = collection_capabilities(current_user, occ.collection, role)
+        out.collection.myRole = my_role_label(current_user, occ.collection, role)
+        out.collection.canEdit = caps.can_edit
+        out.collection.canManage = caps.can_manage
+    return out
+
+
 def get_occurrence_by_id(db: Session, occurrence_id: UUID, current_user: User) -> Occurrence:
     occ = _load_occurrence_full(db, occurrence_id)
 
@@ -316,7 +333,7 @@ def _visible_occurrences_select(
     if not current_user.isSuperuser:
         perm_subq = select(CollectionPermission.collectionId).where(
             CollectionPermission.userId == current_user.userId,
-            CollectionPermission.role.in_(["viewer", "editor", "owner"]),
+            CollectionPermission.role.in_(list(CollectionRole)),
         )
 
         conds = [Occurrence.collectionId.in_(perm_subq)]

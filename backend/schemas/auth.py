@@ -5,6 +5,7 @@ from uuid import UUID
 
 from pydantic import EmailStr
 
+from backend.models.enums import RegistrationStatus
 from backend.schemas.common.base import ORMBaseModel, StrictBaseModel
 
 
@@ -23,7 +24,7 @@ class RegistrationRequestItem(ORMBaseModel):
     phone: Optional[str] = None
     address: Optional[str] = None
 
-    status: Literal["pending", "approved", "rejected"]
+    status: RegistrationStatus
     createdAt: datetime
     reviewedAt: Optional[datetime] = None
     reviewedByUserId: Optional[UUID] = None
@@ -32,4 +33,4 @@ class RegistrationRequestItem(ORMBaseModel):
 
 class UpdateRequestStatusBody(StrictBaseModel):
     registrationRequestId: UUID
-    newStatus: Literal["approved", "rejected"]
+    newStatus: Literal[RegistrationStatus.APPROVED, RegistrationStatus.REJECTED]

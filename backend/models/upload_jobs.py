@@ -9,7 +9,6 @@ from typing import Optional
 from sqlalchemy import (
     BigInteger,
     DateTime,
-    Enum,
     Float,
     ForeignKey,
     Index,
@@ -21,6 +20,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.config.database import Base
+from backend.models.enums import ImportJobStatus, db_enum
 
 
 class TaxonFloraImportJob(Base):
@@ -30,17 +30,11 @@ class TaxonFloraImportJob(Base):
         "job_id", Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     filename: Mapped[str] = mapped_column("filename", String(255), nullable=False)
-    status: Mapped[str] = mapped_column(
+    status: Mapped[ImportJobStatus] = mapped_column(
         "status",
-        Enum(
-            "queued",
-            "running",
-            "completed",
-            "failed",
-            name="taxon_flora_import_job_status_enum",
-        ),
+        db_enum(ImportJobStatus, "taxon_flora_import_job_status_enum"),
         nullable=False,
-        default="queued",
+        default=ImportJobStatus.QUEUED,
         index=True,
     )
     stage: Mapped[Optional[str]] = mapped_column("stage", String(255), nullable=True)

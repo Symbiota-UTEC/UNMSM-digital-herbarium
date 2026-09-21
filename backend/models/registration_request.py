@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Optional
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, UniqueConstraint, Uuid
+from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.config.database import Base
+from backend.models.enums import RegistrationStatus, db_enum
 
 
 class RegistrationRequest(Base):
@@ -38,10 +39,10 @@ class RegistrationRequest(Base):
     phone: Mapped[Optional[str]] = mapped_column("phone", String(50))
     address: Mapped[Optional[str]] = mapped_column("address", Text())
 
-    status: Mapped[Literal["pending", "approved", "rejected"]] = mapped_column(
+    status: Mapped[RegistrationStatus] = mapped_column(
         "status",
-        Enum("pending", "approved", "rejected", name="registration_status_enum"),
-        default="pending",
+        db_enum(RegistrationStatus, "registration_status_enum"),
+        default=RegistrationStatus.PENDING,
         index=True,
     )
     createdAt: Mapped[datetime] = mapped_column(

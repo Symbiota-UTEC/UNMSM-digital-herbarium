@@ -11,33 +11,34 @@ import { toast } from "sonner";
 import { useAuth } from "@contexts/AuthContext";
 import { PAGE_SIZE } from "@constants/api";
 import { Role } from "@constants/roles";
-import { uploadService, type TaxonFloraImportJob, type TaxonFloraImportJobStatus } from "@services/upload.service";
+import { ImportJobStatus } from "@constants/enums";
+import { uploadService, type TaxonFloraImportJob } from "@services/upload.service";
 import { DataTable, type ColumnDef } from "../ui/data-table";
 
 const POLL_MS = 4000;
 
-function formatStatus(status: TaxonFloraImportJobStatus): string {
+function formatStatus(status: ImportJobStatus): string {
   switch (status) {
-    case "queued":
+    case ImportJobStatus.Queued:
       return "En cola";
-    case "running":
+    case ImportJobStatus.Running:
       return "Procesando";
-    case "completed":
+    case ImportJobStatus.Completed:
       return "Completado";
-    case "failed":
+    case ImportJobStatus.Failed:
       return "Falló";
     default:
       return status;
   }
 }
 
-function badgeVariant(status: TaxonFloraImportJobStatus): "default" | "secondary" | "destructive" | "outline" {
+function badgeVariant(status: ImportJobStatus): "default" | "secondary" | "destructive" | "outline" {
   switch (status) {
-    case "completed":
+    case ImportJobStatus.Completed:
       return "default";
-    case "failed":
+    case ImportJobStatus.Failed:
       return "destructive";
-    case "running":
+    case ImportJobStatus.Running:
       return "secondary";
     default:
       return "outline";
@@ -109,7 +110,8 @@ export function UploadsPage() {
       return;
     }
     const preferred = preferredJobId ? (jobs.find((j) => j.jobId === preferredJobId) ?? null) : null;
-    const running = jobs.find((j) => j.status === "queued" || j.status === "running") ?? null;
+    const running =
+      jobs.find((j) => j.status === ImportJobStatus.Queued || j.status === ImportJobStatus.Running) ?? null;
     setActiveJob(preferred ?? running ?? jobs[0]);
   };
 
@@ -199,7 +201,7 @@ export function UploadsPage() {
   useEffect(() => {
     if (!isSuperuser) return;
     if (!activeJob?.jobId) return;
-    if (!(activeJob.status === "queued" || activeJob.status === "running")) return;
+    if (!(activeJob.status === ImportJobStatus.Queued || activeJob.status === ImportJobStatus.Running)) return;
 
     const intervalId = window.setInterval(() => {
       fetchJob(activeJob.jobId, false);
@@ -266,7 +268,7 @@ export function UploadsPage() {
       header: "Estado",
       cell: (job) => (
         <div className="flex items-center justify-end gap-2">
-          {(job.status === "queued" || job.status === "running") && (
+          {(job.status === ImportJobStatus.Queued || job.status === ImportJobStatus.Running) && (
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
           )}
           <Badge variant={badgeVariant(job.status)}>{formatStatus(job.status)}</Badge>

@@ -38,16 +38,15 @@ import { collectionsService } from "@services/collections.service";
 import { usersService } from "@services/users.service";
 import { ApiError } from "@services/api.error";
 import { Role } from "@constants/roles";
+import { CollectionRole } from "@constants/enums";
 import type { OccurrenceBriefItem } from "@interfaces/occurrence";
 import type { PaginatedResponse } from "@interfaces/utils/pagination";
-import type { CollectionUserAccessItem } from "@interfaces/collection";
+import type { CollectionOut, CollectionUserAccessItem } from "@interfaces/collection";
+import { SkeletonBar } from "../ui/loading-overlay";
 import { ApiUserLookupResponse, mapApiLookupToResult, VISIBILITY } from "@interfaces/auth";
 
 interface CollectionDetailPageProps {
   collectionId: string;
-  collectionName: string;
-  collectionInstitutionId?: string;
-  isOwner: boolean;
   onNavigate: (page: string, params?: Record<string, any>) => void;
 }
 
@@ -59,8 +58,37 @@ function formatBriefDate(raw: string | null): string {
   return d.toLocaleDateString("es-ES");
 }
 
-export function CollectionDetailPage({ collectionId, collectionName, isOwner, onNavigate }: CollectionDetailPageProps) {
+export function CollectionDetailPage({ collectionId, onNavigate }: CollectionDetailPageProps) {
   const { token, apiFetch } = useAuth();
+
+  // ================== Estado: colección y permisos (los da el backend) ==================
+  const [collection, setCollection] = useState<CollectionOut | null>(null);
+  const [collectionError, setCollectionError] = useState<"not-found" | "forbidden" | "error" | null>(null);
+  const collectionName = collection?.collectionName ?? "";
+  const canEdit = collection?.canEdit ?? false; // crear/editar ocurrencias, importar CSV
+  const canManage = collection?.canManage ?? false; // gestionar accesos y eliminar la colección
+
+  useEffect(() => {
+    let active = true;
+    setCollection(null);
+    setCollectionError(null);
+    collectionsService
+      .getById(apiFetch, collectionId)
+      .then((c) => active && setCollection(c))
+      .catch((err) => {
+        if (!active) return;
+        setCollectionError(
+          err instanceof ApiError && err.status === 404
+            ? "not-found"
+            : err instanceof ApiError && err.status === 403
+              ? "forbidden"
+              : "error",
+        );
+      });
+    return () => {
+      active = false;
+    };
+  }, [apiFetch, collectionId]);
 
   // ================== Estado: usuarios ==================
   const [usersResp, setUsersResp] = useState<PaginatedResponse<CollectionUserAccessItem> | null>(null);
@@ -285,8 +313,6 @@ export function CollectionDetailPage({ collectionId, collectionName, isOwner, on
     onNavigate("occurrence-detail", {
       occurrenceId: occId,
       collectionId,
-      collectionName,
-      isOwner,
     });
   };
 
@@ -315,7 +341,7 @@ export function CollectionDetailPage({ collectionId, collectionName, isOwner, on
           >
             <Eye className="h-4 w-4" />
           </Button>
-          {isOwner && (
+          {canEdit && (
             <>
               <Button
                 variant="outline"
@@ -326,8 +352,6 @@ export function CollectionDetailPage({ collectionId, collectionName, isOwner, on
                   onNavigate("edit-occurrence", {
                     occurrenceId: occ.occurrenceId,
                     collectionId,
-                    collectionName,
-                    isOwner,
                     returnTo: "collection",
                   })
                 }
@@ -344,6 +368,24 @@ export function CollectionDetailPage({ collectionId, collectionName, isOwner, on
     },
   ];
 
+  if (collectionError) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <Button variant="ghost" onClick={() => onNavigate("collections")} className="mb-4">
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Volver a Colecciones
+        </Button>
+        <div className="rounded-lg border bg-card p-8 text-center text-muted-foreground">
+          {collectionError === "not-found"
+            ? "La colección no existe."
+            : collectionError === "forbidden"
+              ? "No tienes acceso a esta colección."
+              : "No se pudo cargar la colección."}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="mb-6">
@@ -353,7 +395,11 @@ export function CollectionDetailPage({ collectionId, collectionName, isOwner, on
         </Button>
 
         <div>
-          <h1 className="text-3xl mb-2">{collectionName}</h1>
+          {collection ? (
+            <h1 className="text-3xl mb-2">{collectionName}</h1>
+          ) : (
+            <SkeletonBar width="16rem" style={{ height: "2rem", marginBottom: "0.75rem" }} />
+          )}
           <p className="text-muted-foreground">
             {occCount} ocurrencias en esta colección • {usersCount} usuarios con acceso a esta colección
           </p>
@@ -361,7 +407,7 @@ export function CollectionDetailPage({ collectionId, collectionName, isOwner, on
       </div>
 
       {/* Usuarios con Acceso */}
-      {isOwner && (
+      {canManage && (
         <div className="flex flex-col gap-3 mb-6">
           {/* Botón encima de la card */}
           <div className="flex justify-end">
@@ -452,12 +498,12 @@ export function CollectionDetailPage({ collectionId, collectionName, isOwner, on
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="userRole">Rol</Label>
-                    <Select value="viewer" onValueChange={() => {}} disabled>
+                    <Select value={CollectionRole.Viewer} onValueChange={() => {}} disabled>
                       <SelectTrigger id="userRole">
                         <SelectValue placeholder="Visualizador" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="viewer">Visualizador</SelectItem>
+                        <SelectItem value={CollectionRole.Viewer}>Visualizador</SelectItem>
                       </SelectContent>
                     </Select>
                     <p className="text-sm text-muted-foreground">
@@ -538,7 +584,7 @@ export function CollectionDetailPage({ collectionId, collectionName, isOwner, on
                               <TableCell>
                                 <div className="flex items-center gap-3">
                                   <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                                    {u.role === "viewer" ? (
+                                    {u.role === CollectionRole.Viewer ? (
                                       <Eye className="h-4 w-4 text-primary" />
                                     ) : (
                                       <Pencil className="h-4 w-4 text-primary" />
@@ -553,22 +599,22 @@ export function CollectionDetailPage({ collectionId, collectionName, isOwner, on
                               </TableCell>
                               <TableCell className="whitespace-nowrap align-middle">
                                 <div>
-                                  {u.role === "owner" && (
+                                  {u.role === CollectionRole.Owner && (
                                     <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
                                       Propietario
                                     </span>
                                   )}
-                                  {u.role === "editor" && (
+                                  {u.role === CollectionRole.Editor && (
                                     <span className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-700">
                                       Editor
                                     </span>
                                   )}
-                                  {u.role === "viewer" && (
+                                  {u.role === CollectionRole.Viewer && (
                                     <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-800">
                                       Lector
                                     </span>
                                   )}
-                                  {!["owner", "editor", "viewer"].includes(u.role) && (
+                                  {!Object.values(CollectionRole).includes(u.role) && (
                                     <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-800">
                                       {u.role}
                                     </span>
@@ -649,17 +695,17 @@ export function CollectionDetailPage({ collectionId, collectionName, isOwner, on
         onPrevPage={() => gotoOccPage(occCurrentPage - 1)}
         onNextPage={() => gotoOccPage(occCurrentPage + 1)}
         toolbar={
-          isOwner ? (
+          canEdit ? (
             <>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => onNavigate("new-occurrence", { collectionId, collectionName, isOwner })}
+                onClick={() => onNavigate("new-occurrence", { collectionId, returnTo: "collection" })}
               >
                 <UserPlus className="h-4 w-4 mr-2" />
                 Nueva Ocurrencia
               </Button>
-              <Button size="sm" onClick={() => onNavigate("csv-import", { collectionId, collectionName })}>
+              <Button size="sm" onClick={() => onNavigate("csv-import", { collectionId })}>
                 <Upload className="h-4 w-4 mr-2" />
                 Importar CSV
               </Button>
@@ -669,7 +715,7 @@ export function CollectionDetailPage({ collectionId, collectionName, isOwner, on
       />
 
       {/* Eliminar colección (placeholder visual) */}
-      {isOwner && (
+      {canManage && (
         <div className="mt-8 flex justify-center">
           <Button
             variant="outline"

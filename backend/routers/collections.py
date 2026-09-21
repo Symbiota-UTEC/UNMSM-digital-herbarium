@@ -1,5 +1,5 @@
 # backend/routers/collections.py
-from typing import Literal, Optional
+from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from backend.auth.jwt import get_current_user
 from backend.config.database import get_db
+from backend.models.enums import CollectionAccess, CollectionRole
 from backend.models.models import User
 from backend.schemas.collections import (
     AddUserToCollectionBody,
@@ -28,8 +29,8 @@ router = APIRouter(prefix="/collections", tags=["Collections"])
     summary="Listar colecciones del usuario actual filtradas por tipo de acceso",
 )
 def get_collections(
-    access: Literal["owner", "allowed"] = Query(
-        "allowed",
+    access: CollectionAccess = Query(
+        CollectionAccess.ALLOWED,
         description=(
             "'owner': colecciones creadas por el usuario actual. "
             "'allowed': colecciones a las que el usuario tiene acceso "
@@ -60,6 +61,19 @@ def create_collection(
 
 
 @router.get(
+    "/{collection_id}",
+    response_model=CollectionOut,
+    summary="Detalle de una colección, con lo que el usuario actual puede hacer en ella",
+)
+def get_collection(
+    collection_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return collections_service.get_collection(db, collection_id, current_user)
+
+
+@router.get(
     "/{collection_id}/access-users",
     response_model=Page[CollectionAccessUser],
     summary="Usuarios con acceso a una colección (paginado)",
@@ -67,9 +81,7 @@ def create_collection(
 def list_collection_access_users(
     collection_id: UUID,
     q: Optional[str] = Query(None, description="Texto a buscar en nombre o correo"),
-    role: Optional[Literal["viewer", "editor", "owner"]] = Query(
-        None, description="Filtrar por rol exacto"
-    ),
+    role: Optional[CollectionRole] = Query(None, description="Filtrar por rol exacto"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),

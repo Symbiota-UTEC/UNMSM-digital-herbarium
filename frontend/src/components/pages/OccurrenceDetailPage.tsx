@@ -15,9 +15,8 @@ interface OccurrenceDetailPageProps {
   occurrenceId: string;
   onNavigate: (page: string, params?: Record<string, any>) => void;
   returnTo?: "occurrences" | "collection" | "taxon" | "map";
+  /** Solo para volver a la colección de origen; el nombre y los permisos vienen de la API. */
   collectionId?: string;
-  collectionName?: string;
-  isOwner?: boolean;
   taxonId?: string;
 }
 
@@ -55,9 +54,7 @@ export function OccurrenceDetailPage({
   occurrenceId,
   onNavigate,
   returnTo = "occurrences",
-  collectionId,
-  collectionName,
-  isOwner,
+  collectionId: collectionIdProp,
   taxonId,
 }: OccurrenceDetailPageProps) {
   const { apiFetch } = useAuth();
@@ -66,6 +63,8 @@ export function OccurrenceDetailPage({
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>("occurrence");
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  const collectionId = collectionIdProp ?? data?.collection?.collectionId;
+  const canEdit = data?.collection?.canEdit ?? false;
 
   const formatDateTime = (iso?: string | null) => {
     if (!iso) return "—";
@@ -123,11 +122,7 @@ export function OccurrenceDetailPage({
     if (returnTo === "taxon" && taxonId) {
       onNavigate("taxon-detail", { taxonId });
     } else if (returnTo === "collection" && collectionId) {
-      onNavigate("collection-detail", {
-        collectionId,
-        collectionName: collectionName || "",
-        isOwner: isOwner || false,
-      });
+      onNavigate("collection-detail", { collectionId });
     } else if (returnTo === "map") {
       onNavigate("map", { restoreSearch: true });
     } else {
@@ -136,14 +131,7 @@ export function OccurrenceDetailPage({
   };
 
   const handleEdit = () => {
-    onNavigate("edit-occurrence", {
-      occurrenceId,
-      collectionId,
-      collectionName,
-      isOwner,
-      returnTo,
-      taxonId,
-    });
+    onNavigate("edit-occurrence", { occurrenceId, collectionId, returnTo, taxonId });
   };
 
   const goToTaxon = (taxonId?: string | null) => {
@@ -154,8 +142,6 @@ export function OccurrenceDetailPage({
       originReturnTo: returnTo,
       returnOccurrenceId: occurrenceId,
       collectionId,
-      collectionName,
-      isOwner,
     });
   };
 
@@ -502,7 +488,7 @@ export function OccurrenceDetailPage({
             </div>
           </div>
 
-          {isOwner && (
+          {canEdit && (
             <Button
               type="button"
               style={{ backgroundColor: "rgb(117,26,29)", color: "white" }}

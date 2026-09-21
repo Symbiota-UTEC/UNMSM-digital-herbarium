@@ -1,13 +1,12 @@
+import type { ImportJobStatus } from "@constants/enums";
 import { API, PAGE_SIZE } from "@constants/api";
 import type { PaginatedResponse } from "@interfaces/utils/pagination";
 import { throwIfError, type ApiFetch } from "./api.error";
 
-export type TaxonFloraImportJobStatus = "queued" | "running" | "completed" | "failed";
-
 export interface TaxonFloraImportJob {
   jobId: string;
   filename: string;
-  status: TaxonFloraImportJobStatus;
+  status: ImportJobStatus;
   stage: string | null;
   detail: string | null;
   errorMessage: string | null;

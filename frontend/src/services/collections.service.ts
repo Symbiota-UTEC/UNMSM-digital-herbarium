@@ -1,4 +1,5 @@
 import { API } from "@constants/api";
+import type { CollectionAccess } from "@constants/enums";
 import type { PaginatedResponse } from "@interfaces/utils/pagination";
 import type { CollectionOut, CollectionCreate, CollectionUserAccessItem } from "@interfaces/collection";
 import type { OccurrenceBriefItem } from "@interfaces/occurrence";
@@ -7,7 +8,7 @@ import { ApiError, throwIfError, type ApiFetch } from "./api.error";
 export const collectionsService = {
   async getCollections(
     apiFetch: ApiFetch,
-    access: "owner" | "allowed",
+    access: CollectionAccess,
     page: number,
     limit: number,
   ): Promise<PaginatedResponse<CollectionOut>> {
@@ -15,6 +16,13 @@ export const collectionsService = {
     const res = await apiFetch(
       `${API.BASE_URL}${API.PATHS.COLLECTIONS.BASE}?access=${access}&limit=${limit}&offset=${offset}`,
     );
+    await throwIfError(res);
+    return res.json();
+  },
+
+  /** Detalle + permisos del usuario actual (`canEdit`, `canManage`). ApiError 404/403 si no existe o sin acceso. */
+  async getById(apiFetch: ApiFetch, collectionId: string): Promise<CollectionOut> {
+    const res = await apiFetch(`${API.BASE_URL}${API.PATHS.COLLECTIONS.BY_ID(collectionId)}`);
     await throwIfError(res);
     return res.json();
   },
