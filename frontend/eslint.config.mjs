@@ -21,4 +21,22 @@ export default tseslint.config(
       "@typescript-eslint/no-explicit-any": "off",
     },
   },
+  {
+    // Las llamadas HTTP viven en src/services/. AuthContext es la única excepción: define `apiFetch`.
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/services/**", "src/contexts/AuthContext.tsx"],
+    rules: {
+      "no-restricted-globals": [
+        "error",
+        { name: "fetch", message: "No llames a fetch aquí: crea o reutiliza un método en src/services/." },
+      ],
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "CallExpression[callee.name='apiFetch']",
+          message: "No llames a apiFetch aquí: usa un servicio de src/services/ (pásale apiFetch como argumento).",
+        },
+      ],
+    },
+  },
 );

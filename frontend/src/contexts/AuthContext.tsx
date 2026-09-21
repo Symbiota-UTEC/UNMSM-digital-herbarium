@@ -12,7 +12,8 @@ import {
 
 import { User, AuthContextType, mapApiUserToUser } from "@interfaces/auth";
 import { Role } from "@constants/roles";
-import { API } from "@constants/api";
+import { authService } from "@services/auth.service";
+import { createApiFetch } from "@services/http";
 import { STORAGE_KEYS } from "@constants/storageKeys";
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -99,37 +100,13 @@ export const AuthProvider: FC<{ children: ReactNode }> = ({ children }) => {
 
   const login = useCallback(
     async (email: string, password: string) => {
-      const formData = new URLSearchParams();
-      formData.append("username", email);
-      formData.append("password", password);
-
-      const response = await fetch(`${API.BASE_URL}${API.PATHS.AUTH.LOGIN}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: formData.toString(),
-      });
-
-      if (!response.ok) {
-        const txt = await response.text();
-        console.error("Respuesta no OK:", txt);
-        throw new Error("Credenciales incorrectas");
-      }
-
-      const data = await response.json();
-      console.log(data);
-
-      if (!data.access_token || !data.user) {
-        throw new Error("Respuesta del servidor inválida");
-      }
+      const data = await authService.login(email, password);
 
       localStorage.setItem(STORAGE_KEYS.TOKEN, data.access_token);
       setToken(data.access_token);
       scheduleAutoLogout(data.access_token);
 
-      const u = data.user;
-      console.log("user data: ", u);
-      const mappedUser: User = mapApiUserToUser(u);
-
+      const mappedUser: User = mapApiUserToUser(data.user);
       setUser(mappedUser);
       localStorage.setItem("user", JSON.stringify(mappedUser));
 
@@ -138,28 +115,7 @@ export const AuthProvider: FC<{ children: ReactNode }> = ({ children }) => {
     [scheduleAutoLogout],
   );
 
-  const apiFetch: AuthContextType["apiFetch"] = useCallback(
-    async (input, init = {}) => {
-      const headers = new Headers(init.headers || {});
-      if (token) headers.set("Authorization", `Bearer ${token}`);
-
-      // Si la data es FormData, omitir establecer el Content-Type para que el navegador genere su boundary naturalmente
-      if (init.body instanceof FormData) {
-        headers.delete("Content-Type");
-      } else {
-        headers.set("Content-Type", headers.get("Content-Type") || "application/json");
-      }
-
-      const res = await fetch(input, { ...init, headers });
-
-      if (res.status === 401 || res.status === 403) {
-        logout();
-        throw new Error("No autorizado");
-      }
-      return res;
-    },
-    [token, logout],
-  );
+  const apiFetch = useMemo(() => createApiFetch({ getToken: () => token, onUnauthorized: logout }), [token, logout]);
 
   const value = useMemo(
     () => ({ user, token, login, logout, isAuthenticated: !!user, apiFetch }),

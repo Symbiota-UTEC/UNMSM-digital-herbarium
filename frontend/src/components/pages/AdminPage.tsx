@@ -39,11 +39,16 @@ import {
 import { toast } from "sonner";
 import { Role } from "@constants/roles";
 import { useAuth } from "@contexts/AuthContext";
-import { API, PAGE_SIZE } from "@constants/api";
+import { PAGE_SIZE } from "@constants/api";
 import { User, ApiUserLookupResponse, mapApiLookupToResult } from "@interfaces/auth";
 import { ScopedTotals, AdminMetrics } from "@interfaces/admin";
-import { Institution, InstitutionPage } from "@interfaces/institution";
-import { RegistrationRequestPage, RegistrationRequest } from "@interfaces/registrationRequest";
+import { Institution } from "@interfaces/institution";
+import { RegistrationRequest } from "@interfaces/registrationRequest";
+import { ApiError } from "@services/api.error";
+import { adminService } from "@services/admin.service";
+import { authService } from "@services/auth.service";
+import { institutionsService } from "@services/institutions.service";
+import { usersService } from "@services/users.service";
 import { useDebounce } from "@utils/useDebounce";
 import { AutocompleteInstitution } from "../AutocompleteInstitution";
 
@@ -57,7 +62,7 @@ type OnNavigate = (page: string, params?: any) => void;
 // ========================
 export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
   // -------- Auth / roles --------
-  const { user, token, apiFetch } = useAuth() as any;
+  const { user, token, apiFetch } = useAuth();
   const isSystemAdmin = user?.role === Role.Admin;
   const isInstitutionAdmin = user?.role === Role.InstitutionAdmin;
 
@@ -155,37 +160,20 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       try {
         setIsLoadingRequests(true);
 
-        const params = new URLSearchParams();
-        params.set("limit", requestsPerPage.toString());
-        params.set("offset", ((page - 1) * requestsPerPage).toString());
-        params.set("statusFilter", "pending");
+        const scopedInstitutionId =
+          user?.role === Role.InstitutionAdmin && user?.institutionId
+            ? user.institutionId
+            : reqSelectedInstitutionId && reqSelectedInstitutionId !== "all"
+              ? reqSelectedInstitutionId
+              : undefined;
 
-        if (user?.role === Role.InstitutionAdmin && user?.institutionId) {
-          params.set("institutionId", String(user.institutionId));
-        } else {
-          if (reqSelectedInstitutionId && reqSelectedInstitutionId !== "all") {
-            params.set("institutionId", String(reqSelectedInstitutionId));
-          }
-        }
-
-        if (requestNameFilter.trim()) {
-          params.set("fullNamePrefix", requestNameFilter.trim());
-        }
-
-        const res = await apiFetch(`${API.BASE_URL}${API.PATHS.AUTH.REG_REQUESTS}?${params.toString()}`, {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
+        const data = await authService.getRegistrationRequests(apiFetch, {
+          limit: requestsPerPage,
+          offset: (page - 1) * requestsPerPage,
+          statusFilter: "pending",
+          institutionId: scopedInstitutionId,
+          fullNamePrefix: requestNameFilter,
         });
-
-        if (!res.ok) {
-          const txt = await res.text();
-          console.error("Error al cargar solicitudes:", txt);
-          throw new Error("No se pudieron cargar las solicitudes");
-        }
-
-        const data = (await res.json()) as RegistrationRequestPage;
         setRegistrationRequests(data.items);
         setRequestsTotal(data.total);
         setTotalPages(data.totalPages);
@@ -210,26 +198,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     const fetchMetrics = async () => {
       try {
         setIsLoadingMetrics(true);
-        const res = await apiFetch(`${API.BASE_URL}${API.PATHS.ADMIN.METRICS}`, {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        if (!res.ok) {
-          const txt = await res.text();
-          console.error("Error /admin/metrics:", txt);
-          toast.error("No se pudieron cargar las métricas");
-          return;
-        }
-
-        const raw = await res.json();
-        const parsed: AdminMetrics = {
-          institutionId: raw.institutionId ?? raw.institution_id,
-          metrics: raw.metrics,
-        };
-        setMetrics(parsed);
+        setMetrics(await adminService.getMetrics(apiFetch));
       } catch (e) {
         console.error(e);
         toast.error("Error al cargar métricas");
@@ -246,16 +215,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       setIsLoadingInstitutions(true);
 
       if (isInstitutionAdmin && user?.institutionId) {
-        const endpoint = `${API.BASE_URL}${API.PATHS.INSTITUTIONS.BY_ID(user.institutionId)}`;
-        const res = await apiFetch(endpoint, {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        if (!res.ok) throw new Error(`Error ${res.status}`);
-
-        const one = (await res.json()) as Institution | null;
+        const one = await institutionsService.getById(apiFetch, user.institutionId);
         setInstitutions(one ? [one] : []);
         setInstitutionsTotal(one ? 1 : 0);
         setInstitutionsTotalPages(1);
@@ -265,14 +225,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
 
       // Exact selection from autocomplete
       if (instSelectedId != null) {
-        const res = await apiFetch(`${API.BASE_URL}${API.PATHS.INSTITUTIONS.BY_ID(instSelectedId)}`, {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        if (!res.ok) throw new Error(`Error ${res.status}`);
-        const one = await res.json();
+        const one = await institutionsService.getById(apiFetch, instSelectedId);
         setInstitutions(one ? [one] : []);
         setInstitutionsTotal(one ? 1 : 0);
         setInstitutionsTotalPages(1);
@@ -281,22 +234,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       }
 
       // System Admin: paginated list
-      const offset = (institutionsPage - 1) * institutionsPerPage;
-      const params = new URLSearchParams({
-        limit: String(institutionsPerPage),
-        offset: String(offset),
-      });
-
-      const endpoint = `${API.BASE_URL}${API.PATHS.INSTITUTIONS.BASE}?${params.toString()}`;
-      const res = await apiFetch(endpoint, {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (!res.ok) throw new Error(`Error ${res.status}`);
-
-      const data = (await res.json()) as InstitutionPage;
+      const data = await institutionsService.list(apiFetch, { page: institutionsPage, limit: institutionsPerPage });
       setInstitutions(data.items ?? []);
       setInstitutionsTotal(data.total ?? 0);
       setInstitutionsTotalPages(data.totalPages ?? 1);
@@ -364,7 +302,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       bump(next.metrics.requestsPending, "app", deltaPending);
       bump(next.metrics.users, "app", deltaUsers);
 
-      if (institutionId === user.institutionId) {
+      if (institutionId === user?.institutionId) {
         bump(next.metrics.requestsPending, "institution", deltaPending);
         bump(next.metrics.users, "institution", deltaUsers);
       }
@@ -404,32 +342,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     setRequestsPage(targetPage);
 
     try {
-      const res = await apiFetch(`${API.BASE_URL}${API.PATHS.AUTH.REG_REQUEST}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          registrationRequestId: requestId,
-          newStatus: "approved",
-        }),
-      });
-
-      if (!res.ok) {
-        setMetrics(prevMetrics);
-        setRegistrationRequests(prevRequests);
-        if (request) bumpInstitutionUsers(request.institutionId, -1);
-
-        const totalRollback = requestsTotal;
-        const pagesRollback = Math.max(1, Math.ceil(totalRollback / requestsPerPage));
-        setRequestsTotal(totalRollback);
-        setTotalPages(pagesRollback);
-        setRequestsPage(Math.min(requestsPage, pagesRollback));
-
-        toast.error("No se pudo aprobar la solicitud");
-        return;
-      }
+      await authService.updateRegistrationRequest(apiFetch, requestId, "approved");
 
       fetchRequests(targetPage);
       toast.success("Solicitud aprobada correctamente");
@@ -445,7 +358,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       setRequestsPage(Math.min(requestsPage, pagesRollback));
 
       console.error(err);
-      toast.error("Error al aprobar la solicitud");
+      toast.error("No se pudo aprobar la solicitud");
     }
   };
 
@@ -464,31 +377,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     setRequestsPage(targetPage);
 
     try {
-      const res = await apiFetch(`${API.BASE_URL}${API.PATHS.AUTH.REG_REQUEST}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          registrationRequestId: requestId,
-          newStatus: "rejected",
-        }),
-      });
-
-      if (!res.ok) {
-        setMetrics(prevMetrics);
-        setRegistrationRequests(prevRequests);
-
-        const totalRollback = requestsTotal;
-        const pagesRollback = Math.max(1, Math.ceil(totalRollback / requestsPerPage));
-        setRequestsTotal(totalRollback);
-        setTotalPages(pagesRollback);
-        setRequestsPage(Math.min(requestsPage, pagesRollback));
-
-        toast.error("No se pudo rechazar la solicitud");
-        return;
-      }
+      await authService.updateRegistrationRequest(apiFetch, requestId, "rejected");
 
       fetchRequests(targetPage);
       toast.success("Solicitud rechazada correctamente");
@@ -503,7 +392,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       setRequestsPage(Math.min(requestsPage, pagesRollback));
 
       console.error(err);
-      toast.error("Error al rechazar la solicitud");
+      toast.error("No se pudo rechazar la solicitud");
     }
   };
 
@@ -526,21 +415,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     };
 
     try {
-      const res = await apiFetch(`${API.BASE_URL}${API.PATHS.INSTITUTIONS.BASE}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(institution),
-      });
-
-      if (!res.ok) {
-        const txt = await res.text();
-        console.error("Error al crear institución:", txt);
-        toast.error("No se pudo crear la institución");
-        return;
-      }
+      await institutionsService.create(apiFetch, institution);
 
       setInstSearchText("");
       setNewInstitutionName("");
@@ -558,9 +433,6 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       setShowInstitutionDialog(false);
       toast.success("Institución creada correctamente");
       setInstitutionsPage(1);
-      setShowInstitutionDialog(false);
-
-      toast.success("Institución creada correctamente");
     } catch (err) {
       console.error(err);
       toast.error("Hubo un error al crear la institución");
@@ -607,7 +479,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       return null;
     }
 
-    if (email.trim() === user.email) {
+    if (email.trim() === user?.email) {
       setAdminEmailValidation({
         isValid: false,
         message: "No puedes asignarte a ti mismo porque ya eres super administrador",
@@ -618,27 +490,18 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     try {
       const emailTrimmed = email.trim();
 
-      const params = new URLSearchParams({ email: emailTrimmed });
-
-      const response = await apiFetch(`${API.BASE_URL}${API.PATHS.USERS.BY_EMAIL}?${params.toString()}`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        const txt = await response.text();
-        console.error("validateAdminEmail error:", txt);
+      let apiResp: ApiUserLookupResponse;
+      try {
+        apiResp = await usersService.getByEmail(apiFetch, emailTrimmed);
+      } catch (e) {
+        if (!(e instanceof ApiError)) throw e;
+        console.error("validateAdminEmail error:", e.detail);
         setAdminEmailValidation({
           isValid: false,
-          message: response.status === 403 ? "No tienes permisos para ver este usuario" : "Usuario no encontrado",
+          message: e.status === 403 ? "No tienes permisos para ver este usuario" : "Usuario no encontrado",
         });
         return null;
       }
-
-      const apiResp: ApiUserLookupResponse = await response.json();
       const result = mapApiLookupToResult(apiResp);
 
       if (!result.found) {
@@ -730,23 +593,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     };
 
     try {
-      const res = await apiFetch(`${API.BASE_URL}${API.PATHS.INSTITUTIONS.BY_ID(editInstitution.institutionId)}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const errorText = await res.text();
-        console.error("Error al actualizar la institución:", errorText);
-        toast.error("Error al actualizar la institución");
-        return;
-      }
-
-      const updatedInstitution = await res.json();
+      const updatedInstitution = await institutionsService.update(apiFetch, editInstitution.institutionId, payload);
 
       setInstitutions((institutions) =>
         institutions.map((inst) =>
@@ -962,7 +809,6 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
             {/* Autocomplete / filter */}
             <div className="mb-4">
               <AutocompleteInstitution
-                token={token}
                 apiFetch={apiFetch}
                 placeholder="Buscar institución..."
                 disabled={isInstitutionAdmin}
@@ -1112,7 +958,6 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
             {/* Filter by institution (autocomplete) */}
             <div className="mb-4">
               <AutocompleteInstitution
-                token={token}
                 apiFetch={apiFetch}
                 placeholder="Buscar solicitud por institución..."
                 disabled={!isSystemAdmin}

@@ -33,7 +33,7 @@ const ROLE_BADGE: Record<string, { label: string; className: string }> = {
 };
 
 export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
-  const { user, apiFetch, token } = useAuth() as any;
+  const { user, apiFetch, token } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const isSuper = user?.role === Role.Admin;
@@ -312,7 +312,6 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
               <div className="space-y-2">
                 <Label htmlFor="institution">Institución</Label>
                 <AutocompleteInstitution
-                  token={token}
                   apiFetch={apiFetch}
                   placeholder={
                     isRestrictedInstitutionPick ? userInstitutionName || "Tu institución" : "Buscar institución..."

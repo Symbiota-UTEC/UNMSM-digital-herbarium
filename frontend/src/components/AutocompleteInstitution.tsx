@@ -1,11 +1,12 @@
 import { useRef, useState } from "react";
 import { Input } from "./ui/input";
-import { API, PAGE_SIZE } from "@constants/api";
-import { BasicInstitutionInfo, InstitutionPage, pageToBasicInstitutionInfo } from "@interfaces/institution";
+import { PAGE_SIZE } from "@constants/api";
+import { BasicInstitutionInfo, pageToBasicInstitutionInfo } from "@interfaces/institution";
+import { institutionsService } from "@services/institutions.service";
+import type { ApiFetch } from "@services/api.error";
 import { AutocompleteDropdown, useSuggestions } from "./ui/autocomplete";
 
 export function AutocompleteInstitution({
-  token,
   apiFetch,
   placeholder = "Buscar institución...",
   disabled = false,
@@ -14,8 +15,7 @@ export function AutocompleteInstitution({
   onSelect,
   minChars = 1,
 }: {
-  token: string;
-  apiFetch: (input: RequestInfo, init?: RequestInit) => Promise<Response>;
+  apiFetch: ApiFetch;
   placeholder?: string;
   disabled?: boolean;
   value: string;
@@ -27,14 +27,7 @@ export function AutocompleteInstitution({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const { items: options, loading } = useSuggestions<BasicInstitutionInfo>(
-    async (q) => {
-      const params = new URLSearchParams({ namePrefix: q, limit: String(PAGE_SIZE.INSTITUTIONS) });
-      const res = await apiFetch(`${API.BASE_URL}${API.PATHS.INSTITUTIONS.BASE}?${params.toString()}`, {
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) return [];
-      return pageToBasicInstitutionInfo((await res.json()) as InstitutionPage);
-    },
+    async (q) => pageToBasicInstitutionInfo(await institutionsService.search(apiFetch, q, PAGE_SIZE.INSTITUTIONS)),
     value,
     { minChars, enabled: !disabled },
   );

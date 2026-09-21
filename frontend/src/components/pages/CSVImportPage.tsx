@@ -18,7 +18,8 @@ import {
 import { ArrowLeft, Upload, FileSpreadsheet, CheckCircle, X, Info, Download } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@contexts/AuthContext";
-import { API } from "@constants/api";
+import { ApiError } from "@services/api.error";
+import { uploadService } from "@services/upload.service";
 import { DWC_FIELDS, DwCFieldOption, DwCEntity } from "@constants/dwc";
 
 interface CSVImportPageProps {
@@ -313,7 +314,7 @@ const labelFor = (opt: DwCFieldOption) => opt.label;
 // Componente
 // ==============================
 export function CSVImportPage({ collectionId, collectionName, onNavigate }: CSVImportPageProps) {
-  const { token } = useAuth();
+  const { apiFetch } = useAuth();
 
   const [datasetModel, setDatasetModel] = useState<DwCEntity>("Occurrence");
   const [csvFile, setCSVFile] = useState<File | null>(null);
@@ -680,12 +681,13 @@ export function CSVImportPage({ collectionId, collectionName, onNavigate }: CSVI
     "dwc:RecordLevel:dynamicProperties",
   ] as const;
 
+  /** Sube el CSV mapeado. Devuelve null si no hay columnas para importar; lanza ApiError si el backend lo rechaza. */
   const submitImportWithDynamicHeader = async (dynamicHeaderLabel: string) => {
     const csvOut = buildMappedCSV({ "Occurrence.dynamicProperties": dynamicHeaderLabel });
 
     if (!csvOut) {
       toast.error("No hay columnas mapeadas para importar.");
-      return { ok: false, res: null as any };
+      return null;
     }
 
     const ts = new Date().toISOString().replace(/[:.]/g, "-");
@@ -693,21 +695,7 @@ export function CSVImportPage({ collectionId, collectionName, onNavigate }: CSVI
     const blob = new Blob([csvOut], { type: "text/csv;charset=utf-8" });
     const fileToSend = new File([blob], filename, { type: "text/csv" });
 
-    const form = new FormData();
-    form.append("collection_id", String(collectionId));
-    form.append("file", fileToSend);
-
-    const url = `${API.BASE_URL}/upload/dwc-csv`;
-    const res = await fetch(url, {
-      method: "POST",
-      body: form,
-      headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      credentials: "include",
-    });
-
-    return { ok: res.status === 201, res };
+    return uploadService.uploadDwcCsv(apiFetch, String(collectionId), fileToSend);
   };
 
   const handleConfirmImport = async () => {
@@ -718,44 +706,37 @@ export function CSVImportPage({ collectionId, collectionName, onNavigate }: CSVI
       let lastText: string | null = null;
       for (let i = 0; i < DYNAMIC_HEADER_TRY.length; i++) {
         const label = DYNAMIC_HEADER_TRY[i];
-        const { ok, res } = await submitImportWithDynamicHeader(label);
-        if (ok) {
-          let stats: any = null;
-          try {
-            stats = await res.json();
-          } catch {}
-          const msg = stats
-            ? `Importadas ${stats.occurrences_inserted ?? "?"} ocurrencias.`
-            : "Importación completada.";
+        try {
+          const stats = await submitImportWithDynamicHeader(label);
+          if (!stats) return;
+
+          const msg = `Importadas ${stats.occurrencesInserted} ocurrencias.`;
           toast.success(`${msg} (encabezado usado: ${label})`);
           onNavigate("collection-detail", { collectionId, collectionName, isOwner: true });
           return;
-        } else if (res.status === 400) {
-          const txt = await res.text();
-          lastText = txt;
-          if (txt && /dynamicProperties/i.test(txt)) {
-            if (i < DYNAMIC_HEADER_TRY.length - 1) {
+        } catch (err) {
+          if (!(err instanceof ApiError)) throw err;
+          const txt = err.detail ?? "";
+
+          if (err.status === 400) {
+            lastText = txt;
+            if (txt && /dynamicProperties/i.test(txt) && i < DYNAMIC_HEADER_TRY.length - 1) {
               toast.message(`Reintentando con encabezado alternativo para dynamicProperties…`, {
                 description: DYNAMIC_HEADER_TRY[i + 1],
               });
               continue;
             }
+            toast.error(txt || "CSV inválido. Revisa los encabezados y el formato.");
+          } else if (err.status === 403) {
+            toast.error("No tienes permisos para importar en esta colección.");
+          } else if (err.status === 404) {
+            toast.error("Colección no encontrada.");
+          } else if (err.status === 413) {
+            toast.error("Archivo demasiado grande.");
+          } else {
+            lastText = txt;
+            toast.error(txt || "Error inesperado al importar.");
           }
-          toast.error(txt || "CSV inválido. Revisa los encabezados y el formato.");
-          return;
-        } else if (res.status === 403) {
-          toast.error("No tienes permisos para importar en esta colección.");
-          return;
-        } else if (res.status === 404) {
-          toast.error("Colección no encontrada.");
-          return;
-        } else if (res.status === 413) {
-          toast.error("Archivo demasiado grande.");
-          return;
-        } else {
-          const txt = await res.text();
-          lastText = txt;
-          toast.error(txt || "Error inesperado al importar.");
           return;
         }
       }

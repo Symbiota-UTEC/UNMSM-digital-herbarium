@@ -22,11 +22,11 @@ import { useAuth } from "../../contexts/AuthContext";
 import { autocompleteService, type ScientificNameSuggestion } from "@services/autocomplete.service";
 import { AutocompleteDropdown, useSuggestions } from "../ui/autocomplete";
 import { ImageManager, type PendingImage } from "../ImageManager";
+import { cameraService } from "@services/camera.service";
 import { taxonService } from "@services/taxon.service";
 import { occurrencesService } from "@services/occurrences.service";
 import { uploadService } from "@services/upload.service";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
-import { env } from "@config/env";
 import type { OccurrenceIdentificationOut, OccurrenceImageOut } from "@interfaces/occurrence";
 import { LocationPicker } from "../LocationPicker";
 import { DwcTerm } from "../DwcTerm";
@@ -345,14 +345,7 @@ export function NewOccurrencePage({
     setCaptureLoading(true);
     setCameraError(null);
     try {
-      const res = await fetch(`${env.CAMERA_BASE_URL}/api/camera/capture-image`, {
-        method: "POST",
-        signal: AbortSignal.timeout(15000),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status} — ${res.statusText}`);
-      const blob = await res.blob();
-      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-      addNewImages([new File([blob], `captura-${timestamp}.jpg`, { type: blob.type || "image/jpeg" })]);
+      addNewImages([await cameraService.captureImage()]);
       toast.success("Foto capturada y añadida");
     } catch (err: any) {
       setCameraError(err?.message ?? "Error al capturar la imagen");

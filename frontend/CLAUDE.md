@@ -31,7 +31,7 @@ frontend/
     ├── constants/            # api.ts (endpoints), roles.ts, storageKeys.ts, dwc.ts, ui.ts
     ├── contexts/             # AuthContext.tsx (session, `apiFetch`)
     ├── interfaces/           # Types that mirror backend schemas (camelCase, like the API)
-    ├── services/             # One `<resource>.service.ts` per backend resource + api.error.ts
+    ├── services/             # One `<resource>.service.ts` per backend resource, plus api.error.ts (ApiError) and http.ts (publicFetch)
     ├── utils/                # Pure helpers: dates, geo, geocoding, basemaps, polygonDraw, mapStyles
     └── components/
         ├── pages/            # One file per route (XxxPage.tsx)
@@ -53,7 +53,7 @@ Filter pages (`/occurrences`, `/taxon`, `/collections`) keep their last query st
 
 ### Service layer and auth
 
-All HTTP goes through `services/*.service.ts`, which receive `apiFetch` from `useAuth()` (never `fetch` directly). `apiFetch` adds the Bearer token and calls `logout()` on a 401/403. `AuthContext` keeps the JWT in `localStorage`, schedules an auto-logout at expiry, and memoizes `login`/`logout`/`apiFetch`/the provider value — keep them stable, since pages list `apiFetch` in effect dependencies.
+All HTTP goes through `services/*.service.ts`, which receive `apiFetch` from `useAuth()`. **Pages and components never call `apiFetch(...)` or `fetch(...)`**: they call a service method and pass `apiFetch` as an argument (ESLint enforces it outside `src/services/`; `AuthContext` is the only exception, since it defines `apiFetch`). Public screens use `publicFetch` (`services/http.ts`) and external APIs (camera, geocoding) also have their own service. `apiFetch` is built by `createApiFetch()` in `services/http.ts` (AuthContext only wires in the token and `logout`): it adds the Bearer token and logs out on a **401 sent with a token** (expired session). A **403 does not log out** — it means "no permission" and the caller decides what to show. `AuthContext` keeps the JWT in `localStorage`, schedules an auto-logout at expiry, and memoizes `login`/`logout`/`apiFetch`/the provider value — keep them stable, since pages list `apiFetch` in effect dependencies.
 
 Endpoint paths live in `constants/api.ts`; responses are typed with `interfaces/` (backend fields are camelCase, so are the types).
 

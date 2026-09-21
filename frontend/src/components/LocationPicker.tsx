@@ -19,7 +19,7 @@ import { fromLonLat, toLonLat } from "ol/proj";
 
 import { enclosingRadiusMeters, polygonToWkt, representativePoint, wktToPolygon } from "@utils/geo";
 import { createSimplePolygonDraw } from "@utils/polygonDraw";
-import { reverseGeocodeAdminUnits, type AdminUnits } from "@utils/geocoding";
+import { reverseGeocodeAdminUnits, type AdminUnits } from "@services/geocoding.service";
 import { markerStyle, polygonStyle, uncertaintyStyle } from "@utils/mapStyles";
 import {
   MAP_MAX_ZOOM,

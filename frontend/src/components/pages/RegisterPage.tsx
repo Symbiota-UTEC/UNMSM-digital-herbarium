@@ -8,7 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui
 import { Separator } from "../ui/separator";
 import { Leaf, Loader2, User } from "lucide-react";
 import { toast } from "sonner";
-import { API } from "@constants/api";
+import { authService } from "@services/auth.service";
+import { publicFetch } from "@services/http";
 import { AutocompleteInstitution } from "../AutocompleteInstitution";
 
 interface RegisterPageProps {
@@ -35,13 +36,6 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
   });
 
   const [loading, setLoading] = useState(false);
-
-  // fetch sin auth (borra cualquier Authorization que añada el Autocomplete)
-  const unAuthFetch = async (input: RequestInfo, init?: RequestInit) => {
-    const headersObj: Record<string, string> = { ...(init?.headers as Record<string, string>) };
-    if (headersObj && "Authorization" in headersObj) delete headersObj.Authorization;
-    return fetch(input, { ...init, headers: headersObj });
-  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -74,20 +68,7 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
     };
 
     try {
-      const res = await fetch(`${API.BASE_URL}${API.PATHS.AUTH.REG_REQUEST}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        let errorText = `HTTP ${res.status}`;
-        try {
-          const errJson = await res.json();
-          if (errJson?.detail) errorText = errJson.detail;
-        } catch {}
-        throw new Error(errorText);
-      }
+      await authService.register(body);
 
       toast.success("Solicitud de registro enviada correctamente. Te contactaremos pronto.");
       setUserData({
@@ -214,8 +195,7 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
                 <div className="space-y-2">
                   <Label>Institución / Universidad *</Label>
                   <AutocompleteInstitution
-                    token=""
-                    apiFetch={unAuthFetch}
+                    apiFetch={publicFetch}
                     placeholder="Escribe y selecciona tu institución…"
                     value={instText}
                     onChange={(t) => {

@@ -17,7 +17,7 @@ export interface InstitutionUpdatePayload {
   email?: string;
   phone?: string;
   webSite?: string;
-  institutionAdminUserId?: number | null;
+  institutionAdminUserId?: string | null;
 }
 
 export const institutionsService = {

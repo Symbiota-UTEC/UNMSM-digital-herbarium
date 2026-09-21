@@ -36,8 +36,20 @@ export interface TaxonFloraUploadAcceptedResponse {
   jobId: string;
 }
 
+/** Resultado de POST /upload/dwc-csv. */
+export interface DwcImportResult {
+  status: string;
+  collectionId: string;
+  rows: number;
+  occurrencesInserted: number;
+  taxaMatched: number;
+  identificationsInserted: number;
+  identifiersInserted: number;
+}
+
 export const uploadService = {
-  async uploadDwcCsv(apiFetch: ApiFetch, collectionId: string, file: File): Promise<void> {
+  /** Lanza ApiError (con `status` y `detail`) si el backend rechaza el CSV. */
+  async uploadDwcCsv(apiFetch: ApiFetch, collectionId: string, file: File): Promise<DwcImportResult> {
     const form = new FormData();
     form.append("collection_id", collectionId);
     form.append("file", file);
@@ -47,6 +59,7 @@ export const uploadService = {
       body: form,
     });
     await throwIfError(res);
+    return res.json();
   },
 
   async uploadTaxonFloraCsv(apiFetch: ApiFetch, file: File): Promise<TaxonFloraUploadAcceptedResponse> {
