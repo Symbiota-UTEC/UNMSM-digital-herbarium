@@ -1,5 +1,4 @@
-import type { CSSProperties } from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type CSSProperties, type FormEvent } from "react";
 import { Button } from "../ui/button";
 import {
   Card,
@@ -262,7 +261,7 @@ export function CollectionDetailPage({
 
   // ================== Agregar usuario ==================
   const handleAddUser = useCallback(
-    async (e: React.FormEvent) => {
+    async (e: FormEvent) => {
       if (emailStatus === "idle") {
         const r = await validateAddUserEmail(emailInput);
         if (!r) {

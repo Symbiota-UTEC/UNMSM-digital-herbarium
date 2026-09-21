@@ -1,7 +1,7 @@
 // ========================
 // Imports
 // ========================
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 import {
   Card,
@@ -56,7 +56,7 @@ import {
   ChevronLeft,
   Edit,
 } from "lucide-react";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 import { Role } from "@constants/roles";
 import { useAuth } from "@contexts/AuthContext";
 import { API, PAGE_SIZE } from "@constants/api";
@@ -425,7 +425,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       if (!prev) return prev;
       const next = structuredClone(prev);
 
-      const bump = (s?: ScopedTotals, k: "app" | "institution", d: number) => {
+      const bump = (s: ScopedTotals | undefined, k: "app" | "institution", d: number) => {
         if (!s) return;
         if (typeof s[k] === "number")
           (s as any)[k] = Math.max(0, (s as any)[k] + d);
@@ -598,7 +598,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     }
   };
 
-  const handleCreateInstitution = async (e: React.FormEvent) => {
+  const handleCreateInstitution = async (e: FormEvent) => {
     e.preventDefault();
 
     if (!newInstitutionName.trim()) {
@@ -791,7 +791,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     }
   };
 
-  const handleSaveInstitution = async (e: React.FormEvent) => {
+  const handleSaveInstitution = async (e: FormEvent) => {
     e.preventDefault();
 
     if (!editInstitution) return;
@@ -1450,8 +1450,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
                   Nombre de la Institución
                 </Label>
                 <p className="text-sm">
-                  {viewInstitutionDetails.institutionName ||
-                    viewInstitutionDetails.name}
+                  {viewInstitutionDetails.institutionName}
                 </p>
               </div>
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -6,7 +6,7 @@ import { Textarea } from "../ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Separator } from "../ui/separator";
 import { Leaf, Loader2, User, UserCircle } from "lucide-react";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 import { API } from "@constants/api";
 import { AutocompleteInstitution } from "../AutocompleteInstitution";
 
@@ -42,7 +42,7 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
     return fetch(input, { ...init, headers: headersObj });
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
     if (!userData.institutionId) {
@@ -105,14 +105,14 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
     }
   };
 
-  const handleUserChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUserChange = (e: ChangeEvent<HTMLInputElement>) => {
     setUserData((prev) => ({
       ...prev,
       [e.target.id]: e.target.value,
     }));
   };
 
-  const handleAgentChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleAgentChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setAgentData((prev) => ({
       ...prev,
       [e.target.id]: e.target.value,

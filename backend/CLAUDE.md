@@ -2,11 +2,11 @@
 
 ## Overview
 
-FastAPI application exposing a Darwin Core (DwC)-compliant REST API for managing herbarium specimens. Backed by PostgreSQL, with SeaweedFS for image storage.
+FastAPI application exposing a Darwin Core (DwC)-compliant REST API for managing herbarium specimens. Backed by PostgreSQL/PostGIS, with SeaweedFS for image storage. Human quick start: [`README.md`](README.md). The client that consumes this API is documented in [`../frontend/CLAUDE.md`](../frontend/CLAUDE.md).
 
 - **Framework:** FastAPI
-- **ORM:** SQLAlchemy 2.0 (declarative, future-mode)
-- **Database:** PostgreSQL via `psycopg2-binary`
+- **ORM:** SQLAlchemy 2.0 (declarative, future-mode) + GeoAlchemy2
+- **Database:** PostgreSQL 16 + PostGIS via `psycopg2-binary`
 - **Auth:** JWT (HS256) via `python-jose`, passwords via `passlib` bcrypt_sha256
 - **Validation:** Pydantic v2 (`>=2.5,<3`)
 
@@ -169,8 +169,12 @@ there must match the same-named variables in `config/.env`.
 
 ### Start (development)
 
+Run from the **repo root** (the package is `backend`, so `backend.main` must be importable), with a PostGIS database up (`docker compose up db` exposes it on port 5433):
+
 ```bash
-cd backend
+pip install -r backend/requirements.txt
+python -m backend.scripts.create_models     # create tables
+python -m backend.scripts.create_admin      # default institution + admin
 python -m uvicorn backend.main:app --reload --port 8000
 ```
 
@@ -178,12 +182,7 @@ Interactive docs: `http://localhost:8000/docs`
 
 ### Start (Docker)
 
-```bash
-docker build -t herbarium-backend .
-docker run --env-file .env -p 8000:8000 herbarium-backend
-```
-
-The `entrypoint.sh` runs `scripts/create_admin.py` before starting Uvicorn.
+From the repo root: `make dev` (backend with `--reload` on http://localhost:8001, plus db, SeaweedFS and the frontend) or `make prd` (backend on http://localhost:8000). Both run `scripts/create_admin.py` before starting Uvicorn. See the root `CLAUDE.md`.
 
 ---
 

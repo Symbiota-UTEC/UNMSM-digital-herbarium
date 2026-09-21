@@ -6,11 +6,11 @@ export interface UserProfileResponse {
     userId: string;
     username: string;
     email: string;
-    is_active: boolean;
-    is_superuser: boolean;
-    is_institution_admin: boolean;
-    institution_id: string | null;
-    created_at: string | null;
+    isActive: boolean;
+    isSuperuser: boolean;
+    isInstitutionAdmin: boolean;
+    institutionId: string;
+    createdAt: string;
 }
 
 export const usersService = {

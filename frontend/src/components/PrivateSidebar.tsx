@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
 import { Avatar, AvatarFallback } from "./ui/avatar";
 import {
   DropdownMenu,
@@ -83,7 +83,7 @@ export function PrivateSidebar({ onNavigate, currentPage }: PrivateSidebarProps)
   const handleLogout = () => { logout(); onNavigate("home"); };
 
   // Text fade: when collapsing, hide fast (no delay); when expanding, appear after width opens
-  const labelStyle: React.CSSProperties = {
+  const labelStyle: CSSProperties = {
     opacity: collapsed ? 0 : 1,
     width: collapsed ? 0 : undefined,
     transform: collapsed ? "translateX(-6px)" : "translateX(0)",
@@ -106,11 +106,11 @@ export function PrivateSidebar({ onNavigate, currentPage }: PrivateSidebarProps)
       gap: collapsed ? 0 : compact ? "0.5rem" : "0.75rem",
       paddingLeft: collapsed ? 0 : compact ? "0.5rem" : "0.75rem",
       paddingRight: collapsed ? 0 : compact ? "0.5rem" : "0.75rem",
-    } as React.CSSProperties,
-    onMouseEnter: (e: React.MouseEvent<HTMLElement>) => {
+    } as CSSProperties,
+    onMouseEnter: (e: ReactMouseEvent<HTMLElement>) => {
       if (!active) e.currentTarget.style.background = BG_HOVER;
     },
-    onMouseLeave: (e: React.MouseEvent<HTMLElement>) => {
+    onMouseLeave: (e: ReactMouseEvent<HTMLElement>) => {
       if (!active) e.currentTarget.style.background = "transparent";
     },
   });

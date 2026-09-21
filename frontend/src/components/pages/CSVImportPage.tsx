@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ChangeEvent } from "react";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Alert, AlertDescription } from "../ui/alert";
@@ -16,7 +16,7 @@ import {
   AlertDialogTitle,
 } from "../ui/alert-dialog";
 import { ArrowLeft, Upload, FileSpreadsheet, CheckCircle, X, Info, Download } from "lucide-react";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 import { useAuth } from "@contexts/AuthContext";
 import { API } from "@constants/api";
 import { DWC_FIELDS, DwCFieldOption, DwCEntity } from "@constants/dwc";
@@ -420,7 +420,7 @@ export function CSVImportPage({
     return { hasDuplicates: duplicates.length > 0, duplicates, byDwc, allowMulti: ALLOW_MULTI_MAP };
   }, [columnMapping, FIELD_OPTIONS]);
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!(file.type === "text/csv" || file.name.toLowerCase().endsWith(".csv"))) {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type BaseSyntheticEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "../ui/button";
 import {
@@ -138,7 +138,7 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
     }
   }, [isRestrictedInstitutionPick, userInstitutionId, userInstitutionName, open]);
 
-  const handleCreate = async (e: React.BaseSyntheticEvent) => {
+  const handleCreate = async (e: BaseSyntheticEvent) => {
     e.preventDefault();
     if (!token) return;
     if (!form.collectionName?.trim()) { toast.error("Ingresa un nombre de colección"); return; }
@@ -235,7 +235,7 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
           variant="ghost"
           size="icon"
           className="h-7 w-7"
-          onClick={(e: React.MouseEvent) => { e.stopPropagation(); goToCollectionDetail(c); }}
+          onClick={(e: ReactMouseEvent) => { e.stopPropagation(); goToCollectionDetail(c); }}
           title="Ver colección"
         >
           <Eye className="h-4 w-4" />

@@ -29,89 +29,26 @@ make stop-all     # stops + removes containers, networks, volumes
 make logs         # live logs
 make ps           # container status
 
-# Frontend only (outside Docker)
+# Frontend only (outside Docker) — see frontend/CLAUDE.md
 cd frontend && npm run dev    # port 3000
 cd frontend && npm run build
-cd frontend && npm run lint
 ```
 
 ## Architecture
 
-### Backend (`backend/`)
+Two independent apps that talk over a REST API (`/api`); each has its own `CLAUDE.md` with the details, its own `README.md`, and follows the same layout: Overview, Project Structure, Architecture, Running Locally, Conventions.
 
-FastAPI app with SQLAlchemy 2.0 ORM, PostgreSQL, and JWT auth. See [`backend/CLAUDE.md`](backend/CLAUDE.md) for full details.
+- **Backend (`backend/`)** — FastAPI + SQLAlchemy 2.0 + PostgreSQL/PostGIS, JWT auth, SeaweedFS for images, in 3 layers (`routers/` → `services/` → `models/`). See [`backend/CLAUDE.md`](backend/CLAUDE.md).
+- **Frontend (`frontend/`)** — React 18 + TypeScript + Vite, Tailwind v4 (pre-compiled), shadcn/ui, OpenLayers. See [`frontend/CLAUDE.md`](frontend/CLAUDE.md).
 
-**Key patterns:**
-- All routes prefixed `/api`, one router file per resource in `routers/`
-- Auth dependencies: `get_current_user`, `require_admin`, `require_superuser` from `auth/jwt.py`
-- Models split by domain under `models/` (one file per aggregate); `models/models.py` re-exports all of them so `from backend.models.models import X` keeps working everywhere. UUID PKs throughout
-- No Alembic — schema changes require manual DDL or `Base.metadata.create_all()`
-- Paginated responses use generic `Page[T]` schema (fields: `items`, `total`, `currentPage`, `totalPages`, etc.)
-
-### Frontend (`frontend/src/`)
-
-React 18 + TypeScript, Vite, Tailwind v4, shadcn/ui components.
-
-**Routing:** `App.tsx` manages all navigation via React Router. `onNavigate(page, params)` is passed to every page component as a prop — pages call it instead of using `useNavigate` directly.
-
-**Service layer:** All API calls go through `@services/*.service.ts` files using `apiFetch` from `useAuth()`. The `apiFetch` wrapper automatically attaches the Bearer token.
-
-**Path aliases (defined in `vite.config.ts`):**
-- `@constants` → `src/constants/`
-- `@config` → `src/config/`
-- `@interfaces` → `src/interfaces/`
-- `@contexts` → `src/contexts/`
-- `@utils` → `src/utils/`
-- `@services` → `src/services/`
-- `@` → `src/`
-
-**UI components:** shadcn/ui components live in `src/components/ui/`. Use `Table`, `Card`, `Badge`, `Button`, `Dialog`, `Select`, `Input`, `Label`, `Textarea` from there.
-
-**Page structure convention:**
-```tsx
-<div className="container mx-auto px-4 py-8">
-  <div className="flex justify-between items-center mb-6">
-    <div>
-      <h1 className="text-3xl font-semibold tracking-tight mb-2">Page Title</h1>
-      <p className="text-sm text-muted-foreground">Subtitle</p>
-    </div>
-    {/* action button */}
-  </div>
-  <Card>
-    <CardHeader>...</CardHeader>
-    <CardContent>
-      <Table>...</Table>
-      {/* pagination */}
-    </CardContent>
-  </Card>
-</div>
-```
-
-### Loading states (no flicker)
-
-Never swap a list for a "Cargando…" placeholder on refetch — it collapses the page and resets scroll.
-- Lists: use `DataTable` (`ui/data-table.tsx`). Skeleton only on the first load; on refresh the rows stay and are dimmed via `LoadingOverlay` (`ui/loading-overlay.tsx`, dim and spinner delayed 200 ms). For non-table lists wrap them in `LoadingOverlay` and use `SkeletonBar` + `useSettled(loading)` for the first load.
-- Pages that fetch on mount start with `loading = true`; background polling must not toggle `loading`.
-- Autocomplete: `useSuggestions` + `AutocompleteDropdown` (`ui/autocomplete.tsx`); don't build another dropdown. Previous suggestions stay (dimmed) while refetching.
-- Route components with params live at module level in `App.tsx`; never define a component inside another component (it remounts on every render). Context values and `apiFetch` are memoized in `AuthContext`.
-- Styles for this live in `ui/feedback.css` (`index.css` is precompiled).
-
-### CSS / Theming
-
-**Critical:** `frontend/src/index.css` is the **pre-compiled Tailwind v4 output** — the browser reads this file directly. `frontend/src/styles/globals.css` is the source that needs to be recompiled with Tailwind CLI to update `index.css`.
-
-**To change theme colors without rebuilding:** Edit the `:root` block directly in `index.css` (around line 2642). All theme tokens (`--background`, `--card`, `--foreground`, `--primary`, etc.) live there.
-
-**New Tailwind utility classes** not already present in `index.css` won't apply via Vite HMR. Use inline `style={{}}` props for one-off values, or rebuild Tailwind.
-
-### Sidebar
-
-`PrivateSidebar.tsx` uses hardcoded color constants (`BG`, `BG_HOVER`, `BG_ACTIVE`) rather than CSS variables. Change those constants directly when adjusting sidebar colors.
+Cross-cutting rules that touch both:
+- The API uses camelCase field names (Darwin Core terms) and the frontend types mirror them; a schema change in `backend/schemas/` needs the matching change in `frontend/src/interfaces/` and `services/`.
+- Paginated endpoints return `Page[T]` (`items`, `total`, `currentPage`, `totalPages`, …); the frontend consumes them through `DataTable`.
 
 ## Docker Services
 
 ```yaml
-db          # PostgreSQL 16
+db          # PostGIS (PostgreSQL 16)
 seaweedfs   # Image/file storage
 backend-dev # FastAPI --reload on port 8001
 frontend-dev# Vite dev server on port 5173

@@ -1,9 +1,4 @@
-import {
-  useState,
-  useEffect,
-  useRef,
-  type ChangeEvent,
-} from "react";
+import { useEffect, useRef, useState, type BaseSyntheticEvent, type ChangeEvent } from "react";
 import { Button } from "../ui/button";
 import {
   Card,
@@ -162,7 +157,7 @@ export function UploadsPage() {
     setCsvFile(file);
   };
 
-  const handleUpload = async (e: React.BaseSyntheticEvent) => {
+  const handleUpload = async (e: BaseSyntheticEvent) => {
     e.preventDefault();
     if (!csvFile) { toast.error("Selecciona primero un archivo CSV de flora"); return; }
     try {

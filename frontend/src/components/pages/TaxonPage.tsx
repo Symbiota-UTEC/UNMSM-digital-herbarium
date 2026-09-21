@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "../ui/button";
 import {
@@ -61,7 +61,7 @@ function TaxonTreeRow({
 
   const rankLabel = node.taxonRank ?? "—";
 
-  const handleEyeClick = (e: React.MouseEvent) => {
+  const handleEyeClick = (e: ReactMouseEvent) => {
     e.stopPropagation();
     onViewDetail?.();
   };
@@ -133,7 +133,7 @@ function TaxonTreeRow({
             variant="ghost"
             size="sm"
             className="text-xs px-2 h-6"
-            onClick={(e: React.MouseEvent) => { e.stopPropagation(); onLoadMoreChildren?.(); }}
+            onClick={(e: ReactMouseEvent) => { e.stopPropagation(); onLoadMoreChildren?.(); }}
           >
             <Plus className="h-3 w-3 mr-1" />
             Cargar más taxones…
@@ -374,7 +374,7 @@ export function TaxonPage({ onNavigate }: TaxonPageProps) {
           variant="ghost"
           size="icon"
           className="h-7 w-7"
-          onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleSearchResultClick(r.taxonId); }}
+          onClick={(e: ReactMouseEvent) => { e.stopPropagation(); handleSearchResultClick(r.taxonId); }}
           title="Ver detalle del taxón"
         >
           <Eye className="h-4 w-4" />

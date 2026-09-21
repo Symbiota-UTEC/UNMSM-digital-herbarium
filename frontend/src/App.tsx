@@ -356,7 +356,7 @@ function AppContent() {
         <Route path="*" element={<HomePage onNavigate={handleNavigation} />} />
       </Routes>
 
-        <Toaster />
+        <Toaster position="top-right" />
       </main>
     </div>
   );
