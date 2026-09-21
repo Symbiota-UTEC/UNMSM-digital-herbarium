@@ -104,9 +104,7 @@ export function ProfilePage() {
           <Card>
             <CardHeader className="text-center">
               <Avatar className="h-24 w-24 mx-auto mb-4">
-                <AvatarFallback className="bg-primary text-white text-2xl">
-                  {initials}
-                </AvatarFallback>
+                <AvatarFallback className="bg-primary text-white text-2xl">{initials}</AvatarFallback>
               </Avatar>
               <CardTitle>{displayName}</CardTitle>
               <CardDescription>{user.email}</CardDescription>

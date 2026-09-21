@@ -3,8 +3,13 @@
    spinner esperan 200 ms, así una respuesta rápida no produce ningún cambio visible. */
 
 @keyframes hb-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.45; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
 }
 
 .hb-skeleton {
@@ -51,5 +56,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hb-skeleton { animation: none; }
+  .hb-skeleton {
+    animation: none;
+  }
 }

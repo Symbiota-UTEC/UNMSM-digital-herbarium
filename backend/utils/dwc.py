@@ -14,7 +14,6 @@ ALLOWED_FIELDS: Dict[str, Set[str]] = {
         "catalogNumber",
         "recordNumber",
         "recordedBy",
-
         # Nice to have
         "organismQuantity",
         "organismQuantityType",
@@ -25,11 +24,9 @@ ALLOWED_FIELDS: Dict[str, Set[str]] = {
         "establishmentMeans",
         "associatedReferences",
         "associatedTaxa",
-
         # Extras / extensión
         "dynamicProperties",
     },
-
     # ------------------------------------------------------------------
     # DwC: Event (se mapean a campos de Occurrence aplanado)
     # ------------------------------------------------------------------
@@ -43,7 +40,6 @@ ALLOWED_FIELDS: Dict[str, Set[str]] = {
         "eventRemarks",
         "fieldNotes",
     },
-
     # ------------------------------------------------------------------
     # DwC: Location (también mapean a Occurrence aplanado)
     # ------------------------------------------------------------------
@@ -63,7 +59,6 @@ ALLOWED_FIELDS: Dict[str, Set[str]] = {
         "hydrographicContext",
         "footprintWKT",
     },
-
     # ------------------------------------------------------------------
     # DwC: Taxon
     #  - Para carga via CSV SOLO usarás scientificName + scientificNameAuthorship
@@ -73,12 +68,11 @@ ALLOWED_FIELDS: Dict[str, Set[str]] = {
         "scientificName",
         "scientificNameAuthorship",
     },
-
     # ------------------------------------------------------------------
     # DwC: Identification (para identificadores múltiples)
     # ------------------------------------------------------------------
     "Identification": {
-        "identifiedBy",    # texto, lista separada por comas (OBLIGATORIO)
+        "identifiedBy",  # texto, lista separada por comas (OBLIGATORIO)
         "dateIdentified",
         "isCurrent",
         "isVerified",

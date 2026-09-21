@@ -1,7 +1,7 @@
-from uuid import UUID
 # backend/schemas/auth.py
 from datetime import datetime
-from typing import Optional, Literal
+from typing import Literal, Optional
+from uuid import UUID
 
 from pydantic import EmailStr
 

@@ -1,16 +1,17 @@
 """Modelo: User (cuenta del sistema; desacoplado de Agent)."""
+
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import String, Text, Boolean, DateTime, ForeignKey, Uuid
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.config.database import Base
 from backend.models.collection import Collection, CollectionPermission
 from backend.models.occurrence import Occurrence
-from datetime import datetime
 
 
 class User(Base):
@@ -24,12 +25,8 @@ class User(Base):
     hashedPassword: Mapped[str] = mapped_column("hashed_password", String(255))
     isActive: Mapped[bool] = mapped_column("is_active", Boolean, default=True)
     isSuperuser: Mapped[bool] = mapped_column("is_superuser", Boolean, default=False)
-    isInstitutionAdmin: Mapped[bool] = mapped_column(
-        "is_institution_admin", Boolean, default=False
-    )
-    createdAt: Mapped[datetime] = mapped_column(
-        "created_at", DateTime, default=datetime.utcnow
-    )
+    isInstitutionAdmin: Mapped[bool] = mapped_column("is_institution_admin", Boolean, default=False)
+    createdAt: Mapped[datetime] = mapped_column("created_at", DateTime, default=datetime.utcnow)
 
     # Datos personales del usuario (curador/digitalizador)
     givenName: Mapped[Optional[str]] = mapped_column("given_name", String(100))

@@ -1,28 +1,8 @@
 import { useCallback, useEffect, useState, type CSSProperties, type FormEvent } from "react";
 import { Button } from "../ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "../ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../ui/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "../ui/dialog";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "../ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,13 +15,7 @@ import {
 } from "../ui/alert-dialog";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import {
   ArrowLeft,
   UserPlus,
@@ -67,11 +41,7 @@ import { Role } from "@constants/roles";
 import type { OccurrenceBriefItem } from "@interfaces/occurrence";
 import type { PaginatedResponse } from "@interfaces/utils/pagination";
 import type { CollectionUserAccessItem } from "@interfaces/collection";
-import {
-  ApiUserLookupResponse,
-  mapApiLookupToResult,
-  VISIBILITY,
-} from "@interfaces/auth";
+import { ApiUserLookupResponse, mapApiLookupToResult, VISIBILITY } from "@interfaces/auth";
 
 interface CollectionDetailPageProps {
   collectionId: string;
@@ -89,23 +59,16 @@ function formatBriefDate(raw: string | null): string {
   return d.toLocaleDateString("es-ES");
 }
 
-export function CollectionDetailPage({
-  collectionId,
-  collectionName,
-  isOwner,
-  onNavigate,
-}: CollectionDetailPageProps) {
+export function CollectionDetailPage({ collectionId, collectionName, isOwner, onNavigate }: CollectionDetailPageProps) {
   const { token, apiFetch } = useAuth();
 
   // ================== Estado: usuarios ==================
-  const [usersResp, setUsersResp] =
-    useState<PaginatedResponse<CollectionUserAccessItem> | null>(null);
+  const [usersResp, setUsersResp] = useState<PaginatedResponse<CollectionUserAccessItem> | null>(null);
   const [usersLimit] = useState(3);
   const [usersOffset, setUsersOffset] = useState(0);
 
   // ================== Estado: ocurrencias ==================
-  const [occResp, setOccResp] =
-    useState<PaginatedResponse<OccurrenceBriefItem> | null>(null);
+  const [occResp, setOccResp] = useState<PaginatedResponse<OccurrenceBriefItem> | null>(null);
   const [occLoading, setOccLoading] = useState(true);
   const [occLimit] = useState(5);
   const [occOffset, setOccOffset] = useState(0);
@@ -113,15 +76,12 @@ export function CollectionDetailPage({
   // ================== Estado: Add user dialog ==================
   const [showAddUserDialog, setShowAddUserDialog] = useState(false);
   const [emailInput, setEmailInput] = useState("");
-  const [emailStatus, setEmailStatus] = useState<
-    "idle" | "checking" | "ok" | "warn" | "error"
-  >("idle");
+  const [emailStatus, setEmailStatus] = useState<"idle" | "checking" | "ok" | "warn" | "error">("idle");
   const [emailHelp, setEmailHelp] = useState<string>("");
 
   // ================== Otros estados ==================
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [showDeleteCollectionDialog, setShowDeleteCollectionDialog] =
-    useState(false);
+  const [showDeleteCollectionDialog, setShowDeleteCollectionDialog] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const [isUsersExpanded, setIsUsersExpanded] = useState(true);
 
@@ -135,10 +95,10 @@ export function CollectionDetailPage({
     emailStatus === "ok"
       ? STATUS_HEX.ok
       : emailStatus === "warn"
-      ? STATUS_HEX.warn
-      : emailStatus === "error"
-      ? STATUS_HEX.error
-      : null;
+        ? STATUS_HEX.warn
+        : emailStatus === "error"
+          ? STATUS_HEX.error
+          : null;
 
   const statusStyle: CSSProperties | undefined = statusColor
     ? {
@@ -221,20 +181,15 @@ export function CollectionDetailPage({
         // SUPERADMIN
         if (r.visibility === VISIBILITY.FULL && r.user?.role === Role.Admin) {
           setEmailStatus("warn");
-          setEmailHelp(
-            "Este usuario es superadministrador: ya tiene acceso a todas las colecciones.",
-          );
+          setEmailHelp("Este usuario es superadministrador: ya tiene acceso a todas las colecciones.");
           return r;
         }
         if (
           r.visibility === VISIBILITY.LIMITED &&
-          (r.message?.toLowerCase().includes("superadministrador") ||
-            r.message?.toLowerCase().includes("superusuario"))
+          (r.message?.toLowerCase().includes("superadministrador") || r.message?.toLowerCase().includes("superusuario"))
         ) {
           setEmailStatus("warn");
-          setEmailHelp(
-            "Este usuario es superadministrador: ya tiene acceso a todas las colecciones.",
-          );
+          setEmailHelp("Este usuario es superadministrador: ya tiene acceso a todas las colecciones.");
           return r;
         }
 
@@ -243,9 +198,7 @@ export function CollectionDetailPage({
           setEmailHelp("Usuario encontrado en la misma institución.");
         } else {
           setEmailStatus("warn");
-          setEmailHelp(
-            "Este usuario pertenece a una institución diferente a la institución de esta colección.",
-          );
+          setEmailHelp("Este usuario pertenece a una institución diferente a la institución de esta colección.");
         }
 
         return r;
@@ -299,29 +252,16 @@ export function CollectionDetailPage({
         }
       }
     },
-    [
-      emailInput,
-      emailStatus,
-      collectionId,
-      token,
-      fetchUsers,
-      usersLimit,
-      validateAddUserEmail,
-    ],
+    [emailInput, emailStatus, collectionId, token, fetchUsers, usersLimit, validateAddUserEmail],
   );
 
   // ================== Paginación derivada ==================
   // Usuarios
   const usersTotal = usersResp?.total ?? 0;
-  const usersTotalPages =
-    usersTotal === 0 ? 1 : Math.ceil(usersTotal / usersLimit);
-  const usersCurrentPage = Math.min(
-    usersTotalPages,
-    Math.floor(usersOffset / usersLimit) + 1,
-  );
+  const usersTotalPages = usersTotal === 0 ? 1 : Math.ceil(usersTotal / usersLimit);
+  const usersCurrentPage = Math.min(usersTotalPages, Math.floor(usersOffset / usersLimit) + 1);
   const usersHasPrev = usersOffset > 0;
   const usersHasNext = usersOffset + usersLimit < usersTotal;
-
 
   const gotoUsersPage = (page: number) => {
     const clamped = Math.max(1, Math.min(usersTotalPages, page));
@@ -330,12 +270,8 @@ export function CollectionDetailPage({
 
   // Ocurrencias
   const occTotal = occResp?.total ?? 0;
-  const occTotalPages =
-    occTotal === 0 ? 1 : Math.ceil(occTotal / occLimit);
-  const occCurrentPage = Math.min(
-    occTotalPages,
-    Math.floor(occOffset / occLimit) + 1,
-  );
+  const occTotalPages = occTotal === 0 ? 1 : Math.ceil(occTotal / occLimit);
+  const occCurrentPage = Math.min(occTotalPages, Math.floor(occOffset / occLimit) + 1);
   const gotoOccPage = (page: number) => {
     const clamped = Math.max(1, Math.min(occTotalPages, page));
     setOccOffset((clamped - 1) * occLimit);
@@ -398,13 +334,7 @@ export function CollectionDetailPage({
               >
                 <Pencil className="h-4 w-4" />
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled
-                title="Próximamente"
-                className="h-8 w-8 p-0"
-              >
+              <Button variant="ghost" size="sm" disabled title="Próximamente" className="h-8 w-8 p-0">
                 <Trash2 className="h-4 w-4 text-red-600" />
               </Button>
             </>
@@ -417,11 +347,7 @@ export function CollectionDetailPage({
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="mb-6">
-        <Button
-          variant="ghost"
-          onClick={() => onNavigate("collections")}
-          className="mb-4"
-        >
+        <Button variant="ghost" onClick={() => onNavigate("collections")} className="mb-4">
           <ArrowLeft className="h-4 w-4 mr-2" />
           Volver a Colecciones
         </Button>
@@ -429,8 +355,7 @@ export function CollectionDetailPage({
         <div>
           <h1 className="text-3xl mb-2">{collectionName}</h1>
           <p className="text-muted-foreground">
-            {occCount} ocurrencias en esta colección • {usersCount} usuarios
-            con acceso a esta colección
+            {occCount} ocurrencias en esta colección • {usersCount} usuarios con acceso a esta colección
           </p>
         </div>
       </div>
@@ -460,9 +385,7 @@ export function CollectionDetailPage({
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Agregar Usuario a la Colección</DialogTitle>
-                  <DialogDescription>
-                    Invita a otros usuarios como visualizadores
-                  </DialogDescription>
+                  <DialogDescription>Invita a otros usuarios como visualizadores</DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleAddUser} className="space-y-4">
                   <div className="space-y-2">
@@ -477,7 +400,9 @@ export function CollectionDetailPage({
                           setEmailStatus("idle");
                           setEmailHelp("");
                         }}
-                        onBlur={(e) => { void validateAddUserEmail(e.target.value); }}
+                        onBlur={(e) => {
+                          void validateAddUserEmail(e.target.value);
+                        }}
                         placeholder="usuario@ejemplo.com"
                         required
                         aria-invalid={emailStatus === "error" ? true : undefined}
@@ -486,15 +411,41 @@ export function CollectionDetailPage({
                       />
                       {emailStatus !== "idle" && (
                         <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                          {emailStatus === "checking" && <Info className="h-4 w-4 text-muted-foreground animate-pulse" />}
-                          {emailStatus === "ok" && <span style={{ color: STATUS_HEX.ok }} className="text-sm font-medium">OK</span>}
-                          {emailStatus === "warn" && <span style={{ color: STATUS_HEX.warn }} className="text-sm font-medium">Warn</span>}
-                          {emailStatus === "error" && <span style={{ color: STATUS_HEX.error }} className="text-sm font-medium">Error</span>}
+                          {emailStatus === "checking" && (
+                            <Info className="h-4 w-4 text-muted-foreground animate-pulse" />
+                          )}
+                          {emailStatus === "ok" && (
+                            <span style={{ color: STATUS_HEX.ok }} className="text-sm font-medium">
+                              OK
+                            </span>
+                          )}
+                          {emailStatus === "warn" && (
+                            <span style={{ color: STATUS_HEX.warn }} className="text-sm font-medium">
+                              Warn
+                            </span>
+                          )}
+                          {emailStatus === "error" && (
+                            <span style={{ color: STATUS_HEX.error }} className="text-sm font-medium">
+                              Error
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>
                     {emailHelp && (
-                      <p className="text-sm" style={{ color: emailStatus === "error" ? STATUS_HEX.error : emailStatus === "warn" ? STATUS_HEX.warn : emailStatus === "ok" ? STATUS_HEX.ok : undefined }}>
+                      <p
+                        className="text-sm"
+                        style={{
+                          color:
+                            emailStatus === "error"
+                              ? STATUS_HEX.error
+                              : emailStatus === "warn"
+                                ? STATUS_HEX.warn
+                                : emailStatus === "ok"
+                                  ? STATUS_HEX.ok
+                                  : undefined,
+                        }}
+                      >
                         {emailHelp}
                       </p>
                     )}
@@ -537,9 +488,7 @@ export function CollectionDetailPage({
                     <Users className="h-4 w-4 text-primary" />
                   </div>
                   <div>
-                    <CardTitle className="text-lg font-semibold tracking-tight">
-                      Usuarios con Acceso
-                    </CardTitle>
+                    <CardTitle className="text-lg font-semibold tracking-tight">Usuarios con Acceso</CardTitle>
                     <CardDescription className="text-xs">
                       Usuarios que pueden acceder a esta colección ({usersCount} total)
                     </CardDescription>
@@ -553,9 +502,7 @@ export function CollectionDetailPage({
                   onClick={() => setIsUsersExpanded((v) => !v)}
                   aria-label={isUsersExpanded ? "Ocultar usuarios" : "Mostrar usuarios"}
                 >
-                  {isUsersExpanded
-                    ? <ChevronUp className="h-4 w-4" />
-                    : <ChevronDown className="h-4 w-4" />}
+                  {isUsersExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                 </Button>
               </div>
             </CardHeader>
@@ -573,7 +520,9 @@ export function CollectionDetailPage({
                         <TableRow>
                           <TableHead>Usuario</TableHead>
                           <TableHead>Rol</TableHead>
-                          <TableHead className="whitespace-nowrap" style={{ width: "1px", textAlign: "right" }}>Acciones</TableHead>
+                          <TableHead className="whitespace-nowrap" style={{ width: "1px", textAlign: "right" }}>
+                            Acciones
+                          </TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -589,41 +538,61 @@ export function CollectionDetailPage({
                               <TableCell>
                                 <div className="flex items-center gap-3">
                                   <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                                    {u.role === "viewer"
-                                      ? <Eye className="h-4 w-4 text-primary" />
-                                      : <Pencil className="h-4 w-4 text-primary" />}
+                                    {u.role === "viewer" ? (
+                                      <Eye className="h-4 w-4 text-primary" />
+                                    ) : (
+                                      <Pencil className="h-4 w-4 text-primary" />
+                                    )}
                                   </div>
                                   <div>
                                     <p className="font-medium">{u.full_name || u.email.split("@")[0]}</p>
                                     <p className="text-sm text-muted-foreground">{u.email}</p>
-                                    {u.institution && (
-                                      <p className="text-xs text-muted-foreground">{u.institution}</p>
-                                    )}
+                                    {u.institution && <p className="text-xs text-muted-foreground">{u.institution}</p>}
                                   </div>
                                 </div>
                               </TableCell>
                               <TableCell className="whitespace-nowrap align-middle">
                                 <div>
                                   {u.role === "owner" && (
-                                    <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">Propietario</span>
+                                    <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                                      Propietario
+                                    </span>
                                   )}
                                   {u.role === "editor" && (
-                                    <span className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-700">Editor</span>
+                                    <span className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-700">
+                                      Editor
+                                    </span>
                                   )}
                                   {u.role === "viewer" && (
-                                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-800">Lector</span>
+                                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-800">
+                                      Lector
+                                    </span>
                                   )}
                                   {!["owner", "editor", "viewer"].includes(u.role) && (
-                                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-800">{u.role}</span>
+                                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-800">
+                                      {u.role}
+                                    </span>
                                   )}
                                 </div>
                               </TableCell>
                               <TableCell className="whitespace-nowrap align-middle" style={{ width: "1px" }}>
                                 <div className="flex justify-end gap-2">
-                                  <Button variant="outline" size="sm" disabled title="Próximamente" className="h-9 w-9 p-0">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    disabled
+                                    title="Próximamente"
+                                    className="h-9 w-9 p-0"
+                                  >
                                     <RefreshCw className="h-4 w-4" />
                                   </Button>
-                                  <Button variant="ghost" size="sm" disabled title="Próximamente" className="h-9 w-9 p-0">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled
+                                    title="Próximamente"
+                                    className="h-9 w-9 p-0"
+                                  >
                                     <Trash2 className="h-4 w-4 text-red-600" />
                                   </Button>
                                 </div>
@@ -690,10 +659,7 @@ export function CollectionDetailPage({
                 <UserPlus className="h-4 w-4 mr-2" />
                 Nueva Ocurrencia
               </Button>
-              <Button
-                size="sm"
-                onClick={() => onNavigate("csv-import", { collectionId, collectionName })}
-              >
+              <Button size="sm" onClick={() => onNavigate("csv-import", { collectionId, collectionName })}>
                 <Upload className="h-4 w-4 mr-2" />
                 Importar CSV
               </Button>
@@ -722,40 +688,27 @@ export function CollectionDetailPage({
           <AlertDialogHeader>
             <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción no se puede deshacer. La ocurrencia será eliminada
-              permanentemente de la colección.
+              Esta acción no se puede deshacer. La ocurrencia será eliminada permanentemente de la colección.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-red-600 hover:bg-red-700"
-              disabled
-            >
+            <AlertDialogAction className="bg-red-600 hover:bg-red-700" disabled>
               Eliminar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog
-        open={showDeleteCollectionDialog}
-        onOpenChange={setShowDeleteCollectionDialog}
-      >
+      <AlertDialog open={showDeleteCollectionDialog} onOpenChange={setShowDeleteCollectionDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              ¿Estás seguro de eliminar esta colección?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              Esta acción no se puede deshacer.
-            </AlertDialogDescription>
+            <AlertDialogTitle>¿Estás seguro de eliminar esta colección?</AlertDialogTitle>
+            <AlertDialogDescription>Esta acción no se puede deshacer.</AlertDialogDescription>
           </AlertDialogHeader>
           <div className="my-4">
             <Label htmlFor="confirmDelete">
-              Escribe{" "}
-              <span className="font-mono bg-muted px-1">CONFIRMAR</span> para
-              proceder
+              Escribe <span className="font-mono bg-muted px-1">CONFIRMAR</span> para proceder
             </Label>
             <Input
               id="confirmDelete"
@@ -766,13 +719,8 @@ export function CollectionDetailPage({
             />
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setConfirmText("")}>
-              Cancelar
-            </AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-red-600 hover:bg-red-700"
-              disabled
-            >
+            <AlertDialogCancel onClick={() => setConfirmText("")}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction className="bg-red-600 hover:bg-red-700" disabled>
               Eliminar Colección
             </AlertDialogAction>
           </AlertDialogFooter>

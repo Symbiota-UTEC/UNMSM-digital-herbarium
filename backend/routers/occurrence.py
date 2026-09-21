@@ -1,28 +1,28 @@
 from __future__ import annotations
-from uuid import UUID
-# backend/routers/occurrence.py
 
+# backend/routers/occurrence.py
 from typing import Optional
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
-from backend.config.database import get_db
 from backend.auth.jwt import get_current_user
+from backend.config.database import get_db
 from backend.models.models import User
 from backend.schemas import Page
 from backend.schemas.occurrence import (
-    OccurrenceOut,
-    OccurrenceBriefItem,
-    OccurrenceMapOut,
     DynamicPropsIn,
-    OccurrenceFilters,
-    OccurrenceCreateIn,
-    OccurrenceUpdateIn,
     IdentificationCreateIn,
+    OccurrenceBriefItem,
+    OccurrenceCreateIn,
+    OccurrenceFilters,
+    OccurrenceMapOut,
+    OccurrenceOut,
+    OccurrenceUpdateIn,
 )
-from backend.services.occurrence_filters import get_occurrence_filters
 from backend.services import occurrences as occurrences_service
+from backend.services.occurrence_filters import get_occurrence_filters
 
 router = APIRouter(
     prefix="/occurrences",

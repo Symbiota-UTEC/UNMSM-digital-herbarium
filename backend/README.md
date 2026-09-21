@@ -29,6 +29,10 @@ python -m uvicorn backend.main:app --reload --port 8000
 
 The default admin comes from the `ADMIN_*` variables in `backend/config/.env`.
 
+## Lint and format
+
+Ruff (config in [`ruff.toml`](ruff.toml)), run automatically on every commit through pre-commit (see the root [`CLAUDE.md`](../CLAUDE.md)). By hand, from the repo root: `ruff check backend --fix` and `ruff format backend`.
+
 ## Configuration
 
 Everything is read from `backend/config/.env` (template: [`config/.env.sample`](config/.env.sample)). Only `SECRET_KEY` is required. `USERNAME`/`PASSWORD`/`DATABASE` must match the root `.env` when using `docker compose`.

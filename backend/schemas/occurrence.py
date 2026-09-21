@@ -1,12 +1,13 @@
 from __future__ import annotations
-from uuid import UUID
-# backend/schemas/occurrence.py
 
-from datetime import datetime, date
+# backend/schemas/occurrence.py
+from datetime import date, datetime
 from typing import Any, Dict, List, Literal, Optional
+from uuid import UUID
+
+from pydantic import BaseModel, Field
 
 from backend.schemas.common.base import ORMBaseModel, StrictBaseModel
-from pydantic import BaseModel, Field
 
 # -----------------------------
 # Resumenes / submodelos
@@ -57,6 +58,7 @@ class OccurrenceImageOut(ORMBaseModel):
     """
     Imagen asociada a una ocurrencia (refleja el modelo OccurrenceImage).
     """
+
     occurrenceImageId: UUID
     occurrenceId: UUID
 
@@ -161,6 +163,7 @@ class OccurrenceBriefItem(ORMBaseModel):
 # Inputs
 # -----------------------------
 
+
 class IdentifierIn(StrictBaseModel):
     name: str
     orcid: Optional[str] = None
@@ -173,7 +176,7 @@ class OccurrenceCreateIn(StrictBaseModel):
     catalogNumber: str
     recordNumber: Optional[str] = None
     recordedBy: Optional[str] = None
-    
+
     # Event
     eventDate: Optional[str] = None
     verbatimEventDate: Optional[str] = None
@@ -221,7 +224,6 @@ class OccurrenceCreateIn(StrictBaseModel):
 
     # Dynamic properties dictionary mapped by frontend
     dynamicProperties: Optional[Dict[str, Any]] = None
-
 
 
 class OccurrenceUpdateIn(StrictBaseModel):
@@ -314,6 +316,7 @@ class OccurrenceFilters(BaseModel):
 class OccurrenceMapPointOut(ORMBaseModel):
     """Punto del mapa. locationType indica cómo se registró la ubicación: point (exacta),
     circle (punto con coordinateUncertaintyInMeters) o polygon (footprintWKT)."""
+
     occurrenceId: UUID
     code: Optional[str] = None
     scientificName: Optional[str] = None

@@ -1,22 +1,20 @@
 # backend/services/auth.py
+from datetime import datetime, timedelta
+from typing import List, Literal, Optional
 from uuid import UUID
-
-from datetime import timedelta, datetime
-from typing import Optional, Literal, List
 
 from fastapi import HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-
-from sqlalchemy import select, or_, and_, func, update as sa_update
+from sqlalchemy import and_, func, or_, select
+from sqlalchemy import update as sa_update
 from sqlalchemy.orm import Session
 
-from backend.models.models import User, Institution, RegistrationRequest
-from backend.utils.security import hash_password, verify_password
 from backend.auth.jwt import create_user_token
 from backend.config.auth import access_token_expire_minutes
-
-from backend.schemas.common.pages import Page
+from backend.models.models import Institution, RegistrationRequest, User
 from backend.schemas.auth import RegistrationRequestItem, UpdateRequestStatusBody
+from backend.schemas.common.pages import Page
+from backend.utils.security import hash_password, verify_password
 
 
 def list_registration_requests(
@@ -32,9 +30,7 @@ def list_registration_requests(
     if current_user.isSuperuser:
         where_clauses = []
         if institution_id is not None:
-            where_clauses.append(
-                RegistrationRequest.institutionId == institution_id
-            )
+            where_clauses.append(RegistrationRequest.institutionId == institution_id)
     elif current_user.isInstitutionAdmin:
         if institution_id is None:
             raise HTTPException(
@@ -60,14 +56,13 @@ def list_registration_requests(
     if full_name_prefix:
         pattern = f"{full_name_prefix}%"
         where_clauses.append(
-            func.unaccent(
-                func.coalesce(RegistrationRequest.fullName, "")
-            ).ilike(func.unaccent(pattern))
+            func.unaccent(func.coalesce(RegistrationRequest.fullName, "")).ilike(
+                func.unaccent(pattern)
+            )
         )
 
-    base_stmt = (
-        select(RegistrationRequest)
-        .join(Institution, Institution.institutionId == RegistrationRequest.institutionId)
+    base_stmt = select(RegistrationRequest).join(
+        Institution, Institution.institutionId == RegistrationRequest.institutionId
     )
     if where_clauses:
         base_stmt = base_stmt.where(and_(*where_clauses))
@@ -82,12 +77,7 @@ def list_registration_requests(
 
     total = db.execute(count_stmt).scalar_one() or 0
 
-    stmt = (
-        base_stmt
-        .order_by(RegistrationRequest.createdAt.desc())
-        .limit(limit)
-        .offset(offset)
-    )
+    stmt = base_stmt.order_by(RegistrationRequest.createdAt.desc()).limit(limit).offset(offset)
 
     rows = db.execute(stmt).scalars().all()
 
@@ -113,9 +103,7 @@ def list_registration_requests(
         for r in rows
     ]
 
-    return Page[RegistrationRequestItem].of(
-        items, total=total, limit=limit, offset=offset
-    )
+    return Page[RegistrationRequestItem].of(items, total=total, limit=limit, offset=offset)
 
 
 # TODO: validar si el nuevo usuario a crear ha sido rejected anteriormente
@@ -143,9 +131,7 @@ def register_user(
 
     # 2) Usuario ya existe
     existing_user = db.execute(
-        select(User).where(
-            or_(User.username == username, User.email == email)
-        )
+        select(User).where(or_(User.username == username, User.email == email))
     ).scalar_one_or_none()
     if existing_user:
         raise HTTPException(
@@ -184,9 +170,7 @@ def register_user(
         )
 
     # 5) Crear solicitud (en estado pending)
-    full_name = " ".join(
-        [p for p in [given_name, family_name] if p]
-    ).strip() or None
+    full_name = " ".join([p for p in [given_name, family_name] if p]).strip() or None
 
     req = RegistrationRequest(
         username=username,
@@ -230,9 +214,7 @@ def update_registration_request_status(
     ).scalar_one_or_none()
 
     if not registration_request:
-        raise HTTPException(
-            status_code=404, detail="Solicitud de registro no encontrada"
-        )
+        raise HTTPException(status_code=404, detail="Solicitud de registro no encontrada")
 
     # 2) Solo desde 'pending'
     if registration_request.status != "pending":
@@ -362,9 +344,7 @@ def update_registration_request_status(
 
 
 def login_user(db: Session, form_data: OAuth2PasswordRequestForm) -> dict:
-    user = db.execute(
-        select(User).where(User.email == form_data.username)
-    ).scalar_one_or_none()
+    user = db.execute(select(User).where(User.email == form_data.username)).scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=401, detail="Invalid email or password")
 

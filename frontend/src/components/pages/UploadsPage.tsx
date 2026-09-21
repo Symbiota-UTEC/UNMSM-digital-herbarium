@@ -1,20 +1,7 @@
 import { useEffect, useRef, useState, type BaseSyntheticEvent, type ChangeEvent } from "react";
 import { Button } from "../ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "../ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "../ui/dialog";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Badge } from "../ui/badge";
@@ -24,31 +11,36 @@ import { toast } from "sonner";
 import { useAuth } from "@contexts/AuthContext";
 import { PAGE_SIZE } from "@constants/api";
 import { Role } from "@constants/roles";
-import {
-  uploadService,
-  type TaxonFloraImportJob,
-  type TaxonFloraImportJobStatus,
-} from "@services/upload.service";
+import { uploadService, type TaxonFloraImportJob, type TaxonFloraImportJobStatus } from "@services/upload.service";
 import { DataTable, type ColumnDef } from "../ui/data-table";
 
 const POLL_MS = 4000;
 
 function formatStatus(status: TaxonFloraImportJobStatus): string {
   switch (status) {
-    case "queued":    return "En cola";
-    case "running":   return "Procesando";
-    case "completed": return "Completado";
-    case "failed":    return "Falló";
-    default:          return status;
+    case "queued":
+      return "En cola";
+    case "running":
+      return "Procesando";
+    case "completed":
+      return "Completado";
+    case "failed":
+      return "Falló";
+    default:
+      return status;
   }
 }
 
 function badgeVariant(status: TaxonFloraImportJobStatus): "default" | "secondary" | "destructive" | "outline" {
   switch (status) {
-    case "completed": return "default";
-    case "failed":    return "destructive";
-    case "running":   return "secondary";
-    default:          return "outline";
+    case "completed":
+      return "default";
+    case "failed":
+      return "destructive";
+    case "running":
+      return "secondary";
+    default:
+      return "outline";
   }
 }
 
@@ -65,7 +57,10 @@ function formatBytes(value: number | null): string {
   const units = ["KB", "MB", "GB", "TB"];
   let size = value;
   let unitIndex = -1;
-  while (size >= 1024 && unitIndex < units.length - 1) { size /= 1024; unitIndex += 1; }
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
   return `${size.toFixed(size >= 100 ? 0 : 1)} ${units[unitIndex]}`;
 }
 
@@ -94,22 +89,17 @@ export function UploadsPage() {
   const [jobHistoryOffset, setJobHistoryOffset] = useState(0);
   const [jobHistoryTotal, setJobHistoryTotal] = useState(0);
 
-  const syncActiveJobFromHistory = (
-    jobs: TaxonFloraImportJob[],
-    preferredJobId?: string | null,
-  ) => {
-    if (jobs.length === 0) { setActiveJob(null); return; }
-    const preferred = preferredJobId ? jobs.find((j) => j.jobId === preferredJobId) ?? null : null;
+  const syncActiveJobFromHistory = (jobs: TaxonFloraImportJob[], preferredJobId?: string | null) => {
+    if (jobs.length === 0) {
+      setActiveJob(null);
+      return;
+    }
+    const preferred = preferredJobId ? (jobs.find((j) => j.jobId === preferredJobId) ?? null) : null;
     const running = jobs.find((j) => j.status === "queued" || j.status === "running") ?? null;
     setActiveJob(preferred ?? running ?? jobs[0]);
   };
 
-  const fetchJobHistory = async (
-    preferredJobId?: string | null,
-    showError = false,
-    offset = 0,
-    silent = false,
-  ) => {
+  const fetchJobHistory = async (preferredJobId?: string | null, showError = false, offset = 0, silent = false) => {
     if (!isSuperuser) return;
     try {
       if (!silent) setIsLoadingJobs(true);
@@ -134,7 +124,8 @@ export function UploadsPage() {
       setJobHistory((prev) => {
         const next = [...prev];
         const idx = next.findIndex((item) => item.jobId === job.jobId);
-        if (idx >= 0) next[idx] = job; else next.unshift(job);
+        if (idx >= 0) next[idx] = job;
+        else next.unshift(job);
         return next
           .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
           .slice(0, PAGE_SIZE.TAXON_FLORA_JOBS);
@@ -159,7 +150,10 @@ export function UploadsPage() {
 
   const handleUpload = async (e: BaseSyntheticEvent) => {
     e.preventDefault();
-    if (!csvFile) { toast.error("Selecciona primero un archivo CSV de flora"); return; }
+    if (!csvFile) {
+      toast.error("Selecciona primero un archivo CSV de flora");
+      return;
+    }
     try {
       setIsUploading(true);
       const payload = await uploadService.uploadTaxonFloraCsv(apiFetch, csvFile);
@@ -179,7 +173,11 @@ export function UploadsPage() {
   };
 
   useEffect(() => {
-    if (!isSuperuser) { setJobHistory([]); setActiveJob(null); return; }
+    if (!isSuperuser) {
+      setJobHistory([]);
+      setActiveJob(null);
+      return;
+    }
     fetchJobHistory(undefined, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuperuser]);
@@ -221,9 +219,7 @@ export function UploadsPage() {
       cell: (job) => (
         <div>
           <div className="font-medium text-sm">{job.filename}</div>
-          {(job.detail || job.stage) && (
-            <div className="text-xs text-muted-foreground">{job.detail || job.stage}</div>
-          )}
+          {(job.detail || job.stage) && <div className="text-xs text-muted-foreground">{job.detail || job.stage}</div>}
         </div>
       ),
     },
@@ -235,9 +231,7 @@ export function UploadsPage() {
     {
       key: "rows",
       header: "Filas",
-      cell: (job) => (
-        <span className="text-sm tabular-nums">{job.rowsProcessed.toLocaleString("es-PE")}</span>
-      ),
+      cell: (job) => <span className="text-sm tabular-nums">{job.rowsProcessed.toLocaleString("es-PE")}</span>,
     },
     {
       key: "progress",
@@ -256,9 +250,7 @@ export function UploadsPage() {
           {(job.status === "queued" || job.status === "running") && (
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
           )}
-          <Badge variant={badgeVariant(job.status)}>
-            {formatStatus(job.status)}
-          </Badge>
+          <Badge variant={badgeVariant(job.status)}>{formatStatus(job.status)}</Badge>
         </div>
       ),
     },
@@ -269,9 +261,7 @@ export function UploadsPage() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight mb-2">Cargas</h1>
-          <p className="text-sm text-muted-foreground">
-            Importaciones del backbone taxonómico
-          </p>
+          <p className="text-sm text-muted-foreground">Importaciones del backbone taxonómico</p>
         </div>
 
         {isSuperuser && (
@@ -286,8 +276,7 @@ export function UploadsPage() {
               <DialogHeader>
                 <DialogTitle>Cargar CSV de Flora</DialogTitle>
                 <DialogDescription>
-                  Sube un archivo CSV con los taxones de flora para poblar el
-                  catálogo taxonómico.
+                  Sube un archivo CSV con los taxones de flora para poblar el catálogo taxonómico.
                 </DialogDescription>
               </DialogHeader>
 
@@ -296,8 +285,8 @@ export function UploadsPage() {
                 <AlertDescription>
                   <ol className="list-decimal pl-5 space-y-1 text-sm mt-2">
                     <li>
-                      Descarga el archivo de taxones de tu flora de referencia
-                      (el CSV <code>classification.csv</code> de{" "}
+                      Descarga el archivo de taxones de tu flora de referencia (el CSV <code>classification.csv</code>{" "}
+                      de{" "}
                       <a
                         href="https://wfoplantlist.org/classifications"
                         target="_blank"
@@ -309,10 +298,7 @@ export function UploadsPage() {
                       ).
                     </li>
                     <li>No modifiques los encabezados originales del archivo.</li>
-                    <li>
-                      Selecciona el CSV y súbelo. El progreso se muestra en
-                      esta página.
-                    </li>
+                    <li>Selecciona el CSV y súbelo. El progreso se muestra en esta página.</li>
                   </ol>
                 </AlertDescription>
               </Alert>
@@ -349,7 +335,10 @@ export function UploadsPage() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => { setOpen(false); setCsvFile(null); }}
+                    onClick={() => {
+                      setOpen(false);
+                      setCsvFile(null);
+                    }}
                     disabled={isUploading}
                   >
                     Cancelar
@@ -368,9 +357,7 @@ export function UploadsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Estado de última importación</CardTitle>
-          <CardDescription>
-            Sigue el progreso de la carga del backbone taxonómico.
-          </CardDescription>
+          <CardDescription>Sigue el progreso de la carga del backbone taxonómico.</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoadingJobs && jobHistory.length === 0 ? (
@@ -387,9 +374,7 @@ export function UploadsPage() {
                     {latestJob.detail || latestJob.stage || "Sin detalle disponible"}
                   </div>
                 </div>
-                <Badge variant={badgeVariant(latestJob.status)}>
-                  {formatStatus(latestJob.status)}
-                </Badge>
+                <Badge variant={badgeVariant(latestJob.status)}>{formatStatus(latestJob.status)}</Badge>
               </div>
 
               <div className="grid gap-3 md:grid-cols-3">
@@ -404,9 +389,7 @@ export function UploadsPage() {
                 </div>
                 <div className="rounded-md bg-muted/40 p-3">
                   <div className="text-xs text-muted-foreground">ETA</div>
-                  <div className="text-lg font-semibold">
-                    {formatSeconds(latestJob.estimatedSecondsRemaining)}
-                  </div>
+                  <div className="text-lg font-semibold">{formatSeconds(latestJob.estimatedSecondsRemaining)}</div>
                   <div className="text-xs text-muted-foreground">
                     Inicio: {formatDateTime(latestJob.startedAt || latestJob.createdAt)}
                   </div>
@@ -416,9 +399,7 @@ export function UploadsPage() {
                   <div className="text-lg font-semibold">
                     {latestJob.lastProcessedRow?.toLocaleString("es-PE") || "—"}
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    Finalizó: {formatDateTime(latestJob.finishedAt)}
-                  </div>
+                  <div className="text-xs text-muted-foreground">Finalizó: {formatDateTime(latestJob.finishedAt)}</div>
                 </div>
               </div>
 
@@ -449,9 +430,7 @@ export function UploadsPage() {
               )}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">
-              Aún no hay importaciones registradas.
-            </p>
+            <p className="text-sm text-muted-foreground">Aún no hay importaciones registradas.</p>
           )}
         </CardContent>
       </Card>

@@ -34,6 +34,18 @@ cd frontend && npm run dev    # port 3000
 cd frontend && npm run build
 ```
 
+## Code Quality (pre-commit)
+
+`.pre-commit-config.yaml` runs on every commit, only over the staged files:
+
+- **Everywhere:** trailing whitespace, final newline, line endings, YAML/JSON validity, merge-conflict markers, files > 1 MB.
+- **Backend:** Ruff (`ruff-check --fix` + `ruff-format`, config in `backend/ruff.toml`).
+- **Frontend:** ESLint, Prettier and `tsc --noEmit` (config in `frontend/`; they need `cd frontend && npm install`).
+
+Once per clone: `pip install pre-commit && pre-commit install`. On demand over everything: `pre-commit run --all-files`. When a hook fixes files the commit is aborted: review, `git add` and commit again. Don't skip it with `--no-verify`; whatever slips through is caught by the same command in review. `.editorconfig` mirrors the same rules for editors.
+
+The one-off "format everything" commit is listed in `.git-blame-ignore-revs`; enable it with `git config blame.ignoreRevsFile .git-blame-ignore-revs`.
+
 ## Architecture
 
 Two independent apps that talk over a REST API (`/api`); each has its own `CLAUDE.md` with the details, its own `README.md`, and follows the same layout: Overview, Project Structure, Architecture, Running Locally, Conventions.

@@ -1,9 +1,4 @@
-export type DwCEntity =
-  | "Occurrence"
-  | "Event"
-  | "Location"
-  | "Taxon"
-  | "Identification";
+export type DwCEntity = "Occurrence" | "Event" | "Location" | "Taxon" | "Identification";
 
 export interface DwCFieldOption {
   value: string;
@@ -34,8 +29,7 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       required: true,
       recommended: true,
       inForm: true,
-      helpEs:
-        "Número o código de catálogo asignado al ejemplar o registro (número de pliego, etc.).",
+      helpEs: "Número o código de catálogo asignado al ejemplar o registro (número de pliego, etc.).",
     },
     {
       entity: "Occurrence",
@@ -45,8 +39,7 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       required: true,
       recommended: true,
       inForm: true,
-      helpEs:
-        "Número de colecta asignado por el colector (número de campo).",
+      helpEs: "Número de colecta asignado por el colector (número de campo).",
     },
     {
       entity: "Occurrence",
@@ -56,8 +49,7 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       required: true,
       recommended: true,
       inForm: true,
-      helpEs:
-        "Nombre(s) de la(s) persona(s) que observaron o recolectaron, en orden de importancia.",
+      helpEs: "Nombre(s) de la(s) persona(s) que observaron o recolectaron, en orden de importancia.",
     },
     // ---------- DESEABLES (nice to have) ----------
     {
@@ -67,8 +59,7 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       label: "dwc:Occurrence:organismQuantity",
       recommended: true,
       inForm: true,
-      helpEs:
-        "Cantidad de organismos (número, cobertura, biomasa, etc.).",
+      helpEs: "Cantidad de organismos (número, cobertura, biomasa, etc.).",
     },
     {
       entity: "Occurrence",
@@ -77,8 +68,7 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       label: "dwc:Occurrence:organismQuantityType",
       recommended: true,
       inForm: true,
-      helpEs:
-        "Tipo de unidad usada en organismQuantity (individuos, ramas, colonias, etc.).",
+      helpEs: "Tipo de unidad usada en organismQuantity (individuos, ramas, colonias, etc.).",
     },
     {
       entity: "Occurrence",
@@ -87,8 +77,7 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       label: "dwc:Occurrence:georeferenceVerificationStatus",
       recommended: true,
       inForm: true,
-      helpEs:
-        "Estado de verificación de la georreferenciación (p. ej., verificado, no verificado).",
+      helpEs: "Estado de verificación de la georreferenciación (p. ej., verificado, no verificado).",
     },
     // ---------- OPCIONALES ----------
     {
@@ -97,8 +86,7 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       value: "Occurrence.lifeStage",
       label: "dwc:Occurrence:lifeStage",
       inForm: true,
-      helpEs:
-        "Etapa de vida del organismo (plántula, adulto, flor, fruto, etc.).",
+      helpEs: "Etapa de vida del organismo (plántula, adulto, flor, fruto, etc.).",
     },
     {
       entity: "Occurrence",
@@ -106,8 +94,7 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       value: "Occurrence.occurrenceRemarks",
       label: "dwc:Occurrence:occurrenceRemarks",
       inForm: true,
-      helpEs:
-        "Notas adicionales sobre la ocurrencia (fenología, microhábitat, sustrato, etc.).",
+      helpEs: "Notas adicionales sobre la ocurrencia (fenología, microhábitat, sustrato, etc.).",
     },
     {
       entity: "Occurrence",
@@ -115,8 +102,7 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       value: "Occurrence.establishmentMeans",
       label: "dwc:Occurrence:establishmentMeans",
       inForm: true,
-      helpEs:
-        "Forma de establecimiento en el lugar (nativa, introducida, cultivada, etc.).",
+      helpEs: "Forma de establecimiento en el lugar (nativa, introducida, cultivada, etc.).",
     },
     {
       entity: "Occurrence",
@@ -124,8 +110,7 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       value: "Occurrence.associatedReferences",
       label: "dwc:Occurrence:associatedReferences",
       inForm: true,
-      helpEs:
-        "Referencias bibliográficas asociadas a esta ocurrencia en particular.",
+      helpEs: "Referencias bibliográficas asociadas a esta ocurrencia en particular.",
     },
     {
       entity: "Occurrence",
@@ -133,8 +118,7 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       value: "Occurrence.associatedTaxa",
       label: "dwc:Occurrence:associatedTaxa",
       inForm: true,
-      helpEs:
-        "Taxones asociados (huésped, parásito, simbionte, forófito, etc.).",
+      helpEs: "Taxones asociados (huésped, parásito, simbionte, forófito, etc.).",
     },
     {
       entity: "Occurrence",
@@ -142,8 +126,7 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       value: "Occurrence.dynamicProperties",
       label: "dwc:Occurrence:dynamicProperties",
       inForm: false,
-      helpEs:
-        "Propiedades adicionales por registro en formato JSON (clave-valor).",
+      helpEs: "Propiedades adicionales por registro en formato JSON (clave-valor).",
     },
   ],
 
@@ -160,8 +143,7 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       required: true,
       recommended: true,
       inForm: true,
-      helpEs:
-        "Fecha del evento tal como aparece en la etiqueta o fuente original (texto libre).",
+      helpEs: "Fecha del evento tal como aparece en la etiqueta o fuente original (texto libre).",
     },
 
     // ---------- DESEABLES (nice to have) ----------
@@ -172,8 +154,7 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       label: "dwc:Event:eventDate",
       recommended: true,
       inForm: true,
-      helpEs:
-        "Fecha (o rango) normalizada del evento en formato ISO 8601.",
+      helpEs: "Fecha (o rango) normalizada del evento en formato ISO 8601.",
     },
     {
       entity: "Event",
@@ -218,8 +199,7 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       label: "dwc:Event:eventRemarks",
       recommended: true,
       inForm: true,
-      helpEs:
-        "Notas adicionales sobre el evento de muestreo (condiciones, clima, etc.).",
+      helpEs: "Notas adicionales sobre el evento de muestreo (condiciones, clima, etc.).",
     },
 
     // ---------- OPCIONALES ----------
@@ -266,8 +246,7 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       required: true,
       recommended: true,
       inForm: true,
-      helpEs:
-        "Descripción textual de la localidad tal como aparece en la etiqueta.",
+      helpEs: "Descripción textual de la localidad tal como aparece en la etiqueta.",
     },
 
     // ---------- DESEABLES (nice to have) ----------
@@ -278,8 +257,7 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       label: "dwc:Location:verbatimElevation",
       recommended: true,
       inForm: true,
-      helpEs:
-        "Elevación tal como aparece en la etiqueta (con unidades, rangos, etc.).",
+      helpEs: "Elevación tal como aparece en la etiqueta (con unidades, rangos, etc.).",
     },
     {
       entity: "Location",
@@ -306,8 +284,7 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       label: "dwc:Location:locality",
       recommended: true,
       inForm: true,
-      helpEs:
-        "Localidad oficial (centro poblado, caserío, sitio descriptivo normalizado).",
+      helpEs: "Localidad oficial (centro poblado, caserío, sitio descriptivo normalizado).",
     },
     {
       entity: "Location",
@@ -316,8 +293,7 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       label: "dwc:Location:locationRemarks",
       recommended: true,
       inForm: true,
-      helpEs:
-        "Notas u observaciones adicionales sobre la ubicación (caminos, referencias locales, etc.).",
+      helpEs: "Notas u observaciones adicionales sobre la ubicación (caminos, referencias locales, etc.).",
     },
     {
       entity: "Location",
@@ -353,8 +329,7 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       value: "Location.countryCode",
       label: "dwc:Location:countryCode",
       inForm: true,
-      helpEs:
-        "Código del país ISO 3166-1 alfa-2 (p. ej., PE, BR, EC).",
+      helpEs: "Código del país ISO 3166-1 alfa-2 (p. ej., PE, BR, EC).",
     },
     {
       entity: "Location",
@@ -388,8 +363,7 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       required: true,
       recommended: true,
       inForm: true,
-      helpEs:
-        "Nombre científico completo aplicado al espécimen (p. ej., Piper aduncum L.).",
+      helpEs: "Nombre científico completo aplicado al espécimen (p. ej., Piper aduncum L.).",
     },
     {
       entity: "Taxon",
@@ -399,8 +373,7 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       required: true,
       recommended: true,
       inForm: true,
-      helpEs:
-        "Autoría del nombre científico (autor o autores, y opcionalmente año).",
+      helpEs: "Autoría del nombre científico (autor o autores, y opcionalmente año).",
     },
   ],
 
@@ -415,8 +388,7 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       label: "dwc:Identification:identifiedBy",
       recommended: true,
       inForm: true,
-      helpEs:
-        "Persona(s) que identificaron taxonómicamente el espécimen.",
+      helpEs: "Persona(s) que identificaron taxonómicamente el espécimen.",
     },
   ],
 };

@@ -11,16 +11,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../ui/alert-dialog";
-import {
-  ArrowLeft,
-  Eye,
-  Leaf,
-  CheckCircle,
-  XCircle,
-  AlertCircle,
-  Pencil,
-  Trash2,
-} from "lucide-react";
+import { ArrowLeft, Eye, Leaf, CheckCircle, XCircle, AlertCircle, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAuth } from "@contexts/AuthContext";
@@ -49,16 +40,23 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "images", label: "Imágenes" },
 ];
 
-const show = (v: unknown) =>
-  v === null || v === undefined || v === "" ? "—" : String(v);
+const show = (v: unknown) => (v === null || v === undefined || v === "" ? "—" : String(v));
 
 /* Fila etiqueta/valor. A nivel de módulo: dentro del componente se remontaría en cada render. */
-const Field = ({ label, value, mono = false, italic = false }: { label: string; value: unknown; mono?: boolean; italic?: boolean }) => (
+const Field = ({
+  label,
+  value,
+  mono = false,
+  italic = false,
+}: {
+  label: string;
+  value: unknown;
+  mono?: boolean;
+  italic?: boolean;
+}) => (
   <div className="space-y-1">
     <p className="text-xs font-medium text-muted-foreground">{label}</p>
-    <p className={[mono ? "font-mono" : "", italic ? "italic" : "", "text-sm"].join(" ")}>
-      {show(value)}
-    </p>
+    <p className={[mono ? "font-mono" : "", italic ? "italic" : "", "text-sm"].join(" ")}>{show(value)}</p>
   </div>
 );
 
@@ -101,7 +99,9 @@ export function OccurrenceDetailPage({
       }
     };
     fetchOccurrence();
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+    };
   }, [occurrenceId]);
 
   const currentIdentification = useMemo(() => {
@@ -127,10 +127,7 @@ export function OccurrenceDetailPage({
     [currentIdentification],
   );
 
-  const sciAuth = useMemo(
-    () => currentIdentification?.scientificNameAuthorship || "",
-    [currentIdentification],
-  );
+  const sciAuth = useMemo(() => currentIdentification?.scientificNameAuthorship || "", [currentIdentification]);
 
   const handleBack = () => {
     if (returnTo === "taxon" && taxonId) {
@@ -167,9 +164,7 @@ export function OccurrenceDetailPage({
     try {
       await uploadService.deleteImage(apiFetch, imageId);
       setData((prev) =>
-        prev
-          ? { ...prev, images: (prev.images ?? []).filter((img) => img.occurrenceImageId !== imageId) }
-          : prev
+        prev ? { ...prev, images: (prev.images ?? []).filter((img) => img.occurrenceImageId !== imageId) } : prev,
       );
       toast.success("Imagen eliminada");
     } catch {
@@ -214,9 +209,7 @@ export function OccurrenceDetailPage({
           Volver
         </Button>
         <div className="rounded-lg border bg-card p-8">
-          <p className="text-center text-red-600">
-            No se pudo cargar la ocurrencia: {error || "Desconocido"}
-          </p>
+          <p className="text-center text-red-600">No se pudo cargar la ocurrencia: {error || "Desconocido"}</p>
         </div>
       </div>
     );
@@ -267,9 +260,7 @@ export function OccurrenceDetailPage({
 
       {data.dynamicProperties && Object.keys(data.dynamicProperties).length > 0 && (
         <div className="rounded-md border bg-muted/30 p-3 space-y-2">
-          <p className="text-xs font-medium text-muted-foreground">
-            Propiedades adicionales
-          </p>
+          <p className="text-xs font-medium text-muted-foreground">Propiedades adicionales</p>
           <div className="flex flex-wrap gap-1.5">
             {Object.entries(data.dynamicProperties)
               .sort(([a], [b]) => a.localeCompare(b))
@@ -371,15 +362,10 @@ export function OccurrenceDetailPage({
       ) : (
         <div className="space-y-3">
           {sortedIdentifications.map((ident) => (
-            <div
-              key={ident.identificationId}
-              className="rounded-lg border bg-muted/20 p-4 space-y-3"
-            >
+            <div key={ident.identificationId} className="rounded-lg border bg-muted/20 p-4 space-y-3">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
-                  <p className="text-sm font-semibold italic leading-tight">
-                    {show(ident.scientificName)}
-                  </p>
+                  <p className="text-sm font-semibold italic leading-tight">{show(ident.scientificName)}</p>
                   {ident.scientificNameAuthorship && (
                     <p className="text-xs text-muted-foreground">{ident.scientificNameAuthorship}</p>
                   )}
@@ -488,7 +474,8 @@ export function OccurrenceDetailPage({
                 )}
                 {img.photographer && (
                   <div className="px-2 py-1 text-xs bg-background border-t truncate">
-                    <span className="text-muted-foreground">Fotógrafo: </span>{img.photographer}
+                    <span className="text-muted-foreground">Fotógrafo: </span>
+                    {img.photographer}
                   </div>
                 )}
               </div>
@@ -585,7 +572,9 @@ export function OccurrenceDetailPage({
 
       <AlertDialog
         open={!!pendingDeleteImageId}
-        onOpenChange={(open: boolean) => { if (!open) setPendingDeleteImageId(null); }}
+        onOpenChange={(open: boolean) => {
+          if (!open) setPendingDeleteImageId(null);
+        }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -596,10 +585,7 @@ export function OccurrenceDetailPage({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-red-600 hover:bg-red-700"
-              onClick={handleDeleteImage}
-            >
+            <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={handleDeleteImage}>
               Eliminar
             </AlertDialogAction>
           </AlertDialogFooter>

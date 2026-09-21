@@ -1,12 +1,13 @@
 from __future__ import annotations
-from uuid import UUID
-# backend/routers/upload/dwc_csv.py
 
+from uuid import UUID
+
+# backend/routers/upload/dwc_csv.py
 from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from sqlalchemy.orm import Session
 
-from backend.config.database import get_db
 from backend.auth.jwt import get_current_user
+from backend.config.database import get_db
 from backend.models.models import User
 from backend.services import dwc_import as dwc_import_service
 
@@ -20,9 +21,7 @@ router = APIRouter(tags=["Files"])
 )
 def upload_dwc_csv(
     collection_id: UUID = Form(..., description="ID de la colección destino"),
-    file: UploadFile = File(
-        ..., description="Archivo CSV (DwC headers: dwc:Entity:field)"
-    ),
+    file: UploadFile = File(..., description="Archivo CSV (DwC headers: dwc:Entity:field)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

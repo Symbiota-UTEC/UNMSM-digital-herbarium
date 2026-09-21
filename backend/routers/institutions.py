@@ -1,18 +1,17 @@
 # backend/routers/institutions.py
-from uuid import UUID
 from typing import Optional
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, status, Query
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
+from backend.auth.jwt import get_current_user
 from backend.config.database import get_db
 from backend.models.models import User
-from backend.auth.jwt import get_current_user
-
 from backend.schemas.common.pages import Page
 from backend.schemas.institutions import (
-    InstitutionOut,
     InstitutionCreate,
+    InstitutionOut,
     InstitutionUpdate,
 )
 from backend.services import institutions as institutions_service
@@ -75,6 +74,4 @@ def update_institution(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return institutions_service.update_institution(
-        db, institution_id, institution, current_user
-    )
+    return institutions_service.update_institution(db, institution_id, institution, current_user)

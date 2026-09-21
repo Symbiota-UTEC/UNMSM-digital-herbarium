@@ -1,14 +1,14 @@
 # backend/services/institutions.py
-from uuid import UUID
 from typing import Optional
+from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import select, func, and_, literal
+from sqlalchemy import and_, func, literal, select
 from sqlalchemy.orm import Session
 
 from backend.models.models import Institution, User
 from backend.schemas.common.pages import Page
-from backend.schemas.institutions import InstitutionOut, InstitutionCreate, InstitutionUpdate
+from backend.schemas.institutions import InstitutionCreate, InstitutionOut, InstitutionUpdate
 
 
 def list_institutions(
@@ -16,16 +16,12 @@ def list_institutions(
 ) -> Page[InstitutionOut]:
     where_clauses = []
 
-    norm_name = func.unaccent(
-        func.lower(func.coalesce(Institution.institutionName, ""))
-    )
+    norm_name = func.unaccent(func.lower(func.coalesce(Institution.institutionName, "")))
 
     if name_prefix:
         q = name_prefix.strip().lower()
         contains_pattern = f"%{q}%"
-        where_clauses.append(
-            norm_name.ilike(func.unaccent(func.lower(literal(contains_pattern))))
-        )
+        where_clauses.append(norm_name.ilike(func.unaccent(func.lower(literal(contains_pattern)))))
 
     # ---- Total
     count_stmt = select(func.count()).select_from(Institution)
@@ -43,9 +39,7 @@ def list_institutions(
         q = name_prefix.strip().lower()
 
         startswith_pattern = f"{q}%"
-        order_by_columns.append(
-            norm_name.ilike(func.unaccent(literal(startswith_pattern))).desc()
-        )
+        order_by_columns.append(norm_name.ilike(func.unaccent(literal(startswith_pattern))).desc())
 
         pos_expr = func.strpos(norm_name, func.unaccent(literal(q)))
         order_by_columns.append(pos_expr.asc())
@@ -125,10 +119,7 @@ def update_institution(
         if institution_id != current_user.institutionId:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=(
-                    "No tienes permisos para modificar una institución "
-                    "diferente a la tuya"
-                ),
+                detail=("No tienes permisos para modificar una institución diferente a la tuya"),
             )
     else:
         raise HTTPException(
@@ -164,8 +155,7 @@ def update_institution(
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail=(
-                        "El superadmin no puede modificar el administrador "
-                        "de su propia institución"
+                        "El superadmin no puede modificar el administrador de su propia institución"
                     ),
                 )
 
@@ -177,10 +167,7 @@ def update_institution(
         ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=(
-                    "No puedes modificar tu propio campo "
-                    "'institutionAdminUserId'"
-                ),
+                detail=("No puedes modificar tu propio campo 'institutionAdminUserId'"),
             )
 
         if new_admin_id == old_admin_id:

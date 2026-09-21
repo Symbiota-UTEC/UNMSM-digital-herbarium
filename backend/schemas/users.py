@@ -1,8 +1,8 @@
 from __future__ import annotations
-from uuid import UUID
 
 from datetime import datetime
-from typing import Optional, Literal
+from typing import Literal, Optional
+from uuid import UUID
 
 from backend.schemas.common.base import ORMBaseModel
 

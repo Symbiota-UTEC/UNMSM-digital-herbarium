@@ -1,0 +1,50 @@
+# Una sola vez por clon:   pip install pre-commit && pre-commit install
+# Todo el repo a demanda:  pre-commit run --all-files
+# El frontend necesita `cd frontend && npm install` (ESLint/Prettier/tsc se ejecutan desde ahí).
+exclude: ^(digital-camera-integration/|frontend/build/|frontend/src/index\.css$|frontend/package-lock\.json$|backend/samples/)
+
+repos:
+  # --- Básicos (todo el repo) ---
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=1000]
+
+  # --- Backend: lint + formato (config en backend/ruff.toml) ---
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.8
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+        files: ^backend/
+      - id: ruff-format
+        files: ^backend/
+
+  # --- Frontend: ESLint, Prettier y tipos (config en frontend/) ---
+  - repo: local
+    hooks:
+      - id: eslint
+        name: eslint (frontend)
+        entry: bash -c 'cd frontend && npx --no-install eslint --fix "${@#frontend/}"' _
+        language: system
+        files: ^frontend/src/.*\.(ts|tsx)$
+      - id: prettier
+        name: prettier (frontend)
+        entry: bash -c 'cd frontend && npx --no-install prettier --write "${@#frontend/}"' _
+        language: system
+        files: ^frontend/src/.*\.(ts|tsx|css)$
+      - id: tsc
+        name: tsc --noEmit (frontend)
+        entry: bash -c 'cd frontend && npx --no-install tsc --noEmit -p .'
+        language: system
+        pass_filenames: false
+        files: ^frontend/(src/.*\.(ts|tsx)|tsconfig\.json)$

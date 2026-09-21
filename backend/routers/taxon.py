@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from backend.config.database import get_db
 from backend.schemas.common.pages import Page
-from backend.schemas.taxon import TaxonTreeNode, TaxonDetailOut, TaxonSearchItem
+from backend.schemas.taxon import TaxonDetailOut, TaxonSearchItem, TaxonTreeNode
 from backend.services import taxon as taxon_service
 
 router = APIRouter(prefix="/taxon", tags=["Taxon"])

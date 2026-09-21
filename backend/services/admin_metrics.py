@@ -1,8 +1,8 @@
 # backend/services/admin_metrics.py
-from sqlalchemy import select, func, case
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from backend.models.models import User, Collection, RegistrationRequest, Occurrence
+from backend.models.models import Collection, Occurrence, RegistrationRequest, User
 from backend.schemas.admin import AdminMetricsOut
 
 
@@ -95,10 +95,7 @@ def get_admin_metrics(db: Session, current_user: User) -> AdminMetricsOut:
             or 0
         )
         users_inst = (
-            db.scalar(
-                select(func.count(User.userId)).where(User.institutionId == inst_id)
-            )
-            or 0
+            db.scalar(select(func.count(User.userId)).where(User.institutionId == inst_id)) or 0
         )
         requests_inst = (
             db.scalar(

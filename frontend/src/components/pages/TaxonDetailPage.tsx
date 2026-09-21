@@ -57,7 +57,7 @@ interface TaxonDetailOut {
   nameAccordingToID: string | null;
   taxonRemarks: string | null;
 
-  created: string | null;   // Date en backend, llega como string
+  created: string | null; // Date en backend, llega como string
   modified: string | null;
 
   references: string | null;
@@ -147,13 +147,9 @@ export function TaxonDetailPage({
   };
 
   // Helper para mostrar valores opcionales
-  const displayValue = (
-    value: string | number | null | undefined
-  ): ReactNode => {
+  const displayValue = (value: string | number | null | undefined): ReactNode => {
     if (value === null || value === undefined || value === "") {
-      return (
-        <span className="text-muted-foreground italic">No especificado</span>
-      );
+      return <span className="text-muted-foreground italic">No especificado</span>;
     }
     return String(value);
   };
@@ -170,9 +166,7 @@ export function TaxonDetailPage({
         </div>
         <Card>
           <CardContent className="py-8">
-            <p className="text-center text-muted-foreground">
-              Cargando información del taxón…
-            </p>
+            <p className="text-center text-muted-foreground">Cargando información del taxón…</p>
           </CardContent>
         </Card>
       </div>
@@ -190,9 +184,7 @@ export function TaxonDetailPage({
         </div>
         <Card>
           <CardContent className="py-8">
-            <p className="text-center text-muted-foreground">
-              {error || "Taxón no encontrado"}
-            </p>
+            <p className="text-center text-muted-foreground">{error || "Taxón no encontrado"}</p>
           </CardContent>
         </Card>
       </div>
@@ -216,34 +208,18 @@ export function TaxonDetailPage({
         <div className="flex items-start gap-4">
           <Leaf className="h-8 w-8 text-primary mt-1" />
           <div>
-            <h1 className="text-4xl mb-2 italic">
-              {taxon.scientificName || "Sin nombre científico"}
-            </h1>
+            <h1 className="text-4xl mb-2 italic">{taxon.scientificName || "Sin nombre científico"}</h1>
             {taxon.scientificNameAuthorship && (
-              <p className="text-muted-foreground">
-                {taxon.scientificNameAuthorship}
-              </p>
+              <p className="text-muted-foreground">{taxon.scientificNameAuthorship}</p>
             )}
             <div className="flex gap-2 mt-3 flex-wrap">
-              {taxon.taxonRank && (
-                <Badge variant="outline">{taxon.taxonRank}</Badge>
-              )}
+              {taxon.taxonRank && <Badge variant="outline">{taxon.taxonRank}</Badge>}
               {taxon.taxonomicStatus && (
-                <Badge
-                  variant={
-                    taxon.taxonomicStatus.toLowerCase() === "accepted"
-                      ? "default"
-                      : "secondary"
-                  }
-                >
+                <Badge variant={taxon.taxonomicStatus.toLowerCase() === "accepted" ? "default" : "secondary"}>
                   {taxon.taxonomicStatus}
                 </Badge>
               )}
-              {taxon.isCurrent && (
-                <Badge className="bg-green-100 text-green-800">
-                  Actual
-                </Badge>
-              )}
+              {taxon.isCurrent && <Badge className="bg-green-100 text-green-800">Actual</Badge>}
             </div>
           </div>
         </div>
@@ -305,9 +281,7 @@ export function TaxonDetailPage({
             </div>
             <div className="grid grid-cols-2 gap-2">
               <span className="text-muted-foreground">Scientific Name ID:</span>
-              <span className="break-all">
-                {displayValue(taxon.scientificNameID)}
-              </span>
+              <span className="break-all">{displayValue(taxon.scientificNameID)}</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <span className="text-muted-foreground">Local ID:</span>
@@ -315,31 +289,19 @@ export function TaxonDetailPage({
             </div>
             <div className="grid grid-cols-2 gap-2">
               <span className="text-muted-foreground">Parent Name Usage ID:</span>
-              <span className="break-all">
-                {displayValue(taxon.parentNameUsageID)}
-              </span>
+              <span className="break-all">{displayValue(taxon.parentNameUsageID)}</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <span className="text-muted-foreground">
-                Accepted Name Usage ID:
-              </span>
-              <span className="break-all">
-                {displayValue(taxon.acceptedNameUsageID)}
-              </span>
+              <span className="text-muted-foreground">Accepted Name Usage ID:</span>
+              <span className="break-all">{displayValue(taxon.acceptedNameUsageID)}</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <span className="text-muted-foreground">
-                Original Name Usage ID:
-              </span>
-              <span className="break-all">
-                {displayValue(taxon.originalNameUsageID)}
-              </span>
+              <span className="text-muted-foreground">Original Name Usage ID:</span>
+              <span className="break-all">{displayValue(taxon.originalNameUsageID)}</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <span className="text-muted-foreground">Name According To ID:</span>
-              <span className="break-all">
-                {displayValue(taxon.nameAccordingToID)}
-              </span>
+              <span className="break-all">{displayValue(taxon.nameAccordingToID)}</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <span className="text-muted-foreground">TPL ID:</span>
@@ -373,9 +335,7 @@ export function TaxonDetailPage({
             </div>
             <div className="grid grid-cols-2 gap-2">
               <span className="text-muted-foreground">Publicado en:</span>
-              <span className="break-words">
-                {displayValue(taxon.namePublishedIn)}
-              </span>
+              <span className="break-words">{displayValue(taxon.namePublishedIn)}</span>
             </div>
           </CardContent>
         </Card>
@@ -405,9 +365,7 @@ export function TaxonDetailPage({
             </div>
             {taxon.references && (
               <div className="col-span-2">
-                <span className="text-muted-foreground block mb-1">
-                  Referencias:
-                </span>
+                <span className="text-muted-foreground block mb-1">Referencias:</span>
                 <p className="text-sm break-words">{taxon.references}</p>
               </div>
             )}
@@ -433,16 +391,13 @@ export function TaxonDetailPage({
       <div className="mt-8">
         <h2 className="text-2xl mb-4">Identificaciones Relacionadas</h2>
         <p className="text-muted-foreground mb-6">
-          Registros de especímenes identificados con este taxón (
-          {identifications.length})
+          Registros de especímenes identificados con este taxón ({identifications.length})
         </p>
 
         {identifications.length === 0 ? (
           <Card>
             <CardContent className="py-8">
-              <p className="text-center text-muted-foreground">
-                No hay identificaciones registradas para este taxón
-              </p>
+              <p className="text-center text-muted-foreground">No hay identificaciones registradas para este taxón</p>
             </CardContent>
           </Card>
         ) : (
@@ -450,17 +405,16 @@ export function TaxonDetailPage({
             {identifications.map((identification) => (
               <Card
                 key={identification.identificationId}
-                className={identification.occurrenceId
-                  ? "cursor-pointer transition-shadow hover:shadow-md hover:ring-1 hover:ring-primary/20"
-                  : "transition-shadow hover:shadow-md"}
+                className={
+                  identification.occurrenceId
+                    ? "cursor-pointer transition-shadow hover:shadow-md hover:ring-1 hover:ring-primary/20"
+                    : "transition-shadow hover:shadow-md"
+                }
                 onClick={() => handleOpenOccurrence(identification.occurrenceId)}
                 role={identification.occurrenceId ? "button" : undefined}
                 tabIndex={identification.occurrenceId ? 0 : undefined}
                 onKeyDown={(event) => {
-                  if (
-                    identification.occurrenceId &&
-                    (event.key === "Enter" || event.key === " ")
-                  ) {
+                  if (identification.occurrenceId && (event.key === "Enter" || event.key === " ")) {
                     event.preventDefault();
                     handleOpenOccurrence(identification.occurrenceId);
                   }
@@ -469,30 +423,20 @@ export function TaxonDetailPage({
                 <CardContent className="py-4">
                   <div className="grid md:grid-cols-6 gap-4 items-center">
                     <div className="md:col-span-2">
-                      <p className="italic mb-1">
-                        {identification.scientificName || "Sin nombre"}
-                      </p>
+                      <p className="italic mb-1">{identification.scientificName || "Sin nombre"}</p>
                       {identification.scientificNameAuthorship && (
-                        <p className="text-sm text-muted-foreground">
-                          {identification.scientificNameAuthorship}
-                        </p>
+                        <p className="text-sm text-muted-foreground">{identification.scientificNameAuthorship}</p>
                       )}
                     </div>
 
                     <div className="md:col-span-2">
-                      <p className="text-sm text-muted-foreground mb-1">
-                        Identificado por:
-                      </p>
+                      <p className="text-sm text-muted-foreground mb-1">Identificado por:</p>
                       {identification.identifiers.length > 0 ? (
                         <ul className="text-sm space-y-0.5">
                           {identification.identifiers.map((id: IdentifierOut) => (
                             <li key={id.identifierId}>
                               {id.fullName || "Sin nombre"}
-                              {id.orcID && (
-                                <span className="text-muted-foreground ml-1">
-                                  (ORCID: {id.orcID})
-                                </span>
-                              )}
+                              {id.orcID && <span className="text-muted-foreground ml-1">(ORCID: {id.orcID})</span>}
                             </li>
                           ))}
                         </ul>
@@ -534,9 +478,7 @@ export function TaxonDetailPage({
                       )}
 
                       {identification.typeStatus && (
-                        <Badge className="bg-purple-100 text-purple-800">
-                          {identification.typeStatus}
-                        </Badge>
+                        <Badge className="bg-purple-100 text-purple-800">{identification.typeStatus}</Badge>
                       )}
                     </div>
                   </div>

@@ -1,8 +1,15 @@
 # backend/services/autocomplete.py
-from sqlalchemy import select, func, exists, or_
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.orm import Session
 
-from backend.models.models import Taxon, Institution, Occurrence, User, Collection, CollectionPermission
+from backend.models.models import (
+    Collection,
+    CollectionPermission,
+    Institution,
+    Occurrence,
+    Taxon,
+    User,
+)
 from backend.schemas.autocomplete import ScientificNameSuggestion
 
 
@@ -14,13 +21,17 @@ def suggest_scientific_names(db: Session, q: str, limit: int) -> list[Scientific
     pattern = f"{term.lower()}%"  # prefijo
 
     stmt = (
-        select(Taxon.scientificName, Taxon.taxonId, Taxon.wfoTaxonId, Taxon.scientificNameAuthorship)
-        .where(
-            func.unaccent_immutable(
-                func.lower(Taxon.scientificName)
-            ).like(func.unaccent_immutable(pattern))
+        select(
+            Taxon.scientificName, Taxon.taxonId, Taxon.wfoTaxonId, Taxon.scientificNameAuthorship
         )
-        .distinct(Taxon.scientificName, Taxon.taxonId, Taxon.wfoTaxonId, Taxon.scientificNameAuthorship)
+        .where(
+            func.unaccent_immutable(func.lower(Taxon.scientificName)).like(
+                func.unaccent_immutable(pattern)
+            )
+        )
+        .distinct(
+            Taxon.scientificName, Taxon.taxonId, Taxon.wfoTaxonId, Taxon.scientificNameAuthorship
+        )
         .order_by(Taxon.scientificName)
         .limit(limit)
     )
@@ -68,9 +79,9 @@ def suggest_institutions(db: Session, q: str, limit: int) -> list[str]:
     stmt = (
         select(func.distinct(Institution.institutionName))
         .where(
-            func.unaccent_immutable(
-                func.lower(Institution.institutionName)
-            ).like(func.unaccent_immutable(pattern))
+            func.unaccent_immutable(func.lower(Institution.institutionName)).like(
+                func.unaccent_immutable(pattern)
+            )
         )
         .order_by(Institution.institutionName)
         .limit(limit)
@@ -101,9 +112,7 @@ def suggest_locations(db: Session, q: str, limit: int, current_user: User) -> li
 
     where_clauses = [
         location_expr.isnot(None),
-        func.unaccent_immutable(func.lower(location_expr)).like(
-            func.unaccent_immutable(pattern)
-        ),
+        func.unaccent_immutable(func.lower(location_expr)).like(func.unaccent_immutable(pattern)),
     ]
 
     # ---- Filtro de acceso según el usuario ----
@@ -122,18 +131,12 @@ def suggest_locations(db: Session, q: str, limit: int, current_user: User) -> li
 
         # 3) Si es admin de institución: colecciones de su institución
         if current_user.isInstitutionAdmin:
-            access_conditions.append(
-                Collection.institutionId == current_user.institutionId
-            )
+            access_conditions.append(Collection.institutionId == current_user.institutionId)
 
         # Combinar todas las condiciones de acceso
         where_clauses.append(or_(*access_conditions))
 
-    stmt = (
-        stmt.where(*where_clauses)
-        .order_by(location_expr)
-        .limit(limit)
-    )
+    stmt = stmt.where(*where_clauses).order_by(location_expr).limit(limit)
 
     return [row[0] for row in db.execute(stmt) if row[0]]
 

@@ -1,5 +1,6 @@
 from math import ceil
-from typing import Generic, TypeVar, List, Sequence
+from typing import Generic, List, Sequence, TypeVar
+
 from pydantic import BaseModel
 
 T = TypeVar("T")

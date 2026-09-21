@@ -8,20 +8,20 @@ que `from backend.models.models import ...` siga funcionando, y define al
 final los índices que combinan columnas de varios modelos (deben ir después
 de importar todas las clases involucradas).
 """
+
 from __future__ import annotations
 
 from sqlalchemy import Index, func
 
 from backend.config.database import Base
-
-from backend.models.institution import Institution
 from backend.models.collection import Collection, CollectionPermission
+from backend.models.identification import Identification, Identifier
+from backend.models.institution import Institution
+from backend.models.occurrence import Occurrence, OccurrenceImage
 from backend.models.registration_request import RegistrationRequest
 from backend.models.taxon import Taxon
-from backend.models.occurrence import Occurrence, OccurrenceImage
-from backend.models.identification import Identification, Identifier
-from backend.models.user import User
 from backend.models.upload_jobs import TaxonFloraImportJob
+from backend.models.user import User
 
 __all__ = [
     "Base",
@@ -42,13 +42,13 @@ Index("ix_identification_occurrence_current", Identification.occurrenceId, Ident
 Index("ix_occurrence_latlon", Occurrence.decimalLatitude, Occurrence.decimalLongitude)
 Index("ix_occurrence_catalog", Occurrence.catalogNumber, Occurrence.collectionId)
 Index("ix_occurrence_event_date", Occurrence.year, Occurrence.month, Occurrence.day)
-Index("ix_taxon_name_auth_rank", Taxon.scientificName, Taxon.scientificNameAuthorship, Taxon.taxonRank)
+Index(
+    "ix_taxon_name_auth_rank", Taxon.scientificName, Taxon.scientificNameAuthorship, Taxon.taxonRank
+)
 
 Index(
     "ix_taxon_scientific_name_unaccent_trgm",
-    func.unaccent_immutable(func.lower(Taxon.scientificName)).label(
-        "scientific_name_unaccent"
-    ),
+    func.unaccent_immutable(func.lower(Taxon.scientificName)).label("scientific_name_unaccent"),
     postgresql_using="gin",
     postgresql_ops={"scientific_name_unaccent": "gin_trgm_ops"},
 )

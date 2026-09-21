@@ -1,12 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { toast } from "sonner";
-import {
-  Circle as CircleIcon,
-  Eraser,
-  Hexagon,
-  MapPin,
-} from "lucide-react";
+import { Circle as CircleIcon, Eraser, Hexagon, MapPin } from "lucide-react";
 
 import Map from "ol/Map";
 import View from "ol/View";
@@ -311,8 +306,7 @@ export function MapPage({ onNavigate }: MapPageProps) {
     }
   }, [center, radiusKm]);
 
-  const drawnPolygon = () =>
-    polygonSourceRef.current.getFeatures().at(-1)?.getGeometry() as Polygon | undefined;
+  const drawnPolygon = () => polygonSourceRef.current.getFeatures().at(-1)?.getGeometry() as Polygon | undefined;
 
   const fitToContent = (searchedArea: AreaMode) => {
     const map = mapRef.current;
@@ -451,7 +445,9 @@ export function MapPage({ onNavigate }: MapPageProps) {
           {areaMode === "radius" && (
             <div className="flex flex-wrap items-end gap-3">
               <div className="flex flex-col gap-1">
-                <label htmlFor="radiusKm" className={filterLabelClass}>Radio (km)</label>
+                <label htmlFor="radiusKm" className={filterLabelClass}>
+                  Radio (km)
+                </label>
                 <input
                   id="radiusKm"
                   type="number"
@@ -500,20 +496,14 @@ export function MapPage({ onNavigate }: MapPageProps) {
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="relative">
-            <div
-              ref={hostRef}
-              style={{ height: "600px", width: "100%", borderRadius: "0.5rem" }}
-              className="border"
-            />
+            <div ref={hostRef} style={{ height: "600px", width: "100%", borderRadius: "0.5rem" }} className="border" />
             <BasemapSwitcher value={basemap} onChange={setBasemap} />
           </div>
 
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
             <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
               <MapPin className="h-4 w-4" />
-              {result
-                ? `${result.total} ocurrencia${result.total === 1 ? "" : "s"}`
-                : "Sin búsqueda realizada"}
+              {result ? `${result.total} ocurrencia${result.total === 1 ? "" : "s"}` : "Sin búsqueda realizada"}
             </span>
             {(Object.keys(PRECISION_STYLE) as Precision[]).map((precision) => (
               <span key={precision} className="flex items-center gap-2 text-muted-foreground">
@@ -563,7 +553,9 @@ export function MapPage({ onNavigate }: MapPageProps) {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => onNavigate("occurrence-detail", { occurrenceId: selected.occurrenceId, returnTo: "map" })}
+                  onClick={() =>
+                    onNavigate("occurrence-detail", { occurrenceId: selected.occurrenceId, returnTo: "map" })
+                  }
                 >
                   Ver detalle
                 </Button>

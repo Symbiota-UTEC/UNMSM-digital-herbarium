@@ -1,13 +1,13 @@
 from __future__ import annotations
+
 from uuid import UUID
+
 # backend/routers/upload/images.py
-
 from fastapi import APIRouter, Depends, File, Form, UploadFile, status
-
 from sqlalchemy.orm import Session
 
-from backend.config.database import get_db
 from backend.auth.jwt import get_current_user
+from backend.config.database import get_db
 from backend.models.models import User
 from backend.services import images as images_service
 

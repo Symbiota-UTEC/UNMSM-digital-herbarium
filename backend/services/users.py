@@ -1,14 +1,14 @@
 # backend/services/users.py
-from uuid import UUID
 from typing import Optional
+from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from backend.models.models import User
 from backend.schemas.common.pages import Page
-from backend.schemas.users import UserOut, UserLookupResponse
+from backend.schemas.users import UserLookupResponse, UserOut
 
 
 def get_user_by_email(
@@ -153,5 +153,7 @@ def get_users(
 
     return Page[UserOut].of(
         [UserOut.model_validate(u, from_attributes=True) for u in users],
-        total=total_users, limit=limit, offset=offset
+        total=total_users,
+        limit=limit,
+        offset=offset,
     )

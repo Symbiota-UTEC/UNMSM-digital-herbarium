@@ -30,8 +30,7 @@ export const EMPTY_OCCURRENCE_FILTERS: OccurrenceFilterValues = {
   dateTo: "",
 };
 
-export const hasActiveOccurrenceFilters = (filters: OccurrenceFilterValues) =>
-  Object.values(filters).some(Boolean);
+export const hasActiveOccurrenceFilters = (filters: OccurrenceFilterValues) => Object.values(filters).some(Boolean);
 
 type Props = {
   values: OccurrenceFilterValues;
@@ -43,16 +42,27 @@ export function OccurrenceFilterFields({ values, onChange }: Props) {
   const { apiFetch } = useAuth();
   const set = (patch: Partial<OccurrenceFilterValues>) => onChange({ ...values, ...patch });
 
-  const { items: sciNameSuggestions, loading: sciNameLoading } =
-    useScientificNameAutocomplete(apiFetch, values.scientificName);
-  const { items: familySuggestions, loading: familyLoading } =
-    useAutocomplete(apiFetch, "family", values.family);
-  const { items: institutionSuggestions, loading: institutionLoading } =
-    useAutocomplete(apiFetch, "institution", values.institution, { minChars: 1 });
-  const { items: locationSuggestions, loading: locationLoading } =
-    useAutocomplete(apiFetch, "location", values.location);
-  const { items: collectorSuggestions, loading: collectorLoading } =
-    useAutocomplete(apiFetch, "collector", values.collector);
+  const { items: sciNameSuggestions, loading: sciNameLoading } = useScientificNameAutocomplete(
+    apiFetch,
+    values.scientificName,
+  );
+  const { items: familySuggestions, loading: familyLoading } = useAutocomplete(apiFetch, "family", values.family);
+  const { items: institutionSuggestions, loading: institutionLoading } = useAutocomplete(
+    apiFetch,
+    "institution",
+    values.institution,
+    { minChars: 1 },
+  );
+  const { items: locationSuggestions, loading: locationLoading } = useAutocomplete(
+    apiFetch,
+    "location",
+    values.location,
+  );
+  const { items: collectorSuggestions, loading: collectorLoading } = useAutocomplete(
+    apiFetch,
+    "collector",
+    values.collector,
+  );
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-3">

@@ -3,13 +3,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Badge } from "../ui/badge";
 import {
   AlertDialog,
@@ -42,12 +36,7 @@ import { AutocompleteDropdown, useSuggestions } from "../ui/autocomplete";
 import { taxonService } from "@services/taxon.service";
 import { occurrencesService } from "@services/occurrences.service";
 import { uploadService } from "@services/upload.service";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "../ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { env } from "@config/env";
 import type { OccurrenceIdentificationOut, OccurrenceImageOut } from "@interfaces/occurrence";
 import { LocationPicker } from "../LocationPicker";
@@ -64,7 +53,6 @@ interface NewOccurrencePageProps {
   isOwner?: boolean;
   taxonId?: string;
 }
-
 
 /* ─── Types ─────────────────────── */
 interface TaxonDetail {
@@ -248,47 +236,57 @@ export function NewOccurrencePage({
   /* ── Load edit mode from API ── */
   useEffect(() => {
     if (mode !== "edit" || !occurrenceId) return;
-    occurrencesService.getById(apiFetch, occurrenceId).then((occ) => {
-      setCatalogNumber(occ.catalogNumber ?? "");
-      setRecordNumber(occ.recordNumber ?? "");
-      setRecordedBy(occ.recordedBy ?? "");
-      setOrganismQuantity(occ.organismQuantity ?? "");
-      setOrganismQuantityType(occ.organismQuantityType ?? "");
-      setOccurrenceStatus(occ.occurrenceStatus ?? "");
-      setOccurrenceRemarks(occ.occurrenceRemarks ?? "");
-      setLifeStage(occ.lifeStage ?? "");
-      setEstablishmentMeans(occ.establishmentMeans ?? "");
-      setAssociatedReferences(occ.associatedReferences ?? "");
-      setAssociatedTaxa(occ.associatedTaxa ?? "");
-      setFieldNotes(occ.fieldNotes ?? "");
-      setEventDate(occ.eventDate ?? "");
-      setVerbatimEventDate(occ.verbatimEventDate ?? "");
-      setVerbatimEdited(!!occ.verbatimEventDate);
-      setHabitat(occ.habitat ?? "");
-      setEventRemarks(occ.eventRemarks ?? "");
-      setCountryCode(occ.countryCode ?? "");
-      setStateProvince(occ.stateProvince ?? "");
-      setCounty(occ.county ?? "");
-      setMunicipality(occ.municipality ?? "");
-      setLocality(occ.locality ?? "");
-      setVerbatimLocality(occ.verbatimLocality ?? "");
-      setDecimalLatitude(occ.decimalLatitude != null ? String(occ.decimalLatitude) : "");
-      setDecimalLongitude(occ.decimalLongitude != null ? String(occ.decimalLongitude) : "");
-      setCoordinateUncertainty(occ.coordinateUncertaintyInMeters != null ? String(occ.coordinateUncertaintyInMeters) : "");
-      setFootprintWKT(occ.footprintWKT ?? "");
-      setVerbatimElevation(occ.verbatimElevation ?? "");
-      setHydrographicContext(occ.hydrographicContext ?? "");
-      setGeoreferenceVerificationStatus(occ.georeferenceVerificationStatus ?? "");
-      setLocationRemarks(occ.locationRemarks ?? "");
-      const dp = occ.dynamicProperties;
-      if (dp && typeof dp === "object") {
-        setDynamicProps(Object.entries(dp).map(([k, v]) => ({ key: String(k), value: typeof v === "string" ? v : JSON.stringify(v) })));
-      }
-      setExistingImages(occ.images ?? []);
-      setExistingIdentifications(occ.identifications ?? []);
-    }).catch(() => {
-      toast.error("No se pudo cargar la ocurrencia");
-    });
+    occurrencesService
+      .getById(apiFetch, occurrenceId)
+      .then((occ) => {
+        setCatalogNumber(occ.catalogNumber ?? "");
+        setRecordNumber(occ.recordNumber ?? "");
+        setRecordedBy(occ.recordedBy ?? "");
+        setOrganismQuantity(occ.organismQuantity ?? "");
+        setOrganismQuantityType(occ.organismQuantityType ?? "");
+        setOccurrenceStatus(occ.occurrenceStatus ?? "");
+        setOccurrenceRemarks(occ.occurrenceRemarks ?? "");
+        setLifeStage(occ.lifeStage ?? "");
+        setEstablishmentMeans(occ.establishmentMeans ?? "");
+        setAssociatedReferences(occ.associatedReferences ?? "");
+        setAssociatedTaxa(occ.associatedTaxa ?? "");
+        setFieldNotes(occ.fieldNotes ?? "");
+        setEventDate(occ.eventDate ?? "");
+        setVerbatimEventDate(occ.verbatimEventDate ?? "");
+        setVerbatimEdited(!!occ.verbatimEventDate);
+        setHabitat(occ.habitat ?? "");
+        setEventRemarks(occ.eventRemarks ?? "");
+        setCountryCode(occ.countryCode ?? "");
+        setStateProvince(occ.stateProvince ?? "");
+        setCounty(occ.county ?? "");
+        setMunicipality(occ.municipality ?? "");
+        setLocality(occ.locality ?? "");
+        setVerbatimLocality(occ.verbatimLocality ?? "");
+        setDecimalLatitude(occ.decimalLatitude != null ? String(occ.decimalLatitude) : "");
+        setDecimalLongitude(occ.decimalLongitude != null ? String(occ.decimalLongitude) : "");
+        setCoordinateUncertainty(
+          occ.coordinateUncertaintyInMeters != null ? String(occ.coordinateUncertaintyInMeters) : "",
+        );
+        setFootprintWKT(occ.footprintWKT ?? "");
+        setVerbatimElevation(occ.verbatimElevation ?? "");
+        setHydrographicContext(occ.hydrographicContext ?? "");
+        setGeoreferenceVerificationStatus(occ.georeferenceVerificationStatus ?? "");
+        setLocationRemarks(occ.locationRemarks ?? "");
+        const dp = occ.dynamicProperties;
+        if (dp && typeof dp === "object") {
+          setDynamicProps(
+            Object.entries(dp).map(([k, v]) => ({
+              key: String(k),
+              value: typeof v === "string" ? v : JSON.stringify(v),
+            })),
+          );
+        }
+        setExistingImages(occ.images ?? []);
+        setExistingIdentifications(occ.identifications ?? []);
+      })
+      .catch(() => {
+        toast.error("No se pudo cargar la ocurrencia");
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, occurrenceId]);
 
@@ -304,7 +302,10 @@ export function NewOccurrencePage({
   /* ── Autocomplete ── */
   const handleScientificNameChange = (value: string) => {
     setScientificNameInput(value);
-    if (selectedTaxonID) { setSelectedTaxonID(null); setTaxonDetail(null); }
+    if (selectedTaxonID) {
+      setSelectedTaxonID(null);
+      setTaxonDetail(null);
+    }
     setAcOpen(true);
   };
 
@@ -318,7 +319,8 @@ export function NewOccurrencePage({
       const detail = await taxonService.getById(apiFetch, suggestion.taxonId);
       setTaxonDetail(detail as unknown as TaxonDetail);
     } catch {
-      toast.error("No se pudo cargar el detalle del taxón"); setTaxonDetail(null);
+      toast.error("No se pudo cargar el detalle del taxón");
+      setTaxonDetail(null);
     } finally {
       setTaxonLoading(false);
     }
@@ -327,11 +329,14 @@ export function NewOccurrencePage({
   /* ── Image helpers ── */
   const addNewImage = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob);
-    setNewImages((prev) => [...prev, {
-      file: new File([blob], filename, { type: blob.type || "image/jpeg" }),
-      preview: url,
-      blobUrl: url,
-    }]);
+    setNewImages((prev) => [
+      ...prev,
+      {
+        file: new File([blob], filename, { type: blob.type || "image/jpeg" }),
+        preview: url,
+        blobUrl: url,
+      },
+    ]);
   };
 
   const removeNewImage = (index: number) => {
@@ -396,7 +401,7 @@ export function NewOccurrencePage({
       setInlineSaving(false);
     }
   };
-  
+
   const handleDeleteExistingImage = async () => {
     if (!pendingDeleteImageId) return;
     const imageId = pendingDeleteImageId;
@@ -424,9 +429,13 @@ export function NewOccurrencePage({
   const handleRemoveIdentifier = (index: number) => setIdentifiers(identifiers.filter((_, i) => i !== index));
 
   const handleAddDynamicProp = () => {
-    if (!dpKey.trim()) { toast.error("Ingresa una clave para el registro adicional"); return; }
+    if (!dpKey.trim()) {
+      toast.error("Ingresa una clave para el registro adicional");
+      return;
+    }
     setDynamicProps((prev) => [...prev, { key: dpKey.trim(), value: dpValue }]);
-    setDpKey(""); setDpValue("");
+    setDpKey("");
+    setDpValue("");
   };
   const handleRemoveDynamicProp = (idx: number) => setDynamicProps((prev) => prev.filter((_, i) => i !== idx));
 
@@ -434,7 +443,11 @@ export function NewOccurrencePage({
     if (returnTo === "taxon" && taxonId) {
       onNavigate("taxon-detail", { taxonId });
     } else if (returnTo === "collection" && collectionId) {
-      onNavigate("collection-detail", { collectionId, collectionName: collectionNameProp || "", isOwner: isOwner ?? false });
+      onNavigate("collection-detail", {
+        collectionId,
+        collectionName: collectionNameProp || "",
+        isOwner: isOwner ?? false,
+      });
     } else if (returnTo === "map") {
       onNavigate("map", { restoreSearch: true });
     } else {
@@ -444,7 +457,9 @@ export function NewOccurrencePage({
 
   const buildBasicPayload = () => {
     const dynamicProperties: Record<string, any> = {};
-    dynamicProps.forEach((p) => { dynamicProperties[p.key] = p.value; });
+    dynamicProps.forEach((p) => {
+      dynamicProperties[p.key] = p.value;
+    });
 
     return {
       catalogNumber,
@@ -493,12 +508,13 @@ export function NewOccurrencePage({
       return;
     }
 
-    const canSave = mode === "edit" ? !!catalogNumber : (!!catalogNumber && !!selectedTaxonID);
+    const canSave = mode === "edit" ? !!catalogNumber : !!catalogNumber && !!selectedTaxonID;
     if (!canSave) {
       toast.error("Faltan campos obligatorios", {
-        description: mode === "create"
-          ? "Por favor, completa el número de catálogo y asocia un taxón antes de guardar."
-          : "Por favor, completa el número de catálogo antes de guardar.",
+        description:
+          mode === "create"
+            ? "Por favor, completa el número de catálogo y asocia un taxón antes de guardar."
+            : "Por favor, completa el número de catálogo antes de guardar.",
       });
       return;
     }
@@ -518,7 +534,8 @@ export function NewOccurrencePage({
             dateIdentified: dateIdentified || null,
             typeStatus: typeStatus || null,
             isVerified,
-            identifiers: identifiers.length > 0 ? identifiers.map((i) => ({ name: i.name, orcid: i.orcid || null })) : undefined,
+            identifiers:
+              identifiers.length > 0 ? identifiers.map((i) => ({ name: i.name, orcid: i.orcid || null })) : undefined,
             setAsCurrent: existingIdentifications.length === 0,
           });
         }
@@ -540,7 +557,8 @@ export function NewOccurrencePage({
           dateIdentified: dateIdentified || null,
           typeStatus: typeStatus || null,
           isVerified,
-          identifiers: identifiers.length > 0 ? identifiers.map((i) => ({ name: i.name, orcid: i.orcid || null })) : null,
+          identifiers:
+            identifiers.length > 0 ? identifiers.map((i) => ({ name: i.name, orcid: i.orcid || null })) : null,
         };
 
         const data = await occurrencesService.create(apiFetch, payload);
@@ -573,33 +591,69 @@ export function NewOccurrencePage({
         <div className="space-y-3">
           <Label htmlFor="catalogNumber" className="flex items-center gap-2">
             Número de catálogo <span className="text-destructive">*</span>
-            <Badge variant="secondary" className="text-xs">Requerido</Badge>
+            <Badge variant="secondary" className="text-xs">
+              Requerido
+            </Badge>
             <DwcTerm term="catalogNumber" />
           </Label>
-          <Input id="catalogNumber" value={catalogNumber} onChange={(e) => setCatalogNumber(e.target.value)} placeholder="BOT-2024-001" required />
+          <Input
+            id="catalogNumber"
+            value={catalogNumber}
+            onChange={(e) => setCatalogNumber(e.target.value)}
+            placeholder="BOT-2024-001"
+            required
+          />
         </div>
         <div className="space-y-3">
           <Label htmlFor="recordNumber" className="flex items-center gap-2">
             Número de registro
             <DwcTerm term="recordNumber" />
           </Label>
-          <Input id="recordNumber" value={recordNumber} onChange={(e) => setRecordNumber(e.target.value)} placeholder="Número de colecta" />
+          <Input
+            id="recordNumber"
+            value={recordNumber}
+            onChange={(e) => setRecordNumber(e.target.value)}
+            placeholder="Número de colecta"
+          />
         </div>
         <div className="space-y-3">
-          <Label className="flex items-center gap-2">Recolectado por <Badge variant="outline" className="text-xs">Recomendado</Badge> <DwcTerm term="recordedBy" /></Label>
-          <Input value={recordedBy} onChange={(e) => setRecordedBy(e.target.value)} placeholder="Nombre del recolector" />
+          <Label className="flex items-center gap-2">
+            Recolectado por{" "}
+            <Badge variant="outline" className="text-xs">
+              Recomendado
+            </Badge>{" "}
+            <DwcTerm term="recordedBy" />
+          </Label>
+          <Input
+            value={recordedBy}
+            onChange={(e) => setRecordedBy(e.target.value)}
+            placeholder="Nombre del recolector"
+          />
         </div>
       </div>
 
       <div className="grid md:grid-cols-3 gap-4">
         <div className="space-y-3">
-          <Label htmlFor="organismQuantity" className="flex items-center gap-2">Cantidad <DwcTerm term="organismQuantity" /></Label>
-          <Input id="organismQuantity" type="number" min={0} value={organismQuantity} onChange={(e) => setOrganismQuantity(e.target.value)} placeholder="1" />
+          <Label htmlFor="organismQuantity" className="flex items-center gap-2">
+            Cantidad <DwcTerm term="organismQuantity" />
+          </Label>
+          <Input
+            id="organismQuantity"
+            type="number"
+            min={0}
+            value={organismQuantity}
+            onChange={(e) => setOrganismQuantity(e.target.value)}
+            placeholder="1"
+          />
         </div>
         <div className="space-y-3">
-          <Label htmlFor="organismQuantityType" className="flex items-center gap-2">Tipo de cantidad <DwcTerm term="organismQuantityType" /></Label>
+          <Label htmlFor="organismQuantityType" className="flex items-center gap-2">
+            Tipo de cantidad <DwcTerm term="organismQuantityType" />
+          </Label>
           <Select value={organismQuantityType} onValueChange={setOrganismQuantityType}>
-            <SelectTrigger id="organismQuantityType"><SelectValue placeholder="Selecciona" /></SelectTrigger>
+            <SelectTrigger id="organismQuantityType">
+              <SelectValue placeholder="Selecciona" />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="Individuos">Individuos</SelectItem>
               <SelectItem value="Especímenes">Especímenes</SelectItem>
@@ -612,23 +666,31 @@ export function NewOccurrencePage({
           </Select>
         </div>
         <div className="space-y-3">
-          <Label htmlFor="occurrenceStatus" className="flex items-center gap-2">Estado <DwcTerm term="occurrenceStatus" /></Label>
+          <Label htmlFor="occurrenceStatus" className="flex items-center gap-2">
+            Estado <DwcTerm term="occurrenceStatus" />
+          </Label>
           <Select value={occurrenceStatus} onValueChange={setOccurrenceStatus}>
-            <SelectTrigger id="occurrenceStatus"><SelectValue placeholder="Selecciona" /></SelectTrigger>
+            <SelectTrigger id="occurrenceStatus">
+              <SelectValue placeholder="Selecciona" />
+            </SelectTrigger>
             <SelectContent>
-                <SelectItem value="Presente">Presente</SelectItem>
-                <SelectItem value="Ausente">Ausente</SelectItem>
-                <SelectItem value="En préstamo">En préstamo</SelectItem>
-              </SelectContent>
+              <SelectItem value="Presente">Presente</SelectItem>
+              <SelectItem value="Ausente">Ausente</SelectItem>
+              <SelectItem value="En préstamo">En préstamo</SelectItem>
+            </SelectContent>
           </Select>
         </div>
       </div>
 
       <div className="grid md:grid-cols-3 gap-4">
         <div className="space-y-3">
-          <Label htmlFor="lifeStage" className="flex items-center gap-2">Etapa de vida <DwcTerm term="lifeStage" /></Label>
+          <Label htmlFor="lifeStage" className="flex items-center gap-2">
+            Etapa de vida <DwcTerm term="lifeStage" />
+          </Label>
           <Select value={lifeStage} onValueChange={setLifeStage}>
-            <SelectTrigger id="lifeStage"><SelectValue placeholder="Selecciona" /></SelectTrigger>
+            <SelectTrigger id="lifeStage">
+              <SelectValue placeholder="Selecciona" />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="Plántula">Plántula</SelectItem>
               <SelectItem value="Juvenil">Juvenil</SelectItem>
@@ -642,9 +704,13 @@ export function NewOccurrencePage({
           </Select>
         </div>
         <div className="space-y-3">
-          <Label htmlFor="establishmentMeans" className="flex items-center gap-2">Medio de establecimiento <DwcTerm term="establishmentMeans" /></Label>
+          <Label htmlFor="establishmentMeans" className="flex items-center gap-2">
+            Medio de establecimiento <DwcTerm term="establishmentMeans" />
+          </Label>
           <Select value={establishmentMeans} onValueChange={setEstablishmentMeans}>
-            <SelectTrigger id="establishmentMeans"><SelectValue placeholder="Selecciona" /></SelectTrigger>
+            <SelectTrigger id="establishmentMeans">
+              <SelectValue placeholder="Selecciona" />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="Nativo">Nativo</SelectItem>
               <SelectItem value="Endémico">Endémico</SelectItem>
@@ -657,39 +723,108 @@ export function NewOccurrencePage({
           </Select>
         </div>
         <div className="space-y-3">
-          <Label htmlFor="associatedTaxa" className="flex items-center gap-2">Taxa asociados <DwcTerm term="associatedTaxa" /></Label>
-          <Input id="associatedTaxa" value={associatedTaxa} onChange={(e) => setAssociatedTaxa(e.target.value)} placeholder="Ej: huésped: Quercus robur" />
+          <Label htmlFor="associatedTaxa" className="flex items-center gap-2">
+            Taxa asociados <DwcTerm term="associatedTaxa" />
+          </Label>
+          <Input
+            id="associatedTaxa"
+            value={associatedTaxa}
+            onChange={(e) => setAssociatedTaxa(e.target.value)}
+            placeholder="Ej: huésped: Quercus robur"
+          />
         </div>
       </div>
 
       <div className="grid md:grid-cols-3 gap-4">
         <div className="space-y-3">
-          <Label htmlFor="associatedReferences" className="flex items-center gap-2">Referencias asociadas <DwcTerm term="associatedReferences" /></Label>
-          <Textarea id="associatedReferences" value={associatedReferences} onChange={(e) => setAssociatedReferences(e.target.value)} placeholder="Referencias bibliográficas ligadas a esta ocurrencia" rows={3} />
+          <Label htmlFor="associatedReferences" className="flex items-center gap-2">
+            Referencias asociadas <DwcTerm term="associatedReferences" />
+          </Label>
+          <Textarea
+            id="associatedReferences"
+            value={associatedReferences}
+            onChange={(e) => setAssociatedReferences(e.target.value)}
+            placeholder="Referencias bibliográficas ligadas a esta ocurrencia"
+            rows={3}
+          />
         </div>
         <div className="space-y-3">
-          <Label htmlFor="fieldNotes" className="flex items-center gap-2">Notas de campo <DwcTerm term="fieldNotes" /></Label>
-          <Textarea id="fieldNotes" value={fieldNotes} onChange={(e) => setFieldNotes(e.target.value)} placeholder="Notas tal como aparecen en la libreta de campo" rows={3} />
+          <Label htmlFor="fieldNotes" className="flex items-center gap-2">
+            Notas de campo <DwcTerm term="fieldNotes" />
+          </Label>
+          <Textarea
+            id="fieldNotes"
+            value={fieldNotes}
+            onChange={(e) => setFieldNotes(e.target.value)}
+            placeholder="Notas tal como aparecen en la libreta de campo"
+            rows={3}
+          />
         </div>
         <div className="space-y-3">
-          <Label htmlFor="occurrenceRemarks" className="flex items-center gap-2">Observaciones <DwcTerm term="occurrenceRemarks" /></Label>
-          <Textarea id="occurrenceRemarks" value={occurrenceRemarks} onChange={(e) => setOccurrenceRemarks(e.target.value)} placeholder="Observaciones adicionales sobre la ocurrencia" rows={3} />
+          <Label htmlFor="occurrenceRemarks" className="flex items-center gap-2">
+            Observaciones <DwcTerm term="occurrenceRemarks" />
+          </Label>
+          <Textarea
+            id="occurrenceRemarks"
+            value={occurrenceRemarks}
+            onChange={(e) => setOccurrenceRemarks(e.target.value)}
+            placeholder="Observaciones adicionales sobre la ocurrencia"
+            rows={3}
+          />
         </div>
       </div>
 
       <div className="rounded-md border bg-muted/30 p-3 space-y-2">
-        <p className="text-xs font-medium text-muted-foreground">Propiedades adicionales <DwcTerm term="dynamicProperties" /></p>
+        <p className="text-xs font-medium text-muted-foreground">
+          Propiedades adicionales <DwcTerm term="dynamicProperties" />
+        </p>
         <div className="flex gap-2">
-          <Input placeholder="Atributo" value={dpKey} onChange={(e) => setDpKey(e.target.value)} className="h-8 text-sm" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddDynamicProp(); } }} />
-          <Input placeholder="Valor" value={dpValue} onChange={(e) => setDpValue(e.target.value)} className="h-8 text-sm" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddDynamicProp(); } }} />
-          <Button type="button" variant="outline" size="sm" onClick={handleAddDynamicProp} className="h-8 px-2 flex-shrink-0"><Plus className="h-3.5 w-3.5" /></Button>
+          <Input
+            placeholder="Atributo"
+            value={dpKey}
+            onChange={(e) => setDpKey(e.target.value)}
+            className="h-8 text-sm"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleAddDynamicProp();
+              }
+            }}
+          />
+          <Input
+            placeholder="Valor"
+            value={dpValue}
+            onChange={(e) => setDpValue(e.target.value)}
+            className="h-8 text-sm"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleAddDynamicProp();
+              }
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleAddDynamicProp}
+            className="h-8 px-2 flex-shrink-0"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </Button>
         </div>
         {dynamicProps.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {dynamicProps.map((kv, idx) => (
               <Badge key={`${kv.key}-${idx}`} variant="secondary" className="gap-1 text-xs font-normal">
                 <span className="font-mono font-medium">{kv.key}</span>: {kv.value}
-                <button type="button" onClick={() => handleRemoveDynamicProp(idx)} className="ml-0.5 hover:text-destructive"><X className="h-3 w-3" /></button>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveDynamicProp(idx)}
+                  className="ml-0.5 hover:text-destructive"
+                >
+                  <X className="h-3 w-3" />
+                </button>
               </Badge>
             ))}
           </div>
@@ -702,7 +837,10 @@ export function NewOccurrencePage({
     <div className="space-y-6">
       <div className="space-y-3">
         <Label htmlFor="eventDate" className="flex items-center gap-2">
-          Fecha del evento <Badge variant="outline" className="text-xs">Recomendado</Badge>
+          Fecha del evento{" "}
+          <Badge variant="outline" className="text-xs">
+            Recomendado
+          </Badge>
           <DwcTerm term="eventDate" />
         </Label>
         <Input
@@ -714,8 +852,10 @@ export function NewOccurrencePage({
             if (!verbatimEdited) setVerbatimEventDate(formatVerbatimDate(e.target.value));
           }}
         />
-      
-        <Label htmlFor="verbatimEventDate" className="flex items-center gap-2">Fecha original <DwcTerm term="verbatimEventDate" /></Label>
+
+        <Label htmlFor="verbatimEventDate" className="flex items-center gap-2">
+          Fecha original <DwcTerm term="verbatimEventDate" />
+        </Label>
         <Input
           id="verbatimEventDate"
           value={verbatimEventDate}
@@ -728,12 +868,28 @@ export function NewOccurrencePage({
         />
       </div>
       <div className="space-y-3">
-        <Label htmlFor="habitat" className="flex items-center gap-2">Hábitat <DwcTerm term="habitat" /></Label>
-        <Textarea id="habitat" value={habitat} onChange={(e) => setHabitat(e.target.value)} placeholder="Descripción del hábitat" rows={3} />
+        <Label htmlFor="habitat" className="flex items-center gap-2">
+          Hábitat <DwcTerm term="habitat" />
+        </Label>
+        <Textarea
+          id="habitat"
+          value={habitat}
+          onChange={(e) => setHabitat(e.target.value)}
+          placeholder="Descripción del hábitat"
+          rows={3}
+        />
       </div>
       <div className="space-y-3">
-        <Label htmlFor="eventRemarks" className="flex items-center gap-2">Observaciones del evento <DwcTerm term="eventRemarks" /></Label>
-        <Textarea id="eventRemarks" value={eventRemarks} onChange={(e) => setEventRemarks(e.target.value)} placeholder="Observaciones o notas sobre el evento" rows={3} />
+        <Label htmlFor="eventRemarks" className="flex items-center gap-2">
+          Observaciones del evento <DwcTerm term="eventRemarks" />
+        </Label>
+        <Textarea
+          id="eventRemarks"
+          value={eventRemarks}
+          onChange={(e) => setEventRemarks(e.target.value)}
+          placeholder="Observaciones o notas sobre el evento"
+          rows={3}
+        />
       </div>
     </div>
   );
@@ -773,14 +929,28 @@ export function NewOccurrencePage({
             Latitud
             <DwcTerm term="decimalLatitude" />
           </Label>
-          <Input id="decimalLatitude" type="number" step="0.000001" value={decimalLatitude} onChange={(e) => setDecimalLatitude(e.target.value)} placeholder="-12.046373" />
+          <Input
+            id="decimalLatitude"
+            type="number"
+            step="0.000001"
+            value={decimalLatitude}
+            onChange={(e) => setDecimalLatitude(e.target.value)}
+            placeholder="-12.046373"
+          />
         </div>
         <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
           <Label htmlFor="decimalLongitude" className="flex flex-wrap items-center gap-2">
             Longitud
             <DwcTerm term="decimalLongitude" />
           </Label>
-          <Input id="decimalLongitude" type="number" step="0.000001" value={decimalLongitude} onChange={(e) => setDecimalLongitude(e.target.value)} placeholder="-77.042755" />
+          <Input
+            id="decimalLongitude"
+            type="number"
+            step="0.000001"
+            value={decimalLongitude}
+            onChange={(e) => setDecimalLongitude(e.target.value)}
+            placeholder="-77.042755"
+          />
         </div>
         <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
           <Label htmlFor="coordinateUncertaintyInMeters" className="flex flex-wrap items-center gap-2">
@@ -831,18 +1001,24 @@ export function NewOccurrencePage({
 
       {footprintWKT && (
         <Badge variant="secondary" className="whitespace-normal text-xs font-normal">
-          Polígono dibujado: latitud y longitud son su punto representativo y la incertidumbre es el radio que lo encierra
+          Polígono dibujado: latitud y longitud son su punto representativo y la incertidumbre es el radio que lo
+          encierra
         </Badge>
       )}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
         <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
           <Label htmlFor="countryCode" className="flex flex-wrap items-center gap-2">
-            País <Badge variant="outline" className="text-xs">Recomendado</Badge>
+            País{" "}
+            <Badge variant="outline" className="text-xs">
+              Recomendado
+            </Badge>
             <DwcTerm term="countryCode" />
           </Label>
           <Select value={countryCode} onValueChange={setCountryCode}>
-            <SelectTrigger id="countryCode"><SelectValue placeholder="Selecciona" /></SelectTrigger>
+            <SelectTrigger id="countryCode">
+              <SelectValue placeholder="Selecciona" />
+            </SelectTrigger>
             <SelectContent>
               {COUNTRIES.map((c) => (
                 <SelectItem key={c.code} value={c.code}>
@@ -857,7 +1033,12 @@ export function NewOccurrencePage({
             Departamento
             <DwcTerm term="stateProvince" />
           </Label>
-          <Input id="stateProvince" value={stateProvince} onChange={(e) => setStateProvince(e.target.value)} placeholder="Ej: Cusco" />
+          <Input
+            id="stateProvince"
+            value={stateProvince}
+            onChange={(e) => setStateProvince(e.target.value)}
+            placeholder="Ej: Cusco"
+          />
         </div>
         <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
           <Label htmlFor="county" className="flex flex-wrap items-center gap-2">
@@ -871,24 +1052,42 @@ export function NewOccurrencePage({
             Distrito
             <DwcTerm term="municipality" />
           </Label>
-          <Input id="municipality" value={municipality} onChange={(e) => setMunicipality(e.target.value)} placeholder="Ej: Ollantaytambo" />
+          <Input
+            id="municipality"
+            value={municipality}
+            onChange={(e) => setMunicipality(e.target.value)}
+            placeholder="Ej: Ollantaytambo"
+          />
         </div>
       </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
         <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
           <Label htmlFor="locality" className="flex flex-wrap items-center gap-2">
-            Localidad <Badge variant="outline" className="text-[10px] px-1 py-0">Recomendado</Badge>
+            Localidad{" "}
+            <Badge variant="outline" className="text-[10px] px-1 py-0">
+              Recomendado
+            </Badge>
             <DwcTerm term="locality" />
           </Label>
-          <Input id="locality" value={locality} onChange={(e) => setLocality(e.target.value)} placeholder="Descripción sitio" />
+          <Input
+            id="locality"
+            value={locality}
+            onChange={(e) => setLocality(e.target.value)}
+            placeholder="Descripción sitio"
+          />
         </div>
         <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
           <Label htmlFor="verbatimLocality" className="flex flex-wrap items-center gap-2">
             Localidad original
             <DwcTerm term="verbatimLocality" />
           </Label>
-          <Input id="verbatimLocality" value={verbatimLocality} onChange={(e) => setVerbatimLocality(e.target.value)} placeholder="Tal como etiqueta" />
+          <Input
+            id="verbatimLocality"
+            value={verbatimLocality}
+            onChange={(e) => setVerbatimLocality(e.target.value)}
+            placeholder="Tal como etiqueta"
+          />
         </div>
       </div>
 
@@ -899,7 +1098,9 @@ export function NewOccurrencePage({
             <DwcTerm term="hydrographicContext" />
           </Label>
           <Select value={hydrographicContext} onValueChange={setHydrographicContext}>
-            <SelectTrigger id="hydrographicContext"><SelectValue placeholder="Selecciona" /></SelectTrigger>
+            <SelectTrigger id="hydrographicContext">
+              <SelectValue placeholder="Selecciona" />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="No aplica">No aplica</SelectItem>
               <SelectItem value="Río">Río</SelectItem>
@@ -922,7 +1123,9 @@ export function NewOccurrencePage({
             <DwcTerm term="georeferenceVerificationStatus" />
           </Label>
           <Select value={georeferenceVerificationStatus} onValueChange={setGeoreferenceVerificationStatus}>
-            <SelectTrigger id="georeferenceVerificationStatus"><SelectValue placeholder="Selecciona" /></SelectTrigger>
+            <SelectTrigger id="georeferenceVerificationStatus">
+              <SelectValue placeholder="Selecciona" />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="Requiere verificación">Requiere verificación</SelectItem>
               <SelectItem value="Verificado por colector">Verificado por colector</SelectItem>
@@ -934,12 +1137,27 @@ export function NewOccurrencePage({
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
         <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
-          <Label htmlFor="verbatimElevation" className="flex items-center gap-2">Elevación estimada <DwcTerm term="verbatimElevation" /></Label>
-          <Input id="verbatimElevation" value={verbatimElevation} onChange={(e) => setVerbatimElevation(e.target.value)} placeholder="Ej: 1200-1500m" />
+          <Label htmlFor="verbatimElevation" className="flex items-center gap-2">
+            Elevación estimada <DwcTerm term="verbatimElevation" />
+          </Label>
+          <Input
+            id="verbatimElevation"
+            value={verbatimElevation}
+            onChange={(e) => setVerbatimElevation(e.target.value)}
+            placeholder="Ej: 1200-1500m"
+          />
         </div>
         <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
-          <Label htmlFor="locationRemarks" className="flex items-center gap-2">Observaciones <DwcTerm term="locationRemarks" /></Label>
-          <Textarea id="locationRemarks" value={locationRemarks} onChange={(e) => setLocationRemarks(e.target.value)} placeholder="Comentarios adicionales sobre la ubicación" rows={2} />
+          <Label htmlFor="locationRemarks" className="flex items-center gap-2">
+            Observaciones <DwcTerm term="locationRemarks" />
+          </Label>
+          <Textarea
+            id="locationRemarks"
+            value={locationRemarks}
+            onChange={(e) => setLocationRemarks(e.target.value)}
+            placeholder="Comentarios adicionales sobre la ubicación"
+            rows={2}
+          />
         </div>
       </div>
     </div>
@@ -962,14 +1180,24 @@ export function NewOccurrencePage({
                     <span className="text-xs text-muted-foreground">{ident.taxon.scientificNameAuthorship}</span>
                   )}
                   <div className="ml-auto flex items-center gap-1.5 flex-wrap">
-                    {ident.isCurrent && <Badge variant="default" className="text-xs">Vigente</Badge>}
-                    {ident.isVerified && <Badge variant="outline" className="text-xs">Verificada</Badge>}
+                    {ident.isCurrent && (
+                      <Badge variant="default" className="text-xs">
+                        Vigente
+                      </Badge>
+                    )}
+                    {ident.isVerified && (
+                      <Badge variant="outline" className="text-xs">
+                        Verificada
+                      </Badge>
+                    )}
                   </div>
                 </div>
                 {ident.identifiers.length > 0 && (
                   <div className="flex flex-wrap gap-1">
                     {ident.identifiers.map((id) => (
-                      <Badge key={id.identifierId} variant="secondary" className="text-xs">{id.fullName ?? id.orcID}</Badge>
+                      <Badge key={id.identifierId} variant="secondary" className="text-xs">
+                        {id.fullName ?? id.orcID}
+                      </Badge>
                     ))}
                   </div>
                 )}
@@ -983,7 +1211,9 @@ export function NewOccurrencePage({
                 <div className="flex gap-2 justify-end pt-1">
                   {!ident.isCurrent && (
                     <Button
-                      type="button" size="sm" variant="outline"
+                      type="button"
+                      size="sm"
+                      variant="outline"
                       disabled={inlineSaving}
                       onClick={() => handleSetCurrentIdentification(ident.identificationId)}
                       className="gap-1 text-xs h-7"
@@ -993,7 +1223,9 @@ export function NewOccurrencePage({
                     </Button>
                   )}
                   <Button
-                    type="button" size="sm" variant="ghost"
+                    type="button"
+                    size="sm"
+                    variant="ghost"
                     disabled={inlineSaving}
                     onClick={() => handleDeleteIdentification(ident.identificationId)}
                     className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
@@ -1022,7 +1254,11 @@ export function NewOccurrencePage({
       <div className="space-y-3">
         <Label htmlFor="scientificName" className="flex items-center gap-2">
           Nombre científico {mode === "create" && <span className="text-destructive">*</span>}
-          {mode === "create" && <Badge variant="secondary" className="text-xs">Requerido</Badge>}
+          {mode === "create" && (
+            <Badge variant="secondary" className="text-xs">
+              Requerido
+            </Badge>
+          )}
           <DwcTerm term="scientificName" />
         </Label>
         <div className="relative" ref={acRef}>
@@ -1031,17 +1267,19 @@ export function NewOccurrencePage({
               id="scientificName"
               value={scientificNameInput}
               onChange={(e) => handleScientificNameChange(e.target.value)}
-              onFocus={() => { if (!selectedTaxonID) setAcOpen(true); }}
+              onFocus={() => {
+                if (!selectedTaxonID) setAcOpen(true);
+              }}
               placeholder="Escribe para buscar un nombre científico…"
               autoComplete="off"
               className={selectedTaxonID ? "pr-12 border-green-500 focus-visible:ring-green-500/30" : "pr-12"}
             />
             <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
-              {acLoading
-                ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                : selectedTaxonID
-                  ? <CheckCircle2 className="h-4 w-4 text-green-500" />
-                  : null}
+              {acLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              ) : selectedTaxonID ? (
+                <CheckCircle2 className="h-4 w-4 text-green-500" />
+              ) : null}
             </div>
           </div>
           {acOpen && scientificNameInput.trim().length >= 2 && (
@@ -1064,7 +1302,9 @@ export function NewOccurrencePage({
             />
           )}
         </div>
-        <p className="text-xs text-muted-foreground">Escribe al menos 2 caracteres para buscar en el backbone taxonómico.</p>
+        <p className="text-xs text-muted-foreground">
+          Escribe al menos 2 caracteres para buscar en el backbone taxonómico.
+        </p>
       </div>
 
       {taxonLoading && (
@@ -1079,20 +1319,57 @@ export function NewOccurrencePage({
           <div className="flex items-center gap-2 mb-1">
             <CheckCircle2 className="h-4 w-4 text-green-500" />
             <p className="text-sm font-medium">Información taxonómica verificada</p>
-            <Badge variant="outline" className="text-xs ml-auto">Solo lectura</Badge>
+            <Badge variant="outline" className="text-xs ml-auto">
+              Solo lectura
+            </Badge>
           </div>
           <div className="grid md:grid-cols-2 gap-4">
-            <div className="space-y-1.5"><Label className="text-xs text-muted-foreground">Taxon ID</Label><div className="flex items-center h-9 px-3 rounded-md border bg-muted/40 text-sm font-mono">{taxonDetail.taxonId ?? "—"}</div></div>
-            <div className="space-y-1.5"><Label className="text-xs text-muted-foreground">Nombre científico</Label><div className="flex items-center h-9 px-3 rounded-md border bg-muted/40 text-sm italic">{taxonDetail.scientificName ?? "—"}</div></div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Taxon ID</Label>
+              <div className="flex items-center h-9 px-3 rounded-md border bg-muted/40 text-sm font-mono">
+                {taxonDetail.taxonId ?? "—"}
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Nombre científico</Label>
+              <div className="flex items-center h-9 px-3 rounded-md border bg-muted/40 text-sm italic">
+                {taxonDetail.scientificName ?? "—"}
+              </div>
+            </div>
           </div>
           <div className="grid md:grid-cols-2 gap-4">
-            <div className="space-y-1.5"><Label className="text-xs text-muted-foreground">Autoría</Label><div className="flex items-center h-9 px-3 rounded-md border bg-muted/40 text-sm">{taxonDetail.scientificNameAuthorship ?? "—"}</div></div>
-            <div className="space-y-1.5"><Label className="text-xs text-muted-foreground">Rango taxonómico</Label><div className="flex items-center h-9 px-3 rounded-md border bg-muted/40 text-sm capitalize">{taxonDetail.taxonRank ?? "—"}</div></div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Autoría</Label>
+              <div className="flex items-center h-9 px-3 rounded-md border bg-muted/40 text-sm">
+                {taxonDetail.scientificNameAuthorship ?? "—"}
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Rango taxonómico</Label>
+              <div className="flex items-center h-9 px-3 rounded-md border bg-muted/40 text-sm capitalize">
+                {taxonDetail.taxonRank ?? "—"}
+              </div>
+            </div>
           </div>
           <div className="grid md:grid-cols-3 gap-4">
-            <div className="space-y-1.5"><Label className="text-xs text-muted-foreground">Familia</Label><div className="flex items-center h-9 px-3 rounded-md border bg-muted/40 text-sm">{taxonDetail.family ?? "—"}</div></div>
-            <div className="space-y-1.5"><Label className="text-xs text-muted-foreground">Género</Label><div className="flex items-center h-9 px-3 rounded-md border bg-muted/40 text-sm italic">{taxonDetail.genus ?? "—"}</div></div>
-            <div className="space-y-1.5"><Label className="text-xs text-muted-foreground">Epíteto específico</Label><div className="flex items-center h-9 px-3 rounded-md border bg-muted/40 text-sm italic">{taxonDetail.specificEpithet ?? "—"}</div></div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Familia</Label>
+              <div className="flex items-center h-9 px-3 rounded-md border bg-muted/40 text-sm">
+                {taxonDetail.family ?? "—"}
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Género</Label>
+              <div className="flex items-center h-9 px-3 rounded-md border bg-muted/40 text-sm italic">
+                {taxonDetail.genus ?? "—"}
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Epíteto específico</Label>
+              <div className="flex items-center h-9 px-3 rounded-md border bg-muted/40 text-sm italic">
+                {taxonDetail.specificEpithet ?? "—"}
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -1116,7 +1393,12 @@ export function NewOccurrencePage({
               Fecha de identificación
               <DwcTerm term="dateIdentified" />
             </Label>
-            <Input id="dateIdentified" type="date" value={dateIdentified} onChange={(e) => setDateIdentified(e.target.value)} />
+            <Input
+              id="dateIdentified"
+              type="date"
+              value={dateIdentified}
+              onChange={(e) => setDateIdentified(e.target.value)}
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="typeStatus" className="flex items-center gap-2">
@@ -1124,7 +1406,9 @@ export function NewOccurrencePage({
               <DwcTerm term="typeStatus" />
             </Label>
             <Select value={typeStatus} onValueChange={setTypeStatus}>
-              <SelectTrigger id="typeStatus"><SelectValue placeholder="Selecciona" /></SelectTrigger>
+              <SelectTrigger id="typeStatus">
+                <SelectValue placeholder="Selecciona" />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="Holotipo">Holotipo</SelectItem>
                 <SelectItem value="Isotipo">Isotipo</SelectItem>
@@ -1147,23 +1431,41 @@ export function NewOccurrencePage({
               value={identifierNameInput}
               onChange={(e) => setIdentifierNameInput(e.target.value)}
               placeholder="Nombre del identificador"
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddIdentifier(); } }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleAddIdentifier();
+                }
+              }}
             />
             <Input
               value={identifierOrcidInput}
               onChange={(e) => setIdentifierOrcidInput(e.target.value)}
               placeholder="ORCID (opcional)"
               className="max-w-[180px]"
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddIdentifier(); } }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleAddIdentifier();
+                }
+              }}
             />
-            <Button type="button" onClick={handleAddIdentifier} variant="outline"><Plus className="h-4 w-4" /></Button>
+            <Button type="button" onClick={handleAddIdentifier} variant="outline">
+              <Plus className="h-4 w-4" />
+            </Button>
           </div>
           <div className="flex flex-wrap gap-2">
             {identifiers.map((idn, index) => (
               <Badge key={index} variant="secondary" className="gap-1">
                 {idn.name}
                 {idn.orcid && <span className="text-muted-foreground font-mono text-[10px]"> · {idn.orcid}</span>}
-                <button type="button" onClick={() => handleRemoveIdentifier(index)} className="ml-1 hover:text-destructive"><X className="h-3 w-3" /></button>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveIdentifier(index)}
+                  className="ml-1 hover:text-destructive"
+                >
+                  <X className="h-3 w-3" />
+                </button>
               </Badge>
             ))}
           </div>
@@ -1203,7 +1505,11 @@ export function NewOccurrencePage({
                 <button
                   type="button"
                   disabled={inlineSaving}
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPendingDeleteImageId(img.occurrenceImageId); }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setPendingDeleteImageId(img.occurrenceImageId);
+                  }}
                   style={{
                     position: "absolute",
                     top: "10px",
@@ -1222,7 +1528,7 @@ export function NewOccurrencePage({
                     fontWeight: "bold",
                     opacity: 1,
                     visibility: "visible",
-                    boxShadow: "0 2px 4px rgba(0,0,0,0.5)"
+                    boxShadow: "0 2px 4px rgba(0,0,0,0.5)",
                   }}
                   title="Eliminar imagen"
                 >
@@ -1244,22 +1550,22 @@ export function NewOccurrencePage({
       <div className="rounded-xl border bg-card overflow-hidden">
         <div className="flex flex-wrap items-center gap-2 px-5 py-3.5 border-b bg-muted/30">
           <Camera className="h-4 w-4 text-muted-foreground" />
-          <p className="text-sm font-medium mr-2">
-            {mode === "edit" ? "Agregar imágenes" : "Imágenes del espécimen"}
-          </p>
+          <p className="text-sm font-medium mr-2">{mode === "edit" ? "Agregar imágenes" : "Imágenes del espécimen"}</p>
           <Button
-            type="button" size="sm" variant="outline"
+            type="button"
+            size="sm"
+            variant="outline"
             onClick={handleCapture}
             disabled={captureLoading}
             className="gap-1.5"
           >
-            {captureLoading
-              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              : <Camera className="h-3.5 w-3.5" />}
+            {captureLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
             {captureLoading ? "Capturando…" : "Tomar Foto"}
           </Button>
           <Button
-            type="button" size="sm" variant="outline"
+            type="button"
+            size="sm"
+            variant="outline"
             onClick={() => fileInputRef.current?.click()}
             className="gap-1.5"
           >
@@ -1288,20 +1594,21 @@ export function NewOccurrencePage({
       {newImages.length > 0 ? (
         <div className="space-y-3">
           <p className="text-sm font-semibold text-muted-foreground">
-            {newImages.length} imagen{newImages.length !== 1 ? "es" : ""} nueva{newImages.length !== 1 ? "s" : ""} seleccionada{newImages.length !== 1 ? "s" : ""}
+            {newImages.length} imagen{newImages.length !== 1 ? "es" : ""} nueva{newImages.length !== 1 ? "s" : ""}{" "}
+            seleccionada{newImages.length !== 1 ? "s" : ""}
           </p>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {newImages.map((img, index) => (
               <div key={index} className="relative group rounded-lg overflow-hidden border bg-muted/20">
-                <img
-                  src={img.preview}
-                  alt={img.file.name}
-                  className="w-full h-36 object-cover"
-                />
+                <img src={img.preview} alt={img.file.name} className="w-full h-36 object-cover" />
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
                 <button
                   type="button"
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); removeNewImage(index); }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    removeNewImage(index);
+                  }}
                   style={{
                     position: "absolute",
                     top: "10px",
@@ -1318,7 +1625,7 @@ export function NewOccurrencePage({
                     cursor: "pointer",
                     opacity: 1,
                     visibility: "visible",
-                    boxShadow: "0 2px 4px rgba(0,0,0,0.5)"
+                    boxShadow: "0 2px 4px rgba(0,0,0,0.5)",
                   }}
                   title="Quitar imagen"
                 >
@@ -1345,7 +1652,7 @@ export function NewOccurrencePage({
   /* ══════════════════════════════════════════════════
      RENDER PRINCIPAL
   ══════════════════════════════════════════════════ */
-  const canSubmit = mode === "edit" ? !!catalogNumber : (!!catalogNumber && !!selectedTaxonID);
+  const canSubmit = mode === "edit" ? !!catalogNumber : !!catalogNumber && !!selectedTaxonID;
 
   return (
     <>
@@ -1375,7 +1682,11 @@ export function NewOccurrencePage({
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span tabIndex={0} className="inline-block cursor-not-allowed">
-                        <Button type="button" disabled className="bg-[rgb(117,26,29)]/40 text-foreground/40 pointer-events-none">
+                        <Button
+                          type="button"
+                          disabled
+                          className="bg-[rgb(117,26,29)]/40 text-foreground/40 pointer-events-none"
+                        >
                           <CheckCircle2 className="h-4 w-4 mr-2" />
                           {mode === "edit" ? "Actualizar ocurrencia" : "Guardar ocurrencia"}
                         </Button>
@@ -1398,7 +1709,11 @@ export function NewOccurrencePage({
                   onClick={(e) => handleSubmit(e)}
                   disabled={isSubmitting}
                 >
-                  {isSubmitting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+                  {isSubmitting ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4 mr-2" />
+                  )}
                   {mode === "edit" ? "Actualizar ocurrencia" : "Guardar ocurrencia"}
                 </Button>
               )}
@@ -1447,7 +1762,9 @@ export function NewOccurrencePage({
 
       <AlertDialog
         open={!!pendingDeleteImageId}
-        onOpenChange={(open: boolean) => { if (!open) setPendingDeleteImageId(null); }}
+        onOpenChange={(open: boolean) => {
+          if (!open) setPendingDeleteImageId(null);
+        }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>

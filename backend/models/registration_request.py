@@ -1,14 +1,15 @@
 """Modelo: RegistrationRequest (solicitud de alta de usuario, pendiente de aprobación)."""
+
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Literal, Optional
 
-from sqlalchemy import String, Text, Enum, ForeignKey, UniqueConstraint, Uuid, DateTime
+from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.config.database import Base
-from datetime import datetime
 
 
 class RegistrationRequest(Base):
@@ -46,23 +47,17 @@ class RegistrationRequest(Base):
     createdAt: Mapped[datetime] = mapped_column(
         "created_at", DateTime, default=datetime.utcnow, index=True
     )
-    reviewedAt: Mapped[Optional[datetime]] = mapped_column(
-        "reviewed_at", DateTime, nullable=True
-    )
+    reviewedAt: Mapped[Optional[datetime]] = mapped_column("reviewed_at", DateTime, nullable=True)
 
     reviewedByUserId: Mapped[Optional[uuid.UUID]] = mapped_column(
         "reviewed_by_user_id", ForeignKey("users.user_id"), nullable=True
     )
-    reviewedBy: Mapped[Optional["User"]] = relationship(
-        "User", foreign_keys=[reviewedByUserId]
-    )
+    reviewedBy: Mapped[Optional["User"]] = relationship("User", foreign_keys=[reviewedByUserId])
 
     resultingUserId: Mapped[Optional[uuid.UUID]] = mapped_column(
         "resulting_user_id", ForeignKey("users.user_id"), nullable=True, unique=True
     )
-    resultingUser: Mapped[Optional["User"]] = relationship(
-        "User", foreign_keys=[resultingUserId]
-    )
+    resultingUser: Mapped[Optional["User"]] = relationship("User", foreign_keys=[resultingUserId])
 
     __table_args__ = (
         UniqueConstraint(

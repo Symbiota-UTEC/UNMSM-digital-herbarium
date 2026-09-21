@@ -44,34 +44,25 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
     dateTo: searchParams.get("to") ?? "",
   }));
 
-  const totalPages = useMemo(
-    () => Math.max(Math.ceil(total / pageSize), 1),
-    [total, pageSize],
-  );
+  const totalPages = useMemo(() => Math.max(Math.ceil(total / pageSize), 1), [total, pageSize]);
 
   const filtersActive = hasActiveOccurrenceFilters(filters);
 
   const syncURL = (filters: FiltersSnapshot, pageNum: number) => {
     const p = new URLSearchParams();
-    if (filters.code)           p.set("code",        filters.code);
-    if (filters.scientificName) p.set("name",        filters.scientificName);
-    if (filters.family)         p.set("family",      filters.family);
-    if (filters.institution)    p.set("institution", filters.institution);
-    if (filters.location)       p.set("location",    filters.location);
-    if (filters.collector)      p.set("collector",   filters.collector);
-    if (filters.dateFrom)       p.set("from",        filters.dateFrom);
-    if (filters.dateTo)         p.set("to",          filters.dateTo);
-    if (pageNum > 1)            p.set("page",        String(pageNum));
+    if (filters.code) p.set("code", filters.code);
+    if (filters.scientificName) p.set("name", filters.scientificName);
+    if (filters.family) p.set("family", filters.family);
+    if (filters.institution) p.set("institution", filters.institution);
+    if (filters.location) p.set("location", filters.location);
+    if (filters.collector) p.set("collector", filters.collector);
+    if (filters.dateFrom) p.set("from", filters.dateFrom);
+    if (filters.dateTo) p.set("to", filters.dateTo);
+    if (pageNum > 1) p.set("page", String(pageNum));
     setSearchParams(p, { replace: true });
   };
 
-  const fetchOccurrences = async ({
-    page: targetPage,
-    filters,
-  }: {
-    page: number;
-    filters: FiltersSnapshot;
-  }) => {
+  const fetchOccurrences = async ({ page: targetPage, filters }: { page: number; filters: FiltersSnapshot }) => {
     setLoading(true);
     try {
       const data = await occurrencesService.list(apiFetch, {

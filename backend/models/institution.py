@@ -1,10 +1,11 @@
 """Modelo DwC: Institution."""
+
 from __future__ import annotations
 
 import uuid
 from typing import List, Optional
 
-from sqlalchemy import String, Text, Integer, ForeignKey, Uuid
+from sqlalchemy import ForeignKey, Integer, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.config.database import Base
@@ -16,9 +17,7 @@ class Institution(Base):
     institutionId: Mapped[uuid.UUID] = mapped_column(
         "institution_id", Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    institutionName: Mapped[Optional[str]] = mapped_column(
-        "institution_name", String(255)
-    )
+    institutionName: Mapped[Optional[str]] = mapped_column("institution_name", String(255))
     country: Mapped[Optional[str]] = mapped_column("country", String(100))
     city: Mapped[Optional[str]] = mapped_column("city", String(100))
     address: Mapped[Optional[str]] = mapped_column("address", Text())
@@ -28,11 +27,7 @@ class Institution(Base):
 
     institutionAdminUserId: Mapped[Optional[uuid.UUID]] = mapped_column(
         "institution_admin_user_id",
-        ForeignKey(
-            "users.user_id",
-            use_alter=True,
-            name="fk_institution_admin_user"
-        ),
+        ForeignKey("users.user_id", use_alter=True, name="fk_institution_admin_user"),
         nullable=True,
         unique=True,
     )
@@ -43,9 +38,7 @@ class Institution(Base):
         post_update=True,
     )
 
-    usersCount: Mapped[int] = mapped_column(
-        "users_count", Integer, default=0, nullable=False
-    )
+    usersCount: Mapped[int] = mapped_column("users_count", Integer, default=0, nullable=False)
     users: Mapped[List["User"]] = relationship(
         "User",
         back_populates="institution",
