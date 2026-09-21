@@ -1,0 +1,2 @@
+# Commits de formateo masivo que git blame debe ignorar (un hash por línea).
+# Activar: git config blame.ignoreRevsFile .git-blame-ignore-revs
