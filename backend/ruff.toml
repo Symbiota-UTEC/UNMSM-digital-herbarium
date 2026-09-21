@@ -1,0 +1,19 @@
+line-length = 100
+target-version = "py310"
+extend-exclude = ["samples"]
+
+[lint]
+# E4/E7/E9 + F: errores reales y imports/variables sin uso. I: orden de imports.
+select = ["E4", "E7", "E9", "F", "I"]
+
+[lint.isort]
+known-first-party = ["backend"]
+
+[lint.per-file-ignores]
+# Re-exportan a propósito (ver backend/CLAUDE.md).
+"models/models.py" = ["F401"]
+"__init__.py" = ["F401"]
+# relationship("Nombre") se resuelve por nombre en SQLAlchemy, no hace falta importar la clase.
+"models/*.py" = ["F821"]
+# Variables preparadas para el filtro estricto que está comentado.
+"services/taxon_flora_import.py" = ["F841"]

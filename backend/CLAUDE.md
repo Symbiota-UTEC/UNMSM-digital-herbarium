@@ -180,6 +180,18 @@ python -m uvicorn backend.main:app --reload --port 8000
 
 Interactive docs: `http://localhost:8000/docs`
 
+### Lint and format
+
+[Ruff](https://docs.astral.sh/ruff/) does both, configured in [`ruff.toml`](ruff.toml) (line length 100; rules E4/E7/E9, F and import sorting). It runs on every commit through pre-commit (see the root `CLAUDE.md`); by hand, from the repo root:
+
+```bash
+pip install ruff
+ruff check backend --fix
+ruff format backend
+```
+
+If a rule is wrong for a specific file, add a `per-file-ignores` entry with the reason (as done for `models/*.py`, where `relationship("Name")` resolves by name) instead of scattering `# noqa`.
+
 ### Start (Docker)
 
 From the repo root: `make dev` (backend with `--reload` on http://localhost:8001, plus db, SeaweedFS and the frontend) or `make prd` (backend on http://localhost:8000). Both run `scripts/create_admin.py` before starting Uvicorn. See the root `CLAUDE.md`.
@@ -422,8 +434,7 @@ Follow the 3 layers (see "Architecture" above) in this order:
    for anything that can go wrong (404/403/409/422/...). A service function
    signature looks like:
    ```python
-   def do_the_thing(db: Session, some_id: UUID, payload: SomeIn, current_user: User) -> SomeModel:
-       ...
+   def do_the_thing(db: Session, some_id: UUID, payload: SomeIn, current_user: User) -> SomeModel: ...
    ```
    Return the ORM instance (or an already-built `Page[T]`/dict) — don't
    import `fastapi` response schemas into the service just to instantiate
