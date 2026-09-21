@@ -19,7 +19,7 @@ React single-page app for browsing and digitizing herbarium specimens (Darwin Co
 frontend/
 ├── index.html
 ├── vite.config.ts            # Path aliases, dev server (port 3000)
-├── tsconfig.json             # Type-check only (Vite does the build); `paths` must mirror the aliases
+├── tsconfig.json             # Type-check only (Vite does the build), `strict` on; `paths` must mirror the aliases
 ├── eslint.config.mjs         # ESLint (flat config) · .prettierrc.json / .prettierignore: Prettier
 ├── .env.sample               # Copy to .env — see "Environment Variables"
 └── src/
@@ -94,7 +94,7 @@ npm run format        # Prettier (config: .prettierrc.json); `format:check` only
 npm run typecheck     # tsc --noEmit (should print nothing)
 ```
 
-These also run on every commit through pre-commit (see the root `CLAUDE.md`). `src/index.css` is excluded from all of them because it is generated. There is no test script. ESLint starts permissive (`no-explicit-any` off, unused vars and hook dependencies as warnings); tighten it gradually rather than in one go.
+`strict` is on: handle `null`/`undefined` (`?.`, `??`, a guard) instead of silencing the compiler with `!` or `as any`. These also run on every commit through pre-commit (see the root `CLAUDE.md`). `src/index.css` is excluded from all of them because it is generated. There is no test script. ESLint starts permissive (`no-explicit-any` off, unused vars and hook dependencies as warnings); tighten it gradually rather than in one go.
 
 ### Start (Docker)
 

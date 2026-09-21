@@ -262,7 +262,7 @@ export function PrivateSidebar({ onNavigate, currentPage }: PrivateSidebarProps)
             >
               <Avatar className="h-8 w-8 shrink-0">
                 <AvatarFallback className="text-xs font-semibold" style={{ background: BG_ACTIVE, color: "white" }}>
-                  {user?.username.substring(0, 2).toUpperCase()}
+                  {user?.username?.substring(0, 2).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
               <div className="flex flex-col overflow-hidden text-left" style={labelStyle}>

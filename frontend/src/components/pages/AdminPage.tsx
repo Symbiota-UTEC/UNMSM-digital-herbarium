@@ -687,7 +687,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
   const handleSaveInstitution = async (e: FormEvent) => {
     e.preventDefault();
 
-    if (!editInstitution) return;
+    if (!editInstitution?.institutionId) return;
 
     if (editForm.adminEmail && adminEmailValidation.isValid === false) {
       toast.error("El email del administrador no es válido");
