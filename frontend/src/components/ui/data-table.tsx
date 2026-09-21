@@ -1,19 +1,6 @@
 import type { ReactNode } from "react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "./card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "./table";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table";
 import { Button } from "./button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { LoadingOverlay, SkeletonBar, useSettled } from "./loading-overlay";
@@ -39,33 +26,17 @@ export interface TablePaginationProps {
   loading?: boolean;
 }
 
-export function TablePagination({
-  page,
-  totalPages,
-  onPrevPage,
-  onNextPage,
-  loading = false,
-}: TablePaginationProps) {
+export function TablePagination({ page, totalPages, onPrevPage, onNextPage, loading = false }: TablePaginationProps) {
   return (
     <div className="flex items-center justify-between mt-4 pt-4 border-t">
-      <Button
-        variant="outline"
-        size="sm"
-        disabled={page <= 1 || loading}
-        onClick={onPrevPage}
-      >
+      <Button variant="outline" size="sm" disabled={page <= 1 || loading} onClick={onPrevPage}>
         <ChevronLeft className="h-4 w-4 mr-1" />
         Anterior
       </Button>
       <span className="text-xs md:text-sm text-muted-foreground">
         Página {page} de {totalPages}
       </span>
-      <Button
-        variant="outline"
-        size="sm"
-        disabled={page >= totalPages || loading}
-        onClick={onNextPage}
-      >
+      <Button variant="outline" size="sm" disabled={page >= totalPages || loading} onClick={onNextPage}>
         Siguiente
         <ChevronRight className="h-4 w-4 ml-1" />
       </Button>
@@ -117,22 +88,12 @@ export function DataTable<T>({
 
   return (
     <div className="space-y-3">
-      {toolbar && (
-        <div className="flex justify-end gap-2">{toolbar}</div>
-      )}
+      {toolbar && <div className="flex justify-end gap-2">{toolbar}</div>}
       <Card>
         {hasHeader && (
           <CardHeader>
-            {title && (
-              <CardTitle className="text-base md:text-lg font-semibold">
-                {title}
-              </CardTitle>
-            )}
-            {description && (
-              <CardDescription className="text-xs md:text-sm">
-                {description}
-              </CardDescription>
-            )}
+            {title && <CardTitle className="text-base md:text-lg font-semibold">{title}</CardTitle>}
+            {description && <CardDescription className="text-xs md:text-sm">{description}</CardDescription>}
           </CardHeader>
         )}
         <CardContent className={hasHeader ? "" : "pt-6"}>
@@ -143,10 +104,7 @@ export function DataTable<T>({
                   {columns.map((col, i) => (
                     <TableHead
                       key={col.key}
-                      className={[
-                        "whitespace-nowrap text-xs md:text-sm",
-                        col.className ?? "",
-                      ]
+                      className={["whitespace-nowrap text-xs md:text-sm", col.className ?? ""]
                         .filter(Boolean)
                         .join(" ")}
                       style={i === lastColIdx ? { width: "1px", textAlign: "right" } : undefined}
@@ -172,10 +130,7 @@ export function DataTable<T>({
                   ))
                 ) : data.length === 0 ? (
                   <TableRow>
-                    <TableCell
-                      colSpan={columns.length}
-                      className="py-8 text-center text-sm text-muted-foreground"
-                    >
+                    <TableCell colSpan={columns.length} className="py-8 text-center text-sm text-muted-foreground">
                       {emptyMessage}
                     </TableCell>
                   </TableRow>
@@ -189,11 +144,7 @@ export function DataTable<T>({
                       {columns.map((col, i) => (
                         <TableCell
                           key={col.key}
-                          className={[
-                            "align-middle",
-                            i === lastColIdx ? "whitespace-nowrap" : "",
-                            col.className ?? "",
-                          ]
+                          className={["align-middle", i === lastColIdx ? "whitespace-nowrap" : "", col.className ?? ""]
                             .filter(Boolean)
                             .join(" ")}
                           style={i === lastColIdx ? { width: "1px" } : undefined}
@@ -202,7 +153,9 @@ export function DataTable<T>({
                             <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center" }}>
                               {col.cell(row)}
                             </div>
-                          ) : col.cell(row)}
+                          ) : (
+                            col.cell(row)
+                          )}
                         </TableCell>
                       ))}
                     </TableRow>

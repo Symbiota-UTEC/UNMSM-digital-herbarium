@@ -4,32 +4,36 @@ Occurrence <-> Identification se referencian mutuamente; para evitar un import
 circular, las referencias a Identification se resuelven en funciones (SQLAlchemy
 las llama recién al configurar los mappers, cuando ambos módulos ya cargaron).
 """
+
 from __future__ import annotations
 
 import uuid
-from typing import List, Optional, Any
+from datetime import datetime
+from typing import Any, List, Optional
 
-from sqlalchemy import String, Text, Integer, Float, DateTime, ForeignKey, Uuid
+from geoalchemy2 import Geography, Geometry
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, Uuid
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from geoalchemy2 import Geography, Geometry
 
 from backend.config.database import Base
-from datetime import datetime
 
 
 def _identification_occurrence_id_fk():
     from backend.models.identification import Identification
+
     return [Identification.occurrenceId]
 
 
 def _occurrence_identifications_primaryjoin():
     from backend.models.identification import Identification
+
     return Occurrence.occurrenceId == Identification.occurrenceId
 
 
 def _occurrence_current_identification_primaryjoin():
     from backend.models.identification import Identification
+
     return Occurrence.currentIdentificationId == Identification.identificationId
 
 
@@ -338,8 +342,8 @@ class Occurrence(Base):
         ForeignKey(
             "identification.identification_id",
             ondelete="SET NULL",
-            use_alter=True, # Rompe el ciclo en la creación/borrado
-            name="fk_occurrence_current_id"
+            use_alter=True,  # Rompe el ciclo en la creación/borrado
+            name="fk_occurrence_current_id",
         ),
         nullable=True,
         index=True,

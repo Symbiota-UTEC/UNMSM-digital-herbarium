@@ -1,16 +1,16 @@
 from .models import (
     Base,
-    Institution,
-    User,
-    RegistrationRequest,
     Collection,
     CollectionPermission,
+    Identification,
     Identifier,
-    Taxon,
+    Institution,
     Occurrence,
     OccurrenceImage,
-    Identification,
+    RegistrationRequest,
+    Taxon,
     TaxonFloraImportJob,
+    User,
 )
 
 __all__ = [

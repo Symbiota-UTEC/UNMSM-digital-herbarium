@@ -1,5 +1,5 @@
-from uuid import UUID
 from typing import Dict, Literal, Optional
+from uuid import UUID
 
 from pydantic import BaseModel
 

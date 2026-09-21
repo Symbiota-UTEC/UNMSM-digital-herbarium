@@ -1,24 +1,11 @@
 import { useCallback, useEffect, useState, type BaseSyntheticEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "../ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "../ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Badge } from "../ui/badge";
 import { Plus, Folder, Users, Shield, Eye } from "lucide-react";
 import { FiltersCard } from "../ui/filters";
@@ -29,11 +16,7 @@ import { PAGE_SIZE } from "@constants/api";
 import { AutocompleteInstitution } from "../AutocompleteInstitution";
 import { Role } from "@constants/roles";
 import { collectionsService } from "@services/collections.service";
-import {
-  CollectionCreate,
-  CollectionListItem,
-  toCollectionListItem,
-} from "@interfaces/collection";
+import { CollectionCreate, CollectionListItem, toCollectionListItem } from "@interfaces/collection";
 
 type AccessFilter = "owner" | "allowed";
 
@@ -42,11 +25,11 @@ type CollectionsPageProps = {
 };
 
 const ROLE_BADGE: Record<string, { label: string; className: string }> = {
-  superuser:         { label: "Superuser",        className: "bg-purple-100 text-purple-800" },
+  superuser: { label: "Superuser", className: "bg-purple-100 text-purple-800" },
   institution_admin: { label: "Admin institución", className: "bg-orange-100 text-orange-800" },
-  owner:             { label: "Propietario",       className: "bg-blue-100 text-blue-800" },
-  editor:            { label: "Editor",            className: "bg-green-50 text-green-700" },
-  viewer:            { label: "Lector",            className: "bg-gray-100 text-gray-800" },
+  owner: { label: "Propietario", className: "bg-blue-100 text-blue-800" },
+  editor: { label: "Editor", className: "bg-green-50 text-green-700" },
+  viewer: { label: "Lector", className: "bg-gray-100 text-gray-800" },
 };
 
 export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
@@ -63,11 +46,9 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
   const collectionsPerPage = PAGE_SIZE.COLLECTIONS;
 
   const [filterAccess, setFilterAccess] = useState<AccessFilter>(
-    () => (searchParams.get("access") as AccessFilter) ?? "owner"
+    () => (searchParams.get("access") as AccessFilter) ?? "owner",
   );
-  const [access, setAccess] = useState<AccessFilter>(
-    () => (searchParams.get("access") as AccessFilter) ?? "owner"
-  );
+  const [access, setAccess] = useState<AccessFilter>(() => (searchParams.get("access") as AccessFilter) ?? "owner");
   const [items, setItems] = useState<CollectionListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(() => Math.max(1, Number(searchParams.get("page")) || 1));
@@ -105,8 +86,17 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
     setSearchParams(p, { replace: true });
   };
 
-  const handleApplyFilters = () => { setAccess(filterAccess); setPage(1); syncURL(filterAccess, 1); };
-  const handleClearFilters = () => { setFilterAccess("owner"); setAccess("owner"); setPage(1); setSearchParams({}, { replace: true }); };
+  const handleApplyFilters = () => {
+    setAccess(filterAccess);
+    setPage(1);
+    syncURL(filterAccess, 1);
+  };
+  const handleClearFilters = () => {
+    setFilterAccess("owner");
+    setAccess("owner");
+    setPage(1);
+    setSearchParams({}, { replace: true });
+  };
   const filtersActive = true; // access filter always has an active value
 
   useEffect(() => {
@@ -114,9 +104,7 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
   }, [access, page, fetchCollections]);
 
   const canManageCollection = (c: CollectionListItem) => {
-    const isInstAdminSameInst =
-      user?.role === Role.InstitutionAdmin &&
-      user?.institutionId === c.institutionId;
+    const isInstAdminSameInst = user?.role === Role.InstitutionAdmin && user?.institutionId === c.institutionId;
     return isSuper || isInstAdminSameInst || c.my_role === "owner";
   };
 
@@ -141,9 +129,18 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
   const handleCreate = async (e: BaseSyntheticEvent) => {
     e.preventDefault();
     if (!token) return;
-    if (!form.collectionName?.trim()) { toast.error("Ingresa un nombre de colección"); return; }
-    if (!selectedInstitutionId) { toast.error("Selecciona una institución"); return; }
-    if (!userId) { toast.error("No se encontró tu ID de usuario"); return; }
+    if (!form.collectionName?.trim()) {
+      toast.error("Ingresa un nombre de colección");
+      return;
+    }
+    if (!selectedInstitutionId) {
+      toast.error("Selecciona una institución");
+      return;
+    }
+    if (!userId) {
+      toast.error("No se encontró tu ID de usuario");
+      return;
+    }
 
     const payload: CollectionCreate = {
       collectionName: form.collectionName?.trim() || null,
@@ -177,9 +174,16 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
     });
   };
 
-  const extraColumns: ColumnDef<CollectionListItem>[] = access === "allowed"
-    ? [{ key: "creator", header: "Creador", cell: (c) => <span className="text-sm text-muted-foreground">{c.creatorName ?? "—"}</span> }]
-    : [];
+  const extraColumns: ColumnDef<CollectionListItem>[] =
+    access === "allowed"
+      ? [
+          {
+            key: "creator",
+            header: "Creador",
+            cell: (c) => <span className="text-sm text-muted-foreground">{c.creatorName ?? "—"}</span>,
+          },
+        ]
+      : [];
 
   const columns: ColumnDef<CollectionListItem>[] = [
     {
@@ -207,7 +211,9 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
       key: "count",
       header: "Ocurrencias",
       cell: (c) => (
-        <Badge variant="outline" className="text-xs tabular-nums">{c.occurrencesCount}</Badge>
+        <Badge variant="outline" className="text-xs tabular-nums">
+          {c.occurrencesCount}
+        </Badge>
       ),
     },
     {
@@ -216,9 +222,7 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
       cell: (c) => {
         const badge = c.my_role ? ROLE_BADGE[c.my_role] : null;
         return badge ? (
-          <span className={`text-xs px-2 py-0.5 rounded-full ${badge.className}`}>
-            {badge.label}
-          </span>
+          <span className={`text-xs px-2 py-0.5 rounded-full ${badge.className}`}>{badge.label}</span>
         ) : (
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <Shield className="h-3 w-3" />
@@ -235,7 +239,10 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
           variant="ghost"
           size="icon"
           className="h-7 w-7"
-          onClick={(e: ReactMouseEvent) => { e.stopPropagation(); goToCollectionDetail(c); }}
+          onClick={(e: ReactMouseEvent) => {
+            e.stopPropagation();
+            goToCollectionDetail(c);
+          }}
           title="Ver colección"
         >
           <Eye className="h-4 w-4" />
@@ -307,11 +314,21 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
                 <AutocompleteInstitution
                   token={token}
                   apiFetch={apiFetch}
-                  placeholder={isRestrictedInstitutionPick ? userInstitutionName || "Tu institución" : "Buscar institución..."}
+                  placeholder={
+                    isRestrictedInstitutionPick ? userInstitutionName || "Tu institución" : "Buscar institución..."
+                  }
                   disabled={isRestrictedInstitutionPick}
                   value={instSearchText}
-                  onChange={(t) => { if (isRestrictedInstitutionPick) return; setInstSearchText(t); setSelectedInstitutionId(null); }}
-                  onSelect={(item) => { if (isRestrictedInstitutionPick) return; setInstSearchText(item.institutionName ?? ""); setSelectedInstitutionId(item.institutionId ?? null); }}
+                  onChange={(t) => {
+                    if (isRestrictedInstitutionPick) return;
+                    setInstSearchText(t);
+                    setSelectedInstitutionId(null);
+                  }}
+                  onSelect={(item) => {
+                    if (isRestrictedInstitutionPick) return;
+                    setInstSearchText(item.institutionName ?? "");
+                    setSelectedInstitutionId(item.institutionId ?? null);
+                  }}
                   minChars={1}
                 />
               </div>
@@ -338,9 +355,7 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
         loading={loading}
       >
         <div className="flex items-center gap-3">
-          <Label className="text-xs font-semibold text-foreground whitespace-nowrap">
-            Tipo de Acceso
-          </Label>
+          <Label className="text-xs font-semibold text-foreground whitespace-nowrap">Tipo de Acceso</Label>
           <Select value={filterAccess} onValueChange={(v: string) => setFilterAccess(v as AccessFilter)}>
             <SelectTrigger className="w-44">
               <SelectValue />
@@ -363,8 +378,18 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
         emptyMessage={access === "owner" ? "No tienes colecciones creadas." : "No hay colecciones para mostrar."}
         page={page}
         totalPages={totalPages}
-        onPrevPage={() => { setPage((p) => { syncURL(access, p - 1); return p - 1; }); }}
-        onNextPage={() => { setPage((p) => { syncURL(access, p + 1); return p + 1; }); }}
+        onPrevPage={() => {
+          setPage((p) => {
+            syncURL(access, p - 1);
+            return p - 1;
+          });
+        }}
+        onNextPage={() => {
+          setPage((p) => {
+            syncURL(access, p + 1);
+            return p + 1;
+          });
+        }}
         onRowClick={goToCollectionDetail}
       />
     </div>

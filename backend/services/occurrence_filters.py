@@ -4,12 +4,12 @@ from datetime import date
 from typing import Optional
 
 from fastapi import Depends, HTTPException, Query, status
+from geoalchemy2 import Geography, Geometry
 from sqlalchemy import Select, and_, cast, func, or_
 from sqlalchemy.orm import Session
-from geoalchemy2 import Geography, Geometry
 
 from backend.config.database import get_db
-from backend.models.models import Occurrence, Institution, Taxon
+from backend.models.models import Institution, Occurrence, Taxon
 from backend.schemas.occurrence import OccurrenceFilters
 from backend.services.geometry import InvalidPolygon, check_simple_polygon
 
@@ -32,7 +32,9 @@ def get_occurrence_filters(
     db: Session = Depends(get_db),
 ) -> OccurrenceFilters:
     radius_search_fields = (near_lat, near_lon, radius_km)
-    if any(v is not None for v in radius_search_fields) and not all(v is not None for v in radius_search_fields):
+    if any(v is not None for v in radius_search_fields) and not all(
+        v is not None for v in radius_search_fields
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Para buscar por radio debes enviar nearLat, nearLon y radiusKm juntos.",
@@ -42,7 +44,9 @@ def get_occurrence_filters(
         try:
             check_simple_polygon(db, within_polygon)
         except InvalidPolygon as e:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"withinPolygon inválido: {e}.")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=f"withinPolygon inválido: {e}."
+            )
 
     return OccurrenceFilters(
         code=code,
@@ -60,7 +64,6 @@ def get_occurrence_filters(
         radius_km=radius_km,
         within_polygon=within_polygon,
     )
-
 
 
 def _like_unaccent(expr, term: str, *, mode: str = "contains"):
@@ -106,7 +109,9 @@ def build_geo_condition(f: OccurrenceFilters):
         areas.append(
             or_(
                 func.ST_DWithin(Occurrence.location, origin, meters),
-                func.ST_DWithin(cast(Occurrence.footprintGeom, Geography(srid=4326)), origin, meters),
+                func.ST_DWithin(
+                    cast(Occurrence.footprintGeom, Geography(srid=4326)), origin, meters
+                ),
             )
         )
 
@@ -115,7 +120,9 @@ def build_geo_condition(f: OccurrenceFilters):
         polygon = func.ST_GeomFromText(f.within_polygon, 4326)
         areas.append(
             or_(
-                func.ST_Contains(polygon, cast(Occurrence.location, Geometry(geometry_type="POINT", srid=4326))),
+                func.ST_Contains(
+                    polygon, cast(Occurrence.location, Geometry(geometry_type="POINT", srid=4326))
+                ),
                 func.ST_Intersects(Occurrence.footprintGeom, polygon),
             )
         )

@@ -31,13 +31,17 @@ def check_simple_polygon(db: Session, wkt: str) -> None:
         ).one()
     except (DataError, InternalError):
         db.rollback()
-        raise InvalidPolygon("no es un WKT válido, p. ej. POLYGON((-77.05 -12.04, -77.03 -12.04, -77.03 -12.06, -77.05 -12.04))")
+        raise InvalidPolygon(
+            "no es un WKT válido, p. ej. POLYGON((-77.05 -12.04, -77.03 -12.04, -77.03 -12.06, -77.05 -12.04))"
+        )
 
     if empty:
         raise InvalidPolygon("el polígono está vacío")
     if not valid:
         raise InvalidPolygon(
-            "el polígono no puede cruzarse consigo mismo" if "Self-intersection" in reason else reason
+            "el polígono no puede cruzarse consigo mismo"
+            if "Self-intersection" in reason
+            else reason
         )
     if holes:
         raise InvalidPolygon("el polígono no admite huecos")

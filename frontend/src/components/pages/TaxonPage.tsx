@@ -1,23 +1,9 @@
 import { useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "../ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "../ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
-import {
-  Leaf,
-  ChevronLeft,
-  ChevronRight,
-  ChevronDown,
-  Loader2,
-  Plus,
-  Eye,
-} from "lucide-react";
+import { Leaf, ChevronLeft, ChevronRight, ChevronDown, Loader2, Plus, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@contexts/AuthContext";
 import { PAGE_SIZE } from "@constants/api";
@@ -56,7 +42,10 @@ function TaxonTreeRow({
 
   const synonymsLabel =
     node.synonyms && node.synonyms.length > 0
-      ? node.synonyms.map((s) => s.scientificName).filter(Boolean).join("; ")
+      ? node.synonyms
+          .map((s) => s.scientificName)
+          .filter(Boolean)
+          .join("; ")
       : "";
 
   const rankLabel = node.taxonRank ?? "—";
@@ -93,15 +82,13 @@ function TaxonTreeRow({
               <Leaf className="h-3.5 w-3.5 text-primary" />
               <span className="italic">{node.scientificName || "(sin nombre)"}</span>
               {node.scientificNameAuthorship && (
-                <span className="text-xs text-muted-foreground">
-                  {node.scientificNameAuthorship}
-                </span>
+                <span className="text-xs text-muted-foreground">{node.scientificNameAuthorship}</span>
               )}
-              <Badge variant="outline" className="text-[10px]">{rankLabel}</Badge>
+              <Badge variant="outline" className="text-[10px]">
+                {rankLabel}
+              </Badge>
             </div>
-            {synonymsLabel && (
-              <div className="text-[11px] text-muted-foreground">[{synonymsLabel}]</div>
-            )}
+            {synonymsLabel && <div className="text-[11px] text-muted-foreground">[{synonymsLabel}]</div>}
           </div>
 
           {onViewDetail && node.taxonId && (
@@ -118,14 +105,10 @@ function TaxonTreeRow({
         </div>
       </div>
 
-      {isExpanded && childrenNodes?.map((child) => (
-        <TaxonTreeNodeContainer
-          key={child.taxonId}
-          node={child}
-          depth={depth + 1}
-          onNavigate={onNavigate}
-        />
-      ))}
+      {isExpanded &&
+        childrenNodes?.map((child) => (
+          <TaxonTreeNodeContainer key={child.taxonId} node={child} depth={depth + 1} onNavigate={onNavigate} />
+        ))}
 
       {isExpanded && canLoadMoreChildren && (
         <div className="pl-8 pb-1" style={{ paddingLeft: indentPx + 24 }}>
@@ -133,7 +116,10 @@ function TaxonTreeRow({
             variant="ghost"
             size="sm"
             className="text-xs px-2 h-6"
-            onClick={(e: ReactMouseEvent) => { e.stopPropagation(); onLoadMoreChildren?.(); }}
+            onClick={(e: ReactMouseEvent) => {
+              e.stopPropagation();
+              onLoadMoreChildren?.();
+            }}
           >
             <Plus className="h-3 w-3 mr-1" />
             Cargar más taxones…
@@ -169,7 +155,7 @@ function TaxonTreeNodeContainer({ node, depth, onNavigate }: NodeContainerProps)
         page,
         size: PAGE_SIZE.TAXON_TREE_CHILDREN,
       });
-      setChildren((prev) => page === 1 ? data.items ?? [] : [...prev, ...(data.items ?? [])]);
+      setChildren((prev) => (page === 1 ? (data.items ?? []) : [...prev, ...(data.items ?? [])]));
       setCurrentPage(data.currentPage);
       setTotalPages(data.totalPages);
     } catch (error: any) {
@@ -189,7 +175,10 @@ function TaxonTreeNodeContainer({ node, depth, onNavigate }: NodeContainerProps)
 
   const handleViewDetail = () => {
     if (!node.taxonId) return;
-    if (onNavigate) { onNavigate("taxon-detail", { taxonId: node.taxonId }); return; }
+    if (onNavigate) {
+      onNavigate("taxon-detail", { taxonId: node.taxonId });
+      return;
+    }
     window.location.href = `/taxon/${encodeURIComponent(node.taxonId)}`;
   };
 
@@ -202,7 +191,9 @@ function TaxonTreeNodeContainer({ node, depth, onNavigate }: NodeContainerProps)
       onToggle={handleToggle}
       childrenNodes={children}
       canLoadMoreChildren={canLoadMoreChildren}
-      onLoadMoreChildren={() => { if (currentPage + 1 <= totalPages) fetchChildrenPage(currentPage + 1); }}
+      onLoadMoreChildren={() => {
+        if (currentPage + 1 <= totalPages) fetchChildrenPage(currentPage + 1);
+      }}
       onViewDetail={handleViewDetail}
       onNavigate={onNavigate}
     />
@@ -229,8 +220,10 @@ export function TaxonPage({ onNavigate }: TaxonPageProps) {
   const [scientificNameFilter, setScientificNameFilter] = useState(() => searchParams.get("q") ?? "");
   const [appliedQuery, setAppliedQuery] = useState(() => searchParams.get("q") ?? "");
 
-  const { items: sciNameSuggestions, loading: sciNameLoading } =
-    useScientificNameAutocomplete(apiFetch, scientificNameFilter);
+  const { items: sciNameSuggestions, loading: sciNameLoading } = useScientificNameAutocomplete(
+    apiFetch,
+    scientificNameFilter,
+  );
 
   // Search results state
   const [searchResults, setSearchResults] = useState<TaxonSearchItem[]>([]);
@@ -304,7 +297,10 @@ export function TaxonPage({ onNavigate }: TaxonPageProps) {
 
   const handleSearchResultClick = (taxonId: string) => {
     if (!taxonId) return;
-    if (onNavigate) { onNavigate("taxon-detail", { taxonId }); return; }
+    if (onNavigate) {
+      onNavigate("taxon-detail", { taxonId });
+      return;
+    }
     window.location.href = `/taxon/${encodeURIComponent(taxonId)}`;
   };
 
@@ -339,7 +335,9 @@ export function TaxonPage({ onNavigate }: TaxonPageProps) {
       header: "Rango",
       cell: (r) =>
         r.taxonRank ? (
-          <Badge variant="outline" className="text-[10px]">{r.taxonRank}</Badge>
+          <Badge variant="outline" className="text-[10px]">
+            {r.taxonRank}
+          </Badge>
         ) : (
           <span className="text-muted-foreground text-sm">—</span>
         ),
@@ -349,7 +347,9 @@ export function TaxonPage({ onNavigate }: TaxonPageProps) {
       header: "Estado",
       cell: (r) =>
         r.taxonomicStatus ? (
-          <Badge variant="secondary" className="text-[10px]">{r.taxonomicStatus}</Badge>
+          <Badge variant="secondary" className="text-[10px]">
+            {r.taxonomicStatus}
+          </Badge>
         ) : (
           <span className="text-muted-foreground text-sm">—</span>
         ),
@@ -362,9 +362,7 @@ export function TaxonPage({ onNavigate }: TaxonPageProps) {
     {
       key: "occurrences",
       header: "Ocurrencias",
-      cell: (r) => (
-        <span className="text-sm tabular-nums">{r.occurrenceCount.toLocaleString("es-PE")}</span>
-      ),
+      cell: (r) => <span className="text-sm tabular-nums">{r.occurrenceCount.toLocaleString("es-PE")}</span>,
     },
     {
       key: "actions",
@@ -374,7 +372,10 @@ export function TaxonPage({ onNavigate }: TaxonPageProps) {
           variant="ghost"
           size="icon"
           className="h-7 w-7"
-          onClick={(e: ReactMouseEvent) => { e.stopPropagation(); handleSearchResultClick(r.taxonId); }}
+          onClick={(e: ReactMouseEvent) => {
+            e.stopPropagation();
+            handleSearchResultClick(r.taxonId);
+          }}
           title="Ver detalle del taxón"
         >
           <Eye className="h-4 w-4" />
@@ -433,8 +434,8 @@ export function TaxonPage({ onNavigate }: TaxonPageProps) {
           <CardHeader>
             <CardTitle>Árbol taxonómico</CardTitle>
             <CardDescription>
-              Explora la jerarquía taxonómica. Haz clic en un taxón para expandir
-              sus hijas. Usa el botón con el ojo para ir al detalle de cada taxón.
+              Explora la jerarquía taxonómica. Haz clic en un taxón para expandir sus hijas. Usa el botón con el ojo
+              para ir al detalle de cada taxón.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -450,12 +451,7 @@ export function TaxonPage({ onNavigate }: TaxonPageProps) {
             ) : (
               <div className="space-y-1">
                 {rootNodes.map((node) => (
-                  <TaxonTreeNodeContainer
-                    key={node.taxonId}
-                    node={node}
-                    depth={0}
-                    onNavigate={onNavigate}
-                  />
+                  <TaxonTreeNodeContainer key={node.taxonId} node={node} depth={0} onNavigate={onNavigate} />
                 ))}
               </div>
             )}

@@ -1,19 +1,16 @@
-from uuid import UUID
 # backend/routers/auth.py
+from typing import Literal, Optional
+from uuid import UUID
 
-from typing import Optional, Literal
-
-from fastapi import APIRouter, Depends, Body, Query
+from fastapi import APIRouter, Body, Depends, Query
 from fastapi.security import OAuth2PasswordRequestForm
-
 from sqlalchemy.orm import Session
 
+from backend.auth.jwt import get_current_user
 from backend.config.database import get_db
 from backend.models.models import User
-from backend.auth.jwt import get_current_user
-
-from backend.schemas.common.pages import Page
 from backend.schemas.auth import RegistrationRequestItem, UpdateRequestStatusBody
+from backend.schemas.common.pages import Page
 from backend.services import auth as auth_service
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -59,8 +56,16 @@ def register_user(
     db: Session = Depends(get_db),
 ):
     return auth_service.register_user(
-        db, username, email, password, institutionId,
-        givenName, familyName, orcid, phone, address,
+        db,
+        username,
+        email,
+        password,
+        institutionId,
+        givenName,
+        familyName,
+        orcid,
+        phone,
+        address,
     )
 
 

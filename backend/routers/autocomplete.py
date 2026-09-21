@@ -2,10 +2,10 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from backend.config.database import get_db
 from backend.auth.jwt import get_current_user
+from backend.config.database import get_db
 from backend.models.models import User
-from backend.schemas.autocomplete import SuggestionList, ScientificNameSuggestionList
+from backend.schemas.autocomplete import ScientificNameSuggestionList, SuggestionList
 from backend.services import autocomplete as autocomplete_service
 
 router = APIRouter(prefix="/autocomplete", tags=["autocomplete"])

@@ -12,22 +12,22 @@ interface LoginPageProps {
 }
 
 export function LoginPage({ onNavigate }: LoginPageProps) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    
+
     try {
       await login(email, password);
-      toast.success('Inicio de sesión exitoso');
-      onNavigate('collections');
+      toast.success("Inicio de sesión exitoso");
+      onNavigate("collections");
     } catch (error) {
       console.log(error);
-      toast.error('Error al iniciar sesión');
+      toast.error("Error al iniciar sesión");
     } finally {
       setLoading(false);
     }
@@ -39,9 +39,7 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
         <CardHeader className="text-center">
           <Leaf className="h-12 w-12 text-primary mx-auto mb-4" />
           <CardTitle>Iniciar Sesión</CardTitle>
-          <CardDescription>
-            Accede a tu cuenta de Herbario Digital
-          </CardDescription>
+          <CardDescription>Accede a tu cuenta de Herbario Digital</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -73,18 +71,15 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
                   Iniciando sesión...
                 </>
               ) : (
-                'Iniciar Sesión'
+                "Iniciar Sesión"
               )}
             </Button>
           </form>
-          
+
           <div className="mt-6 text-center text-sm">
             <p className="text-muted-foreground mb-2">
-              ¿No tienes una cuenta?{' '}
-              <button 
-                onClick={() => onNavigate('register')}
-                className="text-primary hover:underline"
-              >
+              ¿No tienes una cuenta?{" "}
+              <button onClick={() => onNavigate("register")} className="text-primary hover:underline">
                 Solicitar Registro
               </button>
             </p>

@@ -68,7 +68,7 @@ const resolveCurrentPage = (pathname: string) => {
           .replace(/\//g, "\\/")
           .replace(/:\w+\?/g, "(?:[^/]+)?")
           .replace(/:\w+/g, "[^/]+") +
-        "$"
+        "$",
     );
     if (pattern.test(pathname)) {
       return config.pageId;
@@ -139,9 +139,7 @@ const buildRoute = (page: string, params: NavigationParams = {}) => {
       return {
         path: `/occurrences/${params.occurrenceId}`,
         state: {
-          returnTo:
-            params.returnTo ??
-            (params.collectionId ? "collection" : "occurrences"),
+          returnTo: params.returnTo ?? (params.collectionId ? "collection" : "occurrences"),
           collectionId: params.collectionId?.toString(),
           collectionName: params.collectionName,
           isOwner: params.isOwner,
@@ -242,11 +240,7 @@ const CSVImportRoute = ({ onNavigate }: { onNavigate: NavigateFn }) => {
   const state = useRouteState();
 
   return (
-    <CSVImportPage
-      collectionId={collectionId}
-      collectionName={state.collectionName || ""}
-      onNavigate={onNavigate}
-    />
+    <CSVImportPage collectionId={collectionId} collectionName={state.collectionName || ""} onNavigate={onNavigate} />
   );
 };
 
@@ -298,15 +292,13 @@ function AppContent() {
         return;
       }
       // Restore last search params when navigating to a filter page with no specific params
-      const savedSearch = (!params && FILTER_PAGES.includes(target.path))
-        ? (lastSearch.current[target.path] ?? "")
-        : "";
+      const savedSearch = !params && FILTER_PAGES.includes(target.path) ? (lastSearch.current[target.path] ?? "") : "";
       navigate(
         { pathname: target.path, search: savedSearch },
-        { state: target.state, replace: (target as any).replace }
+        { state: target.state, replace: (target as any).replace },
       );
     },
-    [navigate]
+    [navigate],
   );
 
   useEffect(() => {
@@ -329,32 +321,39 @@ function AppContent() {
 
   return (
     <div className="flex h-full overflow-hidden bg-background">
-      {isAuthenticated && (
-        <PrivateSidebar onNavigate={handleNavigation} currentPage={currentPage} />
-      )}
+      {isAuthenticated && <PrivateSidebar onNavigate={handleNavigation} currentPage={currentPage} />}
 
-      <main className="flex flex-col flex-1 min-w-0 overflow-y-auto" style={{ paddingLeft: "1.5rem", paddingRight: "1.5rem" }}>
+      <main
+        className="flex flex-col flex-1 min-w-0 overflow-y-auto"
+        style={{ paddingLeft: "1.5rem", paddingRight: "1.5rem" }}
+      >
         {!isAuthenticated && <PublicNavbar onNavigate={handleNavigation} />}
 
         <Routes>
-        <Route path="/" element={<HomePage onNavigate={handleNavigation} />} />
-        <Route path="/login" element={<LoginPage onNavigate={handleNavigation} />} />
-        <Route path="/register" element={<RegisterPage onNavigate={handleNavigation} />} />
-        <Route path="/collections" element={<CollectionsPage onNavigate={handleNavigation} />} />
-        <Route path="/collections/:collectionId" element={<CollectionDetailRoute onNavigate={handleNavigation} />} />
-        <Route path="/collections/:collectionId/csv-import" element={<CSVImportRoute onNavigate={handleNavigation} />} />
-        <Route path="/occurrences" element={<OccurrencesPage onNavigate={handleNavigation} />} />
-        <Route path="/occurrences/new" element={<NewOccurrenceRoute mode="create" onNavigate={handleNavigation} />} />
-        <Route path="/occurrences/:occurrenceId/edit" element={<NewOccurrenceRoute mode="edit" onNavigate={handleNavigation} />} />
-        <Route path="/occurrences/:occurrenceId" element={<OccurrenceDetailRoute onNavigate={handleNavigation} />} />
-        <Route path="/uploads" element={<UploadsPage />} />
-        <Route path="/taxon" element={<TaxonPage onNavigate={handleNavigation} />} />
-        <Route path="/taxon/:taxonId" element={<TaxonDetailRoute onNavigate={handleNavigation} />} />
-        <Route path="/profile" element={<ProfilePage />} />
-        <Route path="/admin" element={<AdminPage onNavigate={handleNavigation} />} />
-        <Route path="/map" element={<MapPage onNavigate={handleNavigation} />} />
-        <Route path="*" element={<HomePage onNavigate={handleNavigation} />} />
-      </Routes>
+          <Route path="/" element={<HomePage onNavigate={handleNavigation} />} />
+          <Route path="/login" element={<LoginPage onNavigate={handleNavigation} />} />
+          <Route path="/register" element={<RegisterPage onNavigate={handleNavigation} />} />
+          <Route path="/collections" element={<CollectionsPage onNavigate={handleNavigation} />} />
+          <Route path="/collections/:collectionId" element={<CollectionDetailRoute onNavigate={handleNavigation} />} />
+          <Route
+            path="/collections/:collectionId/csv-import"
+            element={<CSVImportRoute onNavigate={handleNavigation} />}
+          />
+          <Route path="/occurrences" element={<OccurrencesPage onNavigate={handleNavigation} />} />
+          <Route path="/occurrences/new" element={<NewOccurrenceRoute mode="create" onNavigate={handleNavigation} />} />
+          <Route
+            path="/occurrences/:occurrenceId/edit"
+            element={<NewOccurrenceRoute mode="edit" onNavigate={handleNavigation} />}
+          />
+          <Route path="/occurrences/:occurrenceId" element={<OccurrenceDetailRoute onNavigate={handleNavigation} />} />
+          <Route path="/uploads" element={<UploadsPage />} />
+          <Route path="/taxon" element={<TaxonPage onNavigate={handleNavigation} />} />
+          <Route path="/taxon/:taxonId" element={<TaxonDetailRoute onNavigate={handleNavigation} />} />
+          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/admin" element={<AdminPage onNavigate={handleNavigation} />} />
+          <Route path="/map" element={<MapPage onNavigate={handleNavigation} />} />
+          <Route path="*" element={<HomePage onNavigate={handleNavigation} />} />
+        </Routes>
 
         <Toaster position="top-right" />
       </main>

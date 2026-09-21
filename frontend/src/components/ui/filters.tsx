@@ -2,15 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./card";
 import { Badge } from "./badge";
 import { Button } from "./button";
-import {
-  Filter,
-  ChevronUp,
-  ChevronDown,
-  Trash2,
-  Search,
-  Calendar as CalendarIcon,
-  X,
-} from "lucide-react";
+import { Filter, ChevronUp, ChevronDown, Trash2, Search, Calendar as CalendarIcon, X } from "lucide-react";
 import { autocompleteService } from "@services/autocomplete.service";
 import { AutocompleteDropdown, useSuggestions } from "./autocomplete";
 
@@ -33,11 +25,7 @@ export function useAutocomplete(
   options?: { minChars?: number; debounceMs?: number; limit?: number },
 ) {
   const { limit = 10, ...rest } = options ?? {};
-  return useSuggestions(
-    (q) => autocompleteService.query(apiFetch, endpoint, q, limit),
-    query,
-    rest,
-  );
+  return useSuggestions((q) => autocompleteService.query(apiFetch, endpoint, q, limit), query, rest);
 }
 
 /** Nombres científicos (backbone WFO) como strings, para los filtros. */
@@ -85,7 +73,10 @@ export function FilterAutocompleteInput({
           className={filterInputClass}
           placeholder={placeholder}
           value={value}
-          onChange={(e) => { onChange(e.target.value); setOpen(true); }}
+          onChange={(e) => {
+            onChange(e.target.value);
+            setOpen(true);
+          }}
           onFocus={() => setOpen(true)}
           onBlur={() => setTimeout(() => setOpen(false), 120)}
         />
@@ -95,7 +86,11 @@ export function FilterAutocompleteInput({
             loading={loading}
             keyOf={(item) => item}
             renderItem={(item) => <span className="truncate">{item}</span>}
-            onSelect={(item) => { onChange(item); setOpen(false); onSelect?.(item); }}
+            onSelect={(item) => {
+              onChange(item);
+              setOpen(false);
+              onSelect?.(item);
+            }}
           />
         )}
       </div>
@@ -153,7 +148,10 @@ export function FilterDateRangePicker({
           <button
             type="button"
             title="Limpiar rango de fechas"
-            onClick={() => { onFromChange(""); onToChange(""); }}
+            onClick={() => {
+              onFromChange("");
+              onToChange("");
+            }}
           >
             <X className="h-4 w-4 text-muted-foreground" />
           </button>
@@ -204,19 +202,12 @@ export function FiltersCard({
             </div>
             <div>
               {/* Title must always be larger than filterLabelClass (text-xs) */}
-              <CardTitle className="text-lg font-semibold tracking-tight">
-                {title}
-              </CardTitle>
-              {description && (
-                <CardDescription className="text-xs">{description}</CardDescription>
-              )}
+              <CardTitle className="text-lg font-semibold tracking-tight">{title}</CardTitle>
+              {description && <CardDescription className="text-xs">{description}</CardDescription>}
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Badge
-              variant={filtersActive ? "default" : "outline"}
-              className="text-xs hidden sm:inline-flex"
-            >
+            <Badge variant={filtersActive ? "default" : "outline"} className="text-xs hidden sm:inline-flex">
               {filtersActive ? "Filtros activos" : "Sin filtros"}
             </Badge>
             <Button
@@ -227,9 +218,7 @@ export function FiltersCard({
               onClick={() => setVisible((v) => !v)}
               aria-label={visible ? "Ocultar filtros" : "Mostrar filtros"}
             >
-              {visible
-                ? <ChevronUp className="h-4 w-4" />
-                : <ChevronDown className="h-4 w-4" />}
+              {visible ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </Button>
           </div>
         </div>
@@ -238,11 +227,12 @@ export function FiltersCard({
       {visible && (
         <CardContent className="pt-4" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
           {children}
-          <div className="flex items-center justify-between border-t border-dashed" style={{ paddingTop: "0.875rem", paddingBottom: "0.25rem" }}>
+          <div
+            className="flex items-center justify-between border-t border-dashed"
+            style={{ paddingTop: "0.875rem", paddingBottom: "0.25rem" }}
+          >
             <span className="text-xs text-muted-foreground">
-              Clic en{" "}
-              <span className="font-semibold text-foreground">Aplicar</span>
-              {" "}para filtrar los resultados.
+              Clic en <span className="font-semibold text-foreground">Aplicar</span> para filtrar los resultados.
             </span>
             <div className="flex gap-2">
               <Button

@@ -1,22 +1,21 @@
 # backend/services/taxon_flora_import.py
 from __future__ import annotations
-from uuid import UUID
 
 import csv
 import logging
 import os
 import tempfile
-
+from datetime import datetime
 from typing import Any, Dict, List, Optional
+from uuid import UUID
 
 from fastapi import BackgroundTasks, HTTPException, UploadFile, status
-from sqlalchemy import func, select, update, text
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select, text, update
 from sqlalchemy.inspection import inspect
-from datetime import datetime
+from sqlalchemy.orm import Session
 
 from backend.config.database import SessionLocal
-from backend.models.models import User, Taxon, TaxonFloraImportJob
+from backend.models.models import Taxon, TaxonFloraImportJob, User
 from backend.schemas.common.pages import Page
 from backend.schemas.upload import TaxonFloraImportJobOut
 
@@ -26,6 +25,7 @@ logger = logging.getLogger(__name__)
 # ----------------------------
 # Helpers de progreso del job
 # ----------------------------
+
 
 def _utcnow() -> datetime:
     return datetime.utcnow()
@@ -43,11 +43,7 @@ def _calculate_progress_metrics(
     bounded_bytes = min(max(bytes_processed, 0), file_size_bytes)
     progress_percent = round((bounded_bytes / file_size_bytes) * 100, 2)
 
-    if (
-        started_at is None
-        or bounded_bytes <= 0
-        or bounded_bytes >= file_size_bytes
-    ):
+    if started_at is None or bounded_bytes <= 0 or bounded_bytes >= file_size_bytes:
         eta_seconds = 0 if bounded_bytes >= file_size_bytes else None
         return progress_percent, eta_seconds
 
@@ -146,9 +142,7 @@ def _queue_taxon_flora_job_update(
 
     if values:
         db.execute(
-            update(TaxonFloraImportJob)
-            .where(TaxonFloraImportJob.jobId == job_id)
-            .values(**values)
+            update(TaxonFloraImportJob).where(TaxonFloraImportJob.jobId == job_id).values(**values)
         )
 
 
@@ -168,6 +162,7 @@ def _commit_taxon_flora_job_update(job_id: UUID, **kwargs: Any) -> None:
 # =========================
 # Procesamiento en background del backbone Taxon (flora)
 # =========================
+
 
 def process_taxon_flora_csv_background(
     file_path: str,
@@ -279,9 +274,7 @@ def process_taxon_flora_csv_background(
         taxon_ids = [item["wfoTaxonId"] for item in batch]
         existing_by_wfo = {
             taxon.wfoTaxonId: taxon
-            for taxon in db.execute(
-                select(Taxon).where(Taxon.wfoTaxonId.in_(taxon_ids))
-            ).scalars()
+            for taxon in db.execute(select(Taxon).where(Taxon.wfoTaxonId.in_(taxon_ids))).scalars()
         }
 
         for field_values in batch:
@@ -346,7 +339,7 @@ def process_taxon_flora_csv_background(
 
                     if b'\xc2"' in bline:
                         logger.warning(
-                            "Parche UTF-8 aplicado en línea con patrón \\xc2\\\": %r",
+                            'Parche UTF-8 aplicado en línea con patrón \\xc2\\": %r',
                             bline[:200],
                         )
                         bline = bline.replace(b'\xc2"', b'"')
@@ -396,10 +389,7 @@ def process_taxon_flora_csv_background(
                     status_value="failed",
                     stage="Falló la importación",
                     detail="El archivo no contiene todas las columnas requeridas.",
-                    error_message=(
-                        "Faltan columnas requeridas: "
-                        + ", ".join(missing_filter_cols)
-                    ),
+                    error_message=("Faltan columnas requeridas: " + ", ".join(missing_filter_cols)),
                     bytes_processed=min(bin_file.tell(), file_size_bytes),
                     finished_at=_utcnow(),
                 )
@@ -533,6 +523,7 @@ def process_taxon_flora_csv_background(
 # =========================
 # Casos de uso (endpoints)
 # =========================
+
 
 def list_taxon_flora_import_jobs(
     db: Session, limit: int, offset: int

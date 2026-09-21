@@ -80,7 +80,10 @@ export function PrivateSidebar({ onNavigate, currentPage }: PrivateSidebarProps)
   const isActive = (id: string) => currentPage === id || currentPage.startsWith(id + "-");
 
   const handleProfileNavigate = () => onNavigate("profile");
-  const handleLogout = () => { logout(); onNavigate("home"); };
+  const handleLogout = () => {
+    logout();
+    onNavigate("home");
+  };
 
   // Text fade: when collapsing, hide fast (no delay); when expanding, appear after width opens
   const labelStyle: CSSProperties = {
@@ -139,10 +142,7 @@ export function PrivateSidebar({ onNavigate, currentPage }: PrivateSidebarProps)
       {/* Header */}
       <div className="flex items-center gap-3 px-4 shrink-0" style={{ height: "68px" }}>
         <Leaf className="h-7 w-7 shrink-0 text-white" />
-        <span
-          className="text-base font-semibold text-white leading-tight"
-          style={labelStyle}
-        >
+        <span className="text-base font-semibold text-white leading-tight" style={labelStyle}>
           Herbario Digital
         </span>
       </div>
@@ -218,7 +218,11 @@ export function PrivateSidebar({ onNavigate, currentPage }: PrivateSidebarProps)
               {open && (
                 <div
                   className="flex flex-col gap-1"
-                  style={{ marginLeft: "1.35rem", paddingLeft: "0.5rem", borderLeft: "1px solid rgba(255,255,255,0.15)" }}
+                  style={{
+                    marginLeft: "1.35rem",
+                    paddingLeft: "0.5rem",
+                    borderLeft: "1px solid rgba(255,255,255,0.15)",
+                  }}
                 >
                   {entry.children.map((child) => (
                     <button
@@ -257,19 +261,15 @@ export function PrivateSidebar({ onNavigate, currentPage }: PrivateSidebarProps)
               onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
             >
               <Avatar className="h-8 w-8 shrink-0">
-                <AvatarFallback
-                  className="text-xs font-semibold"
-                  style={{ background: BG_ACTIVE, color: "white" }}
-                >
+                <AvatarFallback className="text-xs font-semibold" style={{ background: BG_ACTIVE, color: "white" }}>
                   {user?.username.substring(0, 2).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
-              <div
-                className="flex flex-col overflow-hidden text-left"
-                style={labelStyle}
-              >
+              <div className="flex flex-col overflow-hidden text-left" style={labelStyle}>
                 <span className="text-sm font-medium text-white truncate">{user?.username}</span>
-                <span className="text-xs truncate" style={{ color: TEXT_MUTED }}>{user?.email}</span>
+                <span className="text-xs truncate" style={{ color: TEXT_MUTED }}>
+                  {user?.email}
+                </span>
               </div>
             </button>
           </DropdownMenuTrigger>
@@ -280,10 +280,7 @@ export function PrivateSidebar({ onNavigate, currentPage }: PrivateSidebarProps)
               Mi Perfil
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={handleLogout}
-              className="gap-3 cursor-pointer text-red-600 focus:text-red-600"
-            >
+            <DropdownMenuItem onClick={handleLogout} className="gap-3 cursor-pointer text-red-600 focus:text-red-600">
               <LogOut className="h-4 w-4" />
               Cerrar sesión
             </DropdownMenuItem>

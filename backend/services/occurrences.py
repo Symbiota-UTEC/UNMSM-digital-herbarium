@@ -1,47 +1,45 @@
 # backend/services/occurrences.py
 from __future__ import annotations
-from uuid import UUID
 
 import json
-import re
-from datetime import datetime, date
-from typing import Optional, Any, Dict, List
+from datetime import date, datetime
+from typing import Any, Dict, List, Optional
+from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import select, delete, or_, func, and_, case, cast
-from sqlalchemy.orm import Session, selectinload
-from sqlalchemy.exc import DataError, InternalError
 from geoalchemy2 import Geography, Geometry
 from geoalchemy2.elements import WKTElement
+from sqlalchemy import and_, case, cast, delete, func, or_, select
+from sqlalchemy.exc import DataError, InternalError
+from sqlalchemy.orm import Session, selectinload
 
 from backend.models.models import (
-    Occurrence,
     Collection,
     CollectionPermission,
-    Institution,
-    User,
     Identification,
     Identifier,
+    Institution,
+    Occurrence,
     Taxon,
+    User,
 )
 from backend.schemas import Page
 from backend.schemas.occurrence import (
+    DynamicPropsIn,
+    IdentificationCreateIn,
     OccurrenceBriefItem,
+    OccurrenceCreateIn,
+    OccurrenceFilters,
     OccurrenceMapOut,
     OccurrenceMapPointOut,
-    DynamicPropsIn,
-    OccurrenceFilters,
-    OccurrenceCreateIn,
     OccurrenceUpdateIn,
-    IdentificationCreateIn,
+)
+from backend.services.collection_permissions import (
+    user_can_edit_collection,
+    user_can_view_collection,
 )
 from backend.services.geometry import InvalidPolygon, check_simple_polygon
 from backend.services.occurrence_filters import apply_occurrence_filters
-from backend.services.collection_permissions import (
-    user_can_view_collection,
-    user_can_edit_collection,
-)
-
 
 # =========================
 # Helpers
@@ -128,9 +126,7 @@ def sync_geo_columns(db: Session, occ: Occurrence) -> None:
     el círculo de incertidumbre alrededor del punto; si no, ninguna (punto exacto)."""
     has_point = occ.decimalLatitude is not None and occ.decimalLongitude is not None
     if has_point:
-        occ.location = WKTElement(
-            f"POINT({occ.decimalLongitude} {occ.decimalLatitude})", srid=4326
-        )
+        occ.location = WKTElement(f"POINT({occ.decimalLongitude} {occ.decimalLatitude})", srid=4326)
     else:
         occ.location = None
 
@@ -140,13 +136,17 @@ def sync_geo_columns(db: Session, occ: Occurrence) -> None:
             check_simple_polygon(db, wkt)
         except InvalidPolygon as e:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"footprintWKT inválido: {e}."
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"footprintWKT inválido: {e}.",
             )
     uncertainty = occ.coordinateUncertaintyInMeters
     if wkt:
         occ.footprintGeom = WKTElement(wkt, srid=4326)
     elif has_point and uncertainty is not None and uncertainty > 0:
-        point = cast(func.ST_GeomFromText(f"POINT({occ.decimalLongitude} {occ.decimalLatitude})", 4326), Geography)
+        point = cast(
+            func.ST_GeomFromText(f"POINT({occ.decimalLongitude} {occ.decimalLatitude})", 4326),
+            Geography,
+        )
         occ.footprintGeom = cast(
             func.ST_Buffer(point, uncertainty, "quad_segs=16"),
             Geometry(geometry_type="POLYGON", srid=4326),
@@ -172,25 +172,32 @@ def _flush_with_geo_validation(db: Session) -> None:
 # =========================
 
 
-def create_occurrence(
-    db: Session, payload: OccurrenceCreateIn, current_user: User
-) -> Occurrence:
+def create_occurrence(db: Session, payload: OccurrenceCreateIn, current_user: User) -> Occurrence:
     # Verificamos que la colección exista y el usuario pueda editarla
-    collection = db.scalar(select(Collection).where(Collection.collectionId == payload.collectionId))
+    collection = db.scalar(
+        select(Collection).where(Collection.collectionId == payload.collectionId)
+    )
     if not collection:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
 
     if not user_can_edit_collection(db, current_user, collection):
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para añadir ocurrencias en esta colección"
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para añadir ocurrencias en esta colección",
         )
 
     # Preparamos los datos del modelo Occurrence
     occ_data = payload.model_dump(
-        exclude={"taxonId", "scientificName", "collectionId", "dateIdentified", "typeStatus", "isVerified", "identifiers"},
-        exclude_unset=True
+        exclude={
+            "taxonId",
+            "scientificName",
+            "collectionId",
+            "dateIdentified",
+            "typeStatus",
+            "isVerified",
+            "identifiers",
+        },
+        exclude_unset=True,
     )
 
     # Manejamos el UUID custom que envió el frontend si existe
@@ -236,14 +243,16 @@ def create_occurrence(
         db.flush()
 
         # Crear Identifier(s) a partir de los datos enviados
-        for idn in (payload.identifiers or []):
+        for idn in payload.identifiers or []:
             name = idn.name.strip()
             if name:
-                db.add(Identifier(
-                    identificationId=ident.identificationId,
-                    fullName=name,
-                    orcID=idn.orcid or None,
-                ))
+                db.add(
+                    Identifier(
+                        identificationId=ident.identificationId,
+                        fullName=name,
+                        orcID=idn.orcid or None,
+                    )
+                )
 
         occ.currentIdentificationId = ident.identificationId
         db.add(occ)
@@ -257,9 +266,7 @@ def create_occurrence(
     return _load_occurrence_full(db, occ.occurrenceId)
 
 
-def get_occurrence_by_id(
-    db: Session, occurrence_id: UUID, current_user: User
-) -> Occurrence:
+def get_occurrence_by_id(db: Session, occurrence_id: UUID, current_user: User) -> Occurrence:
     occ = _load_occurrence_full(db, occurrence_id)
 
     if not occ:
@@ -304,12 +311,9 @@ def _visible_occurrences_select(
     )
 
     if not current_user.isSuperuser:
-        perm_subq = (
-            select(CollectionPermission.collectionId)
-            .where(
-                CollectionPermission.userId == current_user.userId,
-                CollectionPermission.role.in_(["viewer", "editor", "owner"]),
-            )
+        perm_subq = select(CollectionPermission.collectionId).where(
+            CollectionPermission.userId == current_user.userId,
+            CollectionPermission.role.in_(["viewer", "editor", "owner"]),
         )
 
         conds = [Occurrence.collectionId.in_(perm_subq)]
@@ -363,15 +367,10 @@ def list_occurrences_basic(
     limit = page_size
     offset = (page - 1) * page_size
 
-    total = db.scalar(
-        select(func.count()).select_from(count_select.subquery())
-    ) or 0
+    total = db.scalar(select(func.count()).select_from(count_select.subquery())) or 0
 
     rows = db.execute(
-        base_select
-        .order_by(Occurrence.occurrenceId.desc())
-        .offset(offset)
-        .limit(limit)
+        base_select.order_by(Occurrence.occurrenceId.desc()).offset(offset).limit(limit)
     ).all()
 
     items: List[OccurrenceBriefItem] = []
@@ -418,29 +417,24 @@ def list_occurrence_map_points(
 
     code_expr = func.coalesce(Occurrence.catalogNumber, Occurrence.recordNumber)
 
-    rows_select = (
-        _visible_occurrences_select(
-            current_user,
-            collection_id,
-            filters,
-            Occurrence.occurrenceId.label("occ_id"),
-            code_expr.label("code"),
-            Taxon.scientificName.label("scientific_name"),
-            lat.label("lat"),
-            lon.label("lon"),
-            location_type.label("location_type"),
-            Occurrence.coordinateUncertaintyInMeters.label("uncertainty"),
-        )
-        .where(lat.isnot(None), lon.isnot(None))
-    )
+    rows_select = _visible_occurrences_select(
+        current_user,
+        collection_id,
+        filters,
+        Occurrence.occurrenceId.label("occ_id"),
+        code_expr.label("code"),
+        Taxon.scientificName.label("scientific_name"),
+        lat.label("lat"),
+        lon.label("lon"),
+        location_type.label("location_type"),
+        Occurrence.coordinateUncertaintyInMeters.label("uncertainty"),
+    ).where(lat.isnot(None), lon.isnot(None))
     count_select = _visible_occurrences_select(
         current_user, collection_id, filters, Occurrence.occurrenceId
     ).where(lat.isnot(None), lon.isnot(None))
 
     total = db.scalar(select(func.count()).select_from(count_select.subquery())) or 0
-    rows = db.execute(
-        rows_select.order_by(Occurrence.occurrenceId.desc()).limit(limit)
-    ).all()
+    rows = db.execute(rows_select.order_by(Occurrence.occurrenceId.desc()).limit(limit)).all()
 
     return OccurrenceMapOut(
         items=[
@@ -469,13 +463,26 @@ def update_occurrence(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Occurrence not found")
 
     if not occ.collection:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied (occurrence without collection)")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied (occurrence without collection)",
+        )
 
     if not user_can_edit_collection(db, current_user, occ.collection):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para editar esta ocurrencia")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para editar esta ocurrencia",
+        )
 
     # Campos de identificación separados del resto
-    ID_FIELDS = {"taxonId", "scientificName", "dateIdentified", "typeStatus", "isVerified", "identifiers"}
+    ID_FIELDS = {
+        "taxonId",
+        "scientificName",
+        "dateIdentified",
+        "typeStatus",
+        "isVerified",
+        "identifiers",
+    }
 
     update_data = payload.model_dump(exclude=ID_FIELDS, exclude_unset=True)
 
@@ -492,19 +499,30 @@ def update_occurrence(
     # Actualizar identificación vigente si se envió algún campo de identificación
     ident_sent = any(
         getattr(payload, f, None) is not None
-        for f in ("taxonId", "scientificName", "dateIdentified", "typeStatus", "isVerified", "identifiers")
+        for f in (
+            "taxonId",
+            "scientificName",
+            "dateIdentified",
+            "typeStatus",
+            "isVerified",
+            "identifiers",
+        )
     )
     if ident_sent:
         if occ.currentIdentificationId:
             # Actualizar la identificación vigente existente
             current_ident = db.scalar(
-                select(Identification).where(Identification.identificationId == occ.currentIdentificationId)
+                select(Identification).where(
+                    Identification.identificationId == occ.currentIdentificationId
+                )
             )
             if current_ident:
                 if payload.taxonId is not None:
                     taxon_obj = db.scalar(select(Taxon).where(Taxon.taxonId == payload.taxonId))
                     if not taxon_obj:
-                        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Taxon no encontrado")
+                        raise HTTPException(
+                            status_code=status.HTTP_404_NOT_FOUND, detail="Taxon no encontrado"
+                        )
                     current_ident.taxonId = payload.taxonId
                 if payload.scientificName is not None:
                     current_ident.scientificName = payload.scientificName
@@ -525,7 +543,13 @@ def update_occurrence(
                     for idn in payload.identifiers:
                         name = idn.name.strip()
                         if name:
-                            db.add(Identifier(identificationId=current_ident.identificationId, fullName=name, orcID=idn.orcid or None))
+                            db.add(
+                                Identifier(
+                                    identificationId=current_ident.identificationId,
+                                    fullName=name,
+                                    orcID=idn.orcid or None,
+                                )
+                            )
 
                 db.add(current_ident)
         else:
@@ -534,7 +558,9 @@ def update_occurrence(
                 if payload.taxonId:
                     taxon_obj = db.scalar(select(Taxon).where(Taxon.taxonId == payload.taxonId))
                     if not taxon_obj:
-                        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Taxon no encontrado")
+                        raise HTTPException(
+                            status_code=status.HTTP_404_NOT_FOUND, detail="Taxon no encontrado"
+                        )
 
                 new_ident = Identification(
                     occurrenceId=occ.occurrenceId,
@@ -548,10 +574,16 @@ def update_occurrence(
                 db.add(new_ident)
                 db.flush()
 
-                for idn in (payload.identifiers or []):
+                for idn in payload.identifiers or []:
                     name = idn.name.strip()
                     if name:
-                        db.add(Identifier(identificationId=new_ident.identificationId, fullName=name, orcID=idn.orcid or None))
+                        db.add(
+                            Identifier(
+                                identificationId=new_ident.identificationId,
+                                fullName=name,
+                                orcID=idn.orcid or None,
+                            )
+                        )
 
                 occ.currentIdentificationId = new_ident.identificationId
                 db.add(occ)
@@ -573,7 +605,10 @@ def add_identification(
     if not occ.collection:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     if not user_can_edit_collection(db, current_user, occ.collection):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para editar esta ocurrencia")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para editar esta ocurrencia",
+        )
 
     if payload.taxonId:
         taxon_obj = db.scalar(select(Taxon).where(Taxon.taxonId == payload.taxonId))
@@ -582,12 +617,12 @@ def add_identification(
 
     # If setAsCurrent, mark all existing identifications as not current
     if payload.setAsCurrent:
-        db.execute(
-            select(Identification).where(Identification.occurrenceId == occurrence_id)
-        )
-        for ident in db.execute(
-            select(Identification).where(Identification.occurrenceId == occurrence_id)
-        ).scalars().all():
+        db.execute(select(Identification).where(Identification.occurrenceId == occurrence_id))
+        for ident in (
+            db.execute(select(Identification).where(Identification.occurrenceId == occurrence_id))
+            .scalars()
+            .all()
+        ):
             ident.isCurrent = False
             db.add(ident)
 
@@ -603,10 +638,16 @@ def add_identification(
     db.add(new_ident)
     db.flush()
 
-    for idn in (payload.identifiers or []):
+    for idn in payload.identifiers or []:
         name = idn.name.strip()
         if name:
-            db.add(Identifier(identificationId=new_ident.identificationId, fullName=name, orcID=idn.orcid or None))
+            db.add(
+                Identifier(
+                    identificationId=new_ident.identificationId,
+                    fullName=name,
+                    orcID=idn.orcid or None,
+                )
+            )
 
     if new_ident.isCurrent:
         occ.currentIdentificationId = new_ident.identificationId
@@ -625,7 +666,10 @@ def delete_identification(
     if not occ.collection:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     if not user_can_edit_collection(db, current_user, occ.collection):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para editar esta ocurrencia")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para editar esta ocurrencia",
+        )
 
     ident = db.scalar(
         select(Identification).where(
@@ -634,7 +678,9 @@ def delete_identification(
         )
     )
     if not ident:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Identification not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Identification not found"
+        )
 
     was_current = ident.isCurrent
     db.execute(delete(Identifier).where(Identifier.identificationId == identification_id))
@@ -657,12 +703,17 @@ def set_current_identification(
     if not occ.collection:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     if not user_can_edit_collection(db, current_user, occ.collection):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para editar esta ocurrencia")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para editar esta ocurrencia",
+        )
 
     target_ident = None
-    for ident in db.execute(
-        select(Identification).where(Identification.occurrenceId == occurrence_id)
-    ).scalars().all():
+    for ident in (
+        db.execute(select(Identification).where(Identification.occurrenceId == occurrence_id))
+        .scalars()
+        .all()
+    ):
         if ident.identificationId == identification_id:
             ident.isCurrent = True
             target_ident = ident
@@ -671,7 +722,9 @@ def set_current_identification(
         db.add(ident)
 
     if not target_ident:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Identification not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Identification not found"
+        )
 
     occ.currentIdentificationId = identification_id
     db.add(occ)

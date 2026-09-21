@@ -1,4 +1,3 @@
-from __future__ import annotations
 # backend/services/collection_permissions.py
 """
 Reglas de autorización sobre `Collection`, en un único lugar (no reimplementar
@@ -10,10 +9,12 @@ en un router). Tres niveles, de menor a mayor privilegio:
   que editar: requiere rol 'owner', 'editor' no alcanza).
 """
 
+from __future__ import annotations
+
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import select, exists
+from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
 from backend.models.models import Collection, CollectionPermission, User
@@ -27,9 +28,7 @@ def _same_institution(user: User, collection: Collection) -> bool:
     )
 
 
-def get_user_role_in_collection(
-    db: Session, collection_id: UUID, user_id: UUID
-) -> Optional[str]:
+def get_user_role_in_collection(db: Session, collection_id: UUID, user_id: UUID) -> Optional[str]:
     """Rol explícito (`viewer`/`editor`/`owner`) del usuario en la colección, si tiene alguno."""
     return db.scalar(
         select(CollectionPermission.role).where(
@@ -80,9 +79,7 @@ def user_can_edit_collection(db: Session, user: User, collection: Collection) ->
     return role in ("editor", "owner")
 
 
-def user_can_manage_collection_permissions(
-    db: Session, user: User, collection: Collection
-) -> bool:
+def user_can_manage_collection_permissions(db: Session, user: User, collection: Collection) -> bool:
     """
     Permisos para administrar accesos de la colección (agregar/quitar usuarios):
        - superuser: acceso.

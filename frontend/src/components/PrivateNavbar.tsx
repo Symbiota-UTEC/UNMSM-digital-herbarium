@@ -1,10 +1,10 @@
-import {Button} from "./ui/button";
-import {Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger} from "./ui/sheet";
-import {Separator} from "./ui/separator";
-import {Avatar, AvatarFallback} from "./ui/avatar";
-import {Folder, Home, Leaf, LogOut, Map, MapPin, Menu, Shield, User} from "lucide-react";
-import {useAuth} from "@contexts/AuthContext";
-import {Role} from "@constants/roles";
+import { Button } from "./ui/button";
+import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "./ui/sheet";
+import { Separator } from "./ui/separator";
+import { Avatar, AvatarFallback } from "./ui/avatar";
+import { Folder, Home, Leaf, LogOut, Map, MapPin, Menu, Shield, User } from "lucide-react";
+import { useAuth } from "@contexts/AuthContext";
+import { Role } from "@constants/roles";
 
 interface PrivateNavbarProps {
   onNavigate: (page: string) => void;
@@ -16,19 +16,17 @@ export function PrivateNavbar({ onNavigate, currentPage }: PrivateNavbarProps) {
 
   const handleLogout = () => {
     logout();
-    onNavigate('home');
+    onNavigate("home");
   };
 
   const menuItems = [
-    { id: 'collections', label: 'Colecciones', icon: Folder },
-    { id: 'occurrences', label: 'Ocurrencias', icon: MapPin },
-    { id: 'taxon', label: 'Taxon', icon: Leaf },
-    { id: 'map', label: 'Mapa', icon: Map },
+    { id: "collections", label: "Colecciones", icon: Folder },
+    { id: "occurrences", label: "Ocurrencias", icon: MapPin },
+    { id: "taxon", label: "Taxon", icon: Leaf },
+    { id: "map", label: "Mapa", icon: Map },
   ];
 
-  const userMenuItems = [
-    { id: 'profile', label: 'Ver Perfil', icon: User },
-  ];
+  const userMenuItems = [{ id: "profile", label: "Ver Perfil", icon: User }];
 
   return (
     <nav className="border-b bg-white sticky top-0 z-50">
@@ -102,9 +100,9 @@ export function PrivateNavbar({ onNavigate, currentPage }: PrivateNavbarProps) {
                   <>
                     <Separator className="mb-4" />
                     <Button
-                      variant={currentPage === 'admin' ? "secondary" : "ghost"}
+                      variant={currentPage === "admin" ? "secondary" : "ghost"}
                       className="w-full justify-start"
-                      onClick={() => onNavigate('admin')}
+                      onClick={() => onNavigate("admin")}
                     >
                       <Shield className="h-4 w-4 mr-2" />
                       Admin

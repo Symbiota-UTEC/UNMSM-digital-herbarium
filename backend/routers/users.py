@@ -1,15 +1,14 @@
-from uuid import UUID
 from typing import Optional
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from backend.auth.jwt import get_current_user
 from backend.config.database import get_db
 from backend.models.models import User
-from backend.auth.jwt import get_current_user
-
 from backend.schemas.common.pages import Page
-from backend.schemas.users import UserOut, UserLookupResponse
+from backend.schemas.users import UserLookupResponse, UserOut
 from backend.services import users as users_service
 
 router = APIRouter(prefix="/users", tags=["Users"])

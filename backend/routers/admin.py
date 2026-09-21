@@ -2,9 +2,9 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from backend.auth.jwt import require_admin
 from backend.config.database import get_db
 from backend.models.models import User
-from backend.auth.jwt import require_admin
 from backend.schemas.admin import AdminMetricsOut
 from backend.services.admin_metrics import get_admin_metrics
 

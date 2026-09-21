@@ -1,9 +1,9 @@
 from __future__ import annotations
-from uuid import UUID
-# backend/schemas/taxon.py
 
+# backend/schemas/taxon.py
 from datetime import date, datetime
 from typing import List, Optional
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 

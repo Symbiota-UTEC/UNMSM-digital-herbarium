@@ -7,9 +7,9 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from backend.models.models import Taxon, Identification
+from backend.models.models import Identification, Taxon
 from backend.schemas.common.pages import Page
-from backend.schemas.taxon import TaxonTreeNode, TaxonSynonym, TaxonSearchItem
+from backend.schemas.taxon import TaxonSearchItem, TaxonSynonym, TaxonTreeNode
 
 
 def get_taxon_tree(
@@ -38,9 +38,7 @@ def get_taxon_tree(
 
     # ----------------------------- Paginación ------------------------------
 
-    total: int = db.scalar(
-        select(func.count()).select_from(base_query.subquery())
-    ) or 0
+    total: int = db.scalar(select(func.count()).select_from(base_query.subquery())) or 0
 
     limit = size
     offset = (page - 1) * limit
@@ -112,9 +110,7 @@ def get_taxon_tree(
     for t in taxa:
         wid = t.wfoTaxonId  # used for tree lookups (children, synonyms)
         full_name = (
-            f"{t.scientificName} {t.scientificNameAuthorship}".strip()
-            if t.scientificName
-            else None
+            f"{t.scientificName} {t.scientificNameAuthorship}".strip() if t.scientificName else None
         )
 
         items.append(
@@ -162,9 +158,7 @@ def search_taxa(
 
     base_query = select(Taxon.taxonId).where(*filters)
 
-    total: int = db.scalar(
-        select(func.count()).select_from(base_query.subquery())
-    ) or 0
+    total: int = db.scalar(select(func.count()).select_from(base_query.subquery())) or 0
 
     rows = db.execute(
         select(
@@ -223,10 +217,7 @@ def get_taxon_detail(db: Session, taxon_id: str) -> Taxon:
 
     taxon: Optional[Taxon] = db.scalar(
         select(Taxon)
-        .options(
-            selectinload(Taxon.identifications)
-            .selectinload(Identification.identifiers)
-        )
+        .options(selectinload(Taxon.identifications).selectinload(Identification.identifiers))
         .where(Taxon.taxonId == taxon_id)
     )
 

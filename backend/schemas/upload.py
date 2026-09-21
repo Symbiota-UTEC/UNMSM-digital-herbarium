@@ -37,5 +37,3 @@ class TaxonFloraImportJobOut(StrictBaseModel):
     startedAt: Optional[datetime] = None
     finishedAt: Optional[datetime] = None
     uploadedByUserId: Optional[UUID] = None
-
-

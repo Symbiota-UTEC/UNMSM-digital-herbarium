@@ -1,14 +1,15 @@
 """Modelos DwC: Collection y CollectionPermission."""
+
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import String, Text, Enum, ForeignKey, UniqueConstraint, Uuid, DateTime
+from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.config.database import Base
-from datetime import datetime
 
 
 class Collection(Base):
@@ -19,9 +20,7 @@ class Collection(Base):
     collectionId: Mapped[uuid.UUID] = mapped_column(
         "collection_id", Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    collectionName: Mapped[Optional[str]] = mapped_column(
-        "collection_name", String(255)
-    )
+    collectionName: Mapped[Optional[str]] = mapped_column("collection_name", String(255))
     description: Mapped[Optional[str]] = mapped_column("description", Text())
 
     institutionId: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -88,18 +87,12 @@ class CollectionPermission(Base):
         "created_at", DateTime, default=datetime.utcnow, nullable=False
     )
 
-    collection: Mapped["Collection"] = relationship(
-        "Collection", back_populates="permissions"
-    )
+    collection: Mapped["Collection"] = relationship("Collection", back_populates="permissions")
     user: Mapped["User"] = relationship(
         "User",
         back_populates="collectionPermissions",
         foreign_keys=[userId],
     )
-    grantedBy: Mapped[Optional["User"]] = relationship(
-        "User", foreign_keys=[grantedByUserId]
-    )
+    grantedBy: Mapped[Optional["User"]] = relationship("User", foreign_keys=[grantedByUserId])
 
-    __table_args__ = (
-        UniqueConstraint("collection_id", "user_id", name="uq_collection_user"),
-    )
+    __table_args__ = (UniqueConstraint("collection_id", "user_id", name="uq_collection_user"),)
