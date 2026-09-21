@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import { Routes, Route, useLocation, useNavigate, useParams } from "react-router-dom";
+import "./layout.css";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { PublicNavbar } from "./components/PublicNavbar";
 import { PrivateSidebar } from "./components/PrivateSidebar";
@@ -324,8 +325,8 @@ function AppContent() {
       {isAuthenticated && <PrivateSidebar onNavigate={handleNavigation} currentPage={currentPage} />}
 
       <main
-        className="flex flex-col flex-1 min-w-0 overflow-y-auto"
-        style={{ paddingLeft: "1.5rem", paddingRight: "1.5rem" }}
+        className="hb-main flex flex-col flex-1 min-w-0 overflow-y-auto"
+        style={isAuthenticated ? { paddingLeft: "1.5rem", paddingRight: "1.5rem" } : undefined}
       >
         {!isAuthenticated && <PublicNavbar onNavigate={handleNavigation} />}
 

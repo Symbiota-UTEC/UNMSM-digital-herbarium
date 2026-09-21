@@ -1,5 +1,6 @@
 import { Button } from "./ui/button";
 import { Leaf } from "lucide-react";
+import "./public.css";
 
 interface PublicNavbarProps {
   onNavigate: (page: string) => void;
@@ -7,7 +8,7 @@ interface PublicNavbarProps {
 
 export function PublicNavbar({ onNavigate }: PublicNavbarProps) {
   return (
-    <nav className="border-b bg-white sticky top-0 z-50">
+    <nav className="hb-nav border-b bg-white sticky top-0 z-50">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Leaf className="h-6 w-6 text-primary" />
@@ -15,11 +16,13 @@ export function PublicNavbar({ onNavigate }: PublicNavbarProps) {
         </div>
 
         <div className="flex items-center gap-4">
-          <Button variant="ghost" onClick={() => onNavigate("home")}>
+          <Button variant="ghost" className="hb-nav-home" onClick={() => onNavigate("home")}>
             Home
           </Button>
           <Button variant="ghost" onClick={() => onNavigate("register")}>
-            Solicitud de Registro
+            <span>
+              <span className="hb-nav-long">Solicitud de </span>Registro
+            </span>
           </Button>
           <Button onClick={() => onNavigate("login")}>Login</Button>
         </div>

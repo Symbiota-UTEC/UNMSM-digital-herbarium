@@ -1,6 +1,7 @@
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Leaf, Database, Search, Users } from "lucide-react";
+import "../public.css";
 
 interface HomePageProps {
   onNavigate: (page: string) => void;
@@ -33,15 +34,15 @@ export function HomePage({ onNavigate }: HomePageProps) {
   return (
     <div className="min-h-[calc(100vh-4rem)]">
       {/* Hero Section */}
-      <section className="bg-gradient-to-b from-red-50 to-white py-20">
+      <section className="hb-hero bg-gradient-to-b from-red-50 to-white">
         <div className="container mx-auto px-4 text-center">
           <Leaf className="h-16 w-16 text-primary mx-auto mb-6" />
-          <h1 className="text-5xl mb-4">Herbario Digital</h1>
+          <h1 className="hb-hero-title mb-4">Herbario Digital</h1>
           <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
             Plataforma profesional para la gestión y catalogación de especímenes botánicos. Digitaliza tus colecciones
             de hojas secas y comparte conocimiento científico.
           </p>
-          <div className="flex gap-4 justify-center">
+          <div className="flex flex-wrap gap-4 justify-center">
             <Button size="lg" onClick={() => onNavigate("register")}>
               Solicitar Registro
             </Button>
@@ -53,9 +54,9 @@ export function HomePage({ onNavigate }: HomePageProps) {
       </section>
 
       {/* Features Section */}
-      <section className="py-16">
+      <section className="hb-section">
         <div className="container mx-auto px-4">
-          <h2 className="text-3xl text-center mb-12">Características Principales</h2>
+          <h2 className="hb-section-title text-center">Características Principales</h2>
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
             {features.map((feature, index) => {
               const Icon = feature.icon;
@@ -76,7 +77,7 @@ export function HomePage({ onNavigate }: HomePageProps) {
       </section>
 
       {/* CTA Section */}
-      <section className="bg-primary text-white py-16">
+      <section className="hb-section bg-primary text-white">
         <div className="container mx-auto px-4 text-center">
           <h2 className="text-3xl mb-4">¿Listo para comenzar?</h2>
           <p className="text-lg mb-8 opacity-90">

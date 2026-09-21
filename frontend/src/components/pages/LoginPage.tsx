@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { PasswordInput } from "../ui/password-input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Leaf, Loader2 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
@@ -56,9 +57,9 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Contraseña</Label>
-              <Input
+              <PasswordInput
                 id="password"
-                type="password"
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required

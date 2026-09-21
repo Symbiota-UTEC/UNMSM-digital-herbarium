@@ -60,3 +60,7 @@
     animation: none;
   }
 }
+
+.hb-icon-button:hover {
+  color: var(--foreground);
+}

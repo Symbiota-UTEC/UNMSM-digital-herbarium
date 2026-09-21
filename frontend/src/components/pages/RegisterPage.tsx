@@ -2,10 +2,11 @@ import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { PasswordInput } from "../ui/password-input";
 import { Textarea } from "../ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Separator } from "../ui/separator";
-import { Leaf, Loader2, User, UserCircle } from "lucide-react";
+import { Leaf, Loader2, User } from "lucide-react";
 import { toast } from "sonner";
 import { API } from "@constants/api";
 import { AutocompleteInstitution } from "../AutocompleteInstitution";
@@ -128,15 +129,38 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
           <CardDescription>Completa el formulario para solicitar acceso al Herbario Digital</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-8">
-            {/* SECCIÓN 1: Información de Usuario */}
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Datos personales, cuenta, institución y contacto en una sola sección */}
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <User className="h-5 w-5 text-primary" />
                 <h3 className="text-lg">Información de Usuario</h3>
               </div>
 
-              <div className="space-y-4 pl-7">
+              <div className="space-y-4">
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="givenName">Nombre(s) *</Label>
+                    <Input
+                      id="givenName"
+                      value={agentData.givenName}
+                      onChange={handleAgentChange}
+                      placeholder="Juan"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="familyName">Apellido(s) *</Label>
+                    <Input
+                      id="familyName"
+                      value={agentData.familyName}
+                      onChange={handleAgentChange}
+                      placeholder="Pérez García"
+                      required
+                    />
+                  </div>
+                </div>
+
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="username">Nombre de Usuario *</Label>
@@ -164,9 +188,9 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="password">Contraseña *</Label>
-                    <Input
+                    <PasswordInput
                       id="password"
-                      type="password"
+                      autoComplete="new-password"
                       value={userData.password}
                       onChange={handleUserChange}
                       placeholder="Mínimo 8 caracteres"
@@ -175,9 +199,9 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="confirmPassword">Confirmar Contraseña *</Label>
-                    <Input
+                    <PasswordInput
                       id="confirmPassword"
-                      type="password"
+                      autoComplete="new-password"
                       value={userData.confirmPassword}
                       onChange={handleUserChange}
                       placeholder="Repite la contraseña"
@@ -209,41 +233,6 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
                   )}
                   <p className="text-xs text-muted-foreground">Empieza a escribir para ver sugerencias.</p>
                 </div>
-              </div>
-            </div>
-
-            <Separator />
-
-            {/* SECCIÓN 2: Información de Curador/Agente */}
-            <div>
-              <div className="flex items-center gap-2 mb-4">
-                <UserCircle className="h-5 w-5 text-primary" />
-                <h3 className="text-lg">Información de Curador</h3>
-              </div>
-
-              <div className="space-y-4 pl-7">
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="givenName">Nombre(s) *</Label>
-                    <Input
-                      id="givenName"
-                      value={agentData.givenName}
-                      onChange={handleAgentChange}
-                      placeholder="Juan"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="familyName">Apellido(s) *</Label>
-                    <Input
-                      id="familyName"
-                      value={agentData.familyName}
-                      onChange={handleAgentChange}
-                      placeholder="Pérez García"
-                      required
-                    />
-                  </div>
-                </div>
 
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -254,7 +243,7 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
                       onChange={handleAgentChange}
                       placeholder="0000-0001-2345-6789"
                     />
-                    <p className="text-sm text-muted-foreground">Identificador único de investigador</p>
+                    <p className="text-xs text-muted-foreground">Identificador único de investigador (opcional)</p>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="phone">Teléfono</Label>
