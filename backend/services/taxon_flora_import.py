@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import io
 import logging
 import os
 import tempfile
@@ -10,6 +11,7 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from fastapi import BackgroundTasks, HTTPException, UploadFile, status
+from psycopg2 import sql
 from sqlalchemy import func, select, text, update
 from sqlalchemy.inspection import inspect
 from sqlalchemy.orm import Session
@@ -20,6 +22,8 @@ from backend.schemas.common.pages import Page
 from backend.schemas.upload import TaxonFloraImportJobOut
 
 logger = logging.getLogger(__name__)
+
+COPY_BATCH_SIZE = 10_000
 
 
 # ----------------------------
@@ -81,6 +85,7 @@ def _queue_taxon_flora_job_update(
     last_processed_row: Optional[int] = None,
     force_percent: Optional[float] = None,
     force_eta_seconds: Optional[int] = None,
+    clear_eta: bool = False,
 ) -> None:
     values: Dict[str, Any] = {}
 
@@ -130,7 +135,9 @@ def _queue_taxon_flora_job_update(
         )
         values["progressPercent"] = progress_percent
 
-    if force_eta_seconds is not None:
+    if clear_eta:
+        values["estimatedSecondsRemaining"] = None
+    elif force_eta_seconds is not None:
         values["estimatedSecondsRemaining"] = force_eta_seconds
     elif file_size_bytes is not None and bytes_processed is not None:
         _, eta_seconds = _calculate_progress_metrics(
@@ -157,6 +164,87 @@ def _commit_taxon_flora_job_update(job_id: UUID, **kwargs: Any) -> None:
         logger.exception("No se pudo actualizar el progreso del job %s", job_id)
     finally:
         progress_db.close()
+
+
+def _merge_staged_taxa(db: Session, mapped_fields: List[str]) -> Dict[str, int]:
+    """Merge the last CSV row for each WFO ID without replacing taxon UUIDs."""
+    db.execute(
+        text(
+            "CREATE TEMP TABLE flora_taxon_latest ON COMMIT DROP AS "
+            "SELECT DISTINCT ON (wfo_taxon_id) * FROM flora_taxon_stage "
+            "ORDER BY wfo_taxon_id, source_row DESC"
+        )
+    )
+    db.execute(text("CREATE UNIQUE INDEX ON flora_taxon_latest (wfo_taxon_id)"))
+    db.execute(text("ANALYZE flora_taxon_latest"))
+
+    current_count = db.scalar(text("SELECT count(*) FROM flora_taxon_latest")) or 0
+    if not current_count:
+        raise ValueError("El CSV no contiene ningún taxonID válido; el backbone anterior sigue intacto.")
+
+    mapper = inspect(Taxon)
+    quote = db.get_bind().dialect.identifier_preparer.quote
+    columns = [mapper.columns[field].name for field in mapped_fields if field != "wfoTaxonId"]
+    target_values = [f"t.{quote(column)}" for column in columns] + ["t.is_current"]
+    stage_values = [f"s.{quote(column)}" for column in columns] + ["TRUE"]
+    changed_from_stage = (
+        f"ROW({', '.join(target_values)}) IS DISTINCT FROM ROW({', '.join(stage_values)})"
+    )
+
+    inserted, updated = db.execute(
+        text(
+            "SELECT "
+            "count(*) FILTER (WHERE t.taxon_id IS NULL), "
+            f"count(*) FILTER (WHERE t.taxon_id IS NOT NULL AND ({changed_from_stage})) "
+            "FROM flora_taxon_latest AS s "
+            "LEFT JOIN taxon AS t ON t.wfo_taxon_id = s.wfo_taxon_id"
+        )
+    ).one()
+
+    insert_columns = ["taxon_id", "wfo_taxon_id", *columns, "is_current"]
+    insert_names = ", ".join(quote(column) for column in insert_columns)
+    selected_values = []
+    for column in insert_columns:
+        if column == "taxon_id":
+            selected_values.append("gen_random_uuid()")
+        elif column == "is_current":
+            selected_values.append("TRUE")
+        else:
+            selected_values.append(f"s.{quote(column)}")
+    insert_values = ", ".join(selected_values)
+    assignments = ", ".join(
+        [f"{quote(column)} = EXCLUDED.{quote(column)}" for column in columns]
+        + ["is_current = TRUE"]
+    )
+    conflict_values = [f"EXCLUDED.{quote(column)}" for column in columns] + ["TRUE"]
+    existing_values = [f"taxon.{quote(column)}" for column in columns] + ["taxon.is_current"]
+    changed_from_excluded = (
+        f"ROW({', '.join(existing_values)}) "
+        f"IS DISTINCT FROM ROW({', '.join(conflict_values)})"
+    )
+    db.execute(
+        text(
+            f"INSERT INTO taxon ({insert_names}) "
+            f"SELECT {insert_values} FROM flora_taxon_latest AS s WHERE TRUE "
+            "ON CONFLICT (wfo_taxon_id) DO UPDATE "
+            f"SET {assignments} WHERE {changed_from_excluded}"
+        )
+    )
+
+    deactivated = db.execute(
+        text(
+            "UPDATE taxon AS t SET is_current = FALSE "
+            "WHERE t.is_current AND NOT EXISTS ("
+            "SELECT 1 FROM flora_taxon_latest AS s WHERE s.wfo_taxon_id = t.wfo_taxon_id"
+            ")"
+        )
+    ).rowcount
+    return {
+        "taxaInserted": inserted,
+        "taxaUpdated": updated,
+        "taxaSetCurrent": current_count,
+        "taxaMarkedNotCurrent": deactivated,
+    }
 
 
 # =========================
@@ -186,6 +274,11 @@ def process_taxon_flora_csv_background(
         "taxaSetCurrent": 0,
     }
 
+    def incomplete_percent(bytes_processed: Optional[int]) -> float:
+        if not file_size_bytes or bytes_processed is None:
+            return 0.0
+        return min(round(bytes_processed / file_size_bytes * 99, 2), 99.0)
+
     def publish_progress(
         *,
         status_value: Optional[str] = None,
@@ -196,7 +289,11 @@ def process_taxon_flora_csv_background(
         finished_at: Optional[datetime] = None,
         force_percent: Optional[float] = None,
         force_eta_seconds: Optional[int] = None,
+        clear_eta: bool = False,
     ) -> None:
+        if status_value == "failed":
+            force_percent = incomplete_percent(bytes_processed)
+            clear_eta = True
         _commit_taxon_flora_job_update(
             job_id,
             status_value=status_value,
@@ -216,6 +313,7 @@ def process_taxon_flora_csv_background(
             last_processed_row=row_number,
             force_percent=force_percent,
             force_eta_seconds=force_eta_seconds,
+            clear_eta=clear_eta,
         )
 
     def build_taxon_values(
@@ -226,23 +324,6 @@ def process_taxon_flora_csv_background(
     ) -> Optional[Dict[str, Any]]:
         if len(row) < len(headers):
             row = row + [""] * (len(headers) - len(row))
-
-        taxonomic_status_raw = row[header_index["taxonomicStatus"]]
-        nomenclatural_status_raw = row[header_index["nomenclaturalStatus"]]
-        name_published_in_raw = row[header_index["namePublishedIn"]]
-
-        taxonomic_status = (taxonomic_status_raw or "").strip()
-        nomenclatural_status = (nomenclatural_status_raw or "").strip()
-        name_published_in = (name_published_in_raw or "").strip()
-
-        # Si quieres reactivar el filtro estricto, descomenta:
-        # if (
-        #     taxonomic_status != "Accepted"
-        #     or nomenclatural_status != "Valid"
-        #     or not name_published_in
-        # ):
-        #     stats["rowsFilteredOut"] += 1
-        #     return None
 
         taxon_id_raw = row[header_index["taxonID"]]
         taxon_id_value = (taxon_id_raw or "").strip()
@@ -263,52 +344,6 @@ def process_taxon_flora_csv_background(
 
         field_values["wfoTaxonId"] = taxon_id_value
         return field_values
-
-    def process_batch(
-        batch: List[Dict[str, Any]],
-        mapped_fields: List[str],
-    ) -> None:
-        if not batch:
-            return
-
-        taxon_ids = [item["wfoTaxonId"] for item in batch]
-        existing_by_wfo = {
-            taxon.wfoTaxonId: taxon
-            for taxon in db.execute(select(Taxon).where(Taxon.wfoTaxonId.in_(taxon_ids))).scalars()
-        }
-
-        for field_values in batch:
-            taxon_id_value = field_values["wfoTaxonId"]
-            taxon_obj = existing_by_wfo.get(taxon_id_value)
-
-            if taxon_obj is None:
-                taxon_obj = Taxon(**field_values)
-                taxon_obj.isCurrent = True
-                db.add(taxon_obj)
-                existing_by_wfo[taxon_id_value] = taxon_obj
-                stats["taxaInserted"] += 1
-                stats["taxaSetCurrent"] += 1
-                continue
-
-            changed = False
-            for field in mapped_fields:
-                value = field_values.get(field)
-                if getattr(taxon_obj, field) != value:
-                    setattr(taxon_obj, field, value)
-                    changed = True
-
-            if taxon_obj.wfoTaxonId != taxon_id_value:
-                taxon_obj.wfoTaxonId = taxon_id_value
-                changed = True
-
-            if not taxon_obj.isCurrent:
-                taxon_obj.isCurrent = True
-                changed = True
-                stats["taxaSetCurrent"] += 1
-
-            if changed:
-                db.add(taxon_obj)
-                stats["taxaUpdated"] += 1
 
     try:
         publish_progress(
@@ -400,7 +435,7 @@ def process_taxon_flora_csv_background(
 
             blocked_fields = {"id", "taxonId", "isCurrent"}
             updatable_fields = model_attrs - blocked_fields
-            mapped_fields = [name for name in headers if name in updatable_fields]
+            mapped_fields = list(dict.fromkeys(name for name in headers if name in updatable_fields))
 
             if not mapped_fields:
                 logger.error(
@@ -416,57 +451,89 @@ def process_taxon_flora_csv_background(
                 )
                 return
 
-            batch_size = 2000
-            batch: List[Dict[str, Any]] = []
-
             try:
                 with db.begin():
                     db.execute(
                         text("SELECT pg_advisory_xact_lock(:lock_id)"),
                         {"lock_id": 872341905},
                     )
+                    db.execute(
+                        text(
+                            "CREATE TEMP TABLE flora_taxon_stage ("
+                            "LIKE taxon INCLUDING DEFAULTS, "
+                            "source_row BIGINT GENERATED ALWAYS AS IDENTITY"
+                            ") ON COMMIT DROP"
+                        )
+                    )
+                    db.execute(text("ALTER TABLE flora_taxon_stage ALTER COLUMN taxon_id DROP NOT NULL"))
+                    mapper = inspect(Taxon)
+                    copied_fields = [field for field in mapped_fields if field != "wfoTaxonId"]
+                    copy_columns = [
+                        "wfo_taxon_id",
+                        *(mapper.columns[field].name for field in copied_fields),
+                    ]
+                    copy_query = sql.SQL(
+                        "COPY flora_taxon_stage ({}) FROM STDIN WITH (FORMAT csv)"
+                    ).format(sql.SQL(", ").join(map(sql.Identifier, copy_columns)))
+                    raw_connection = db.connection().connection.driver_connection
+                    batch_buffer = io.StringIO()
+                    writer = csv.writer(batch_buffer, lineterminator="\n")
+                    batch_rows = 0
 
-                    result = db.execute(update(Taxon).values(isCurrent=False))
-                    stats["taxaMarkedNotCurrent"] = result.rowcount or 0
+                    def copy_batch(cursor) -> None:
+                        nonlocal batch_buffer, writer, batch_rows
+                        if not batch_rows:
+                            return
+                        batch_buffer.seek(0)
+                        cursor.copy_expert(copy_query.as_string(cursor), batch_buffer)
+                        batch_buffer = io.StringIO()
+                        writer = csv.writer(batch_buffer, lineterminator="\n")
+                        batch_rows = 0
+
                     publish_progress(
                         stage="Procesando filas",
                         detail="Importando taxones desde el CSV.",
                         bytes_processed=bin_file.tell(),
+                        force_percent=incomplete_percent(bin_file.tell()),
                     )
-
-                    for row in reader:
-                        row_number += 1
-                        stats["rows"] += 1
-
-                        field_values = build_taxon_values(
-                            row,
-                            headers,
-                            header_index,
-                            mapped_fields,
-                        )
-                        if field_values is not None:
-                            batch.append(field_values)
-
-                        if len(batch) >= batch_size:
-                            process_batch(batch, mapped_fields)
-                            db.flush()
-                            db.expunge_all()
-                            batch = []
-                            publish_progress(
-                                stage="Procesando filas",
-                                detail="Importando taxones desde el CSV.",
-                                bytes_processed=bin_file.tell(),
+                    with raw_connection.cursor() as cursor:
+                        for row in reader:
+                            row_number += 1
+                            stats["rows"] += 1
+                            field_values = build_taxon_values(
+                                row,
+                                headers,
+                                header_index,
+                                mapped_fields,
                             )
+                            if field_values is None:
+                                continue
 
-                    if batch:
-                        process_batch(batch, mapped_fields)
-                        db.flush()
-                        db.expunge_all()
-                        publish_progress(
-                            stage="Procesando filas",
-                            detail="Importando taxones desde el CSV.",
-                            bytes_processed=bin_file.tell(),
-                        )
+                            writer.writerow(
+                                [
+                                    field_values["wfoTaxonId"],
+                                    *(field_values[field] for field in copied_fields),
+                                ]
+                            )
+                            batch_rows += 1
+                            if batch_rows >= COPY_BATCH_SIZE:
+                                copy_batch(cursor)
+                                publish_progress(
+                                    stage="Procesando filas",
+                                    detail="Importando taxones desde el CSV.",
+                                    bytes_processed=bin_file.tell(),
+                                    force_percent=incomplete_percent(bin_file.tell()),
+                                )
+                        copy_batch(cursor)
+
+                    publish_progress(
+                        stage="Combinando taxones",
+                        detail="Actualizando el backbone con los taxones del archivo.",
+                        bytes_processed=file_size_bytes,
+                        force_percent=99.0,
+                        clear_eta=True,
+                    )
+                    stats.update(_merge_staged_taxa(db, mapped_fields))
 
                 publish_progress(
                     status_value="completed",
