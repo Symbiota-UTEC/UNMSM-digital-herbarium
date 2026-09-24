@@ -40,6 +40,7 @@ class ResolvedDivision(BaseModel):
 
 class ResolveOut(BaseModel):
     """Resultado de la georreferenciación inversa (point-in-polygon)."""
+
     department: Optional[ResolvedDivision] = None
     province: Optional[ResolvedDivision] = None
     district: Optional[ResolvedDivision] = None

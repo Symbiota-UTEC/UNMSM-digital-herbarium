@@ -62,11 +62,7 @@ export async function reverseGeocodeAdminUnits(lat: number, lon: number): Promis
 }
 
 /** Use INEI for Peru by default; fall back to Nominatim on misses or errors. */
-export async function resolveAdminUnits(
-  apiFetch: ApiFetch,
-  lat: number,
-  lon: number,
-): Promise<AdminUnits | null> {
+export async function resolveAdminUnits(apiFetch: ApiFetch, lat: number, lon: number): Promise<AdminUnits | null> {
   const withinPeruSearchArea = lat >= -18.5 && lat <= 0.5 && lon >= -81.5 && lon <= -68.5;
   if (withinPeruSearchArea && (await getPeruResolver(apiFetch)) === "inei") {
     try {
@@ -78,10 +74,7 @@ export async function resolveAdminUnits(
           stateProvince: resolved.department?.name,
           county: resolved.province?.name,
           municipality: resolved.district?.name,
-          locationId:
-            resolved.district?.locationId ??
-            resolved.province?.locationId ??
-            resolved.department?.locationId,
+          locationId: resolved.district?.locationId ?? resolved.province?.locationId ?? resolved.department?.locationId,
         };
       }
     } catch {

@@ -423,9 +423,7 @@ export function UploadsPage() {
                   <div className="text-lg font-semibold">
                     {latestJob.lastProcessedRow?.toLocaleString("es-PE") || "—"}
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    Finalizó: {formatDateTime(latestJob.finishedAt)}
-                  </div>
+                  <div className="text-xs text-muted-foreground">Finalizó: {formatDateTime(latestJob.finishedAt)}</div>
                 </div>
               </div>
 

@@ -305,9 +305,7 @@ export function NewOccurrencePage({
         }
         setExistingImages(occ.images ?? []);
         setExistingIdentifications(occ.identifications ?? []);
-        setIdentificationVerificationStatus(
-          occ.currentIdentification?.identificationVerificationStatus ?? "",
-        );
+        setIdentificationVerificationStatus(occ.currentIdentification?.identificationVerificationStatus ?? "");
       })
       .catch(() => {
         toast.error("No se pudo cargar la ocurrencia");
@@ -979,11 +977,11 @@ export function NewOccurrencePage({
         countryCode={countryCode}
         countryNameFallback={countryNameFallback}
         values={{ stateProvince, county, municipality }}
+        locationId={locationId}
         onCountryChange={handleCountryChange}
         onCountryNameFallbackChange={setCountryNameFallback}
         onValuesChange={handleGeoValuesChange}
       />
-      {locationId && <p className="text-xs text-muted-foreground">dwc:locationID: {locationId}</p>}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem", alignItems: "flex-end" }}>
         <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
@@ -1039,46 +1037,31 @@ export function NewOccurrencePage({
             Incertidumbre (m)
             <DwcTerm term="coordinateUncertaintyInMeters" />
           </Label>
-          <Input
-            id="coordinateUncertaintyInMeters"
-            type="number"
-            min={0}
-            step="any"
-            value={coordinateUncertainty}
-            onChange={(e) => setCoordinateUncertainty(e.target.value)}
-            placeholder="Ej: 100"
-          />
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <Input
+              id="coordinateUncertaintyInMeters"
+              type="number"
+              min={0}
+              step="any"
+              value={coordinateUncertainty}
+              onChange={(e) => setCoordinateUncertainty(e.target.value)}
+              placeholder="Ej: 100"
+              className="flex-1"
+            />
+            <Select value="" onValueChange={(v) => setCoordinateUncertainty(v)}>
+              <SelectTrigger className="w-[6.5rem] shrink-0" aria-label="Valores rápidos de incertidumbre">
+                <SelectValue placeholder="Rápido" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="30">30 m</SelectItem>
+                <SelectItem value="100">100 m</SelectItem>
+                <SelectItem value="500">500 m</SelectItem>
+                <SelectItem value="1000">1 km</SelectItem>
+                <SelectItem value="5000">5 km</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
-      </div>
-
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
-        <span className="text-xs text-muted-foreground">Incertidumbre rápida:</span>
-        {[
-          { label: "30 m", value: 30 },
-          { label: "100 m", value: 100 },
-          { label: "500 m", value: 500 },
-          { label: "1 km", value: 1000 },
-          { label: "5 km", value: 5000 },
-        ].map((preset) => (
-          <button
-            key={preset.value}
-            type="button"
-            onClick={() => setCoordinateUncertainty(String(preset.value))}
-            style={{
-              border: "1px solid var(--border)",
-              borderRadius: 9999,
-              padding: "2px 10px",
-              fontSize: 12,
-              background: "transparent",
-              cursor: "pointer",
-            }}
-          >
-            {preset.label}
-          </button>
-        ))}
-        <span className="text-xs text-muted-foreground">
-          Radio del círculo, centrado en el punto, que contiene el lugar de colecta. Vacío si se desconoce.
-        </span>
       </div>
 
       {footprintWKT && (

@@ -28,8 +28,10 @@ logs:
 ps:
 	$(COMPOSE) ps
 
-## Siembra países y divisiones administrativas (INEI + GeoNames)
+## Crea el admin por defecto y siembra países + divisiones administrativas (INEI + GeoNames).
+## No corre solo con `make dev`: hay que lanzarlo a mano una vez el backend esté healthy.
 ## Uso: make seed-admin [ADM3="BR,MX"] para añadir nivel 3 de otros países
 ADM3 ?=
 seed-admin:
+	$(COMPOSE) exec -T backend-dev python -m backend.scripts.create_admin
 	$(COMPOSE) exec -T backend-dev python -m backend.scripts.seed_admin_divisions $(if $(ADM3),--adm3 $(ADM3),)

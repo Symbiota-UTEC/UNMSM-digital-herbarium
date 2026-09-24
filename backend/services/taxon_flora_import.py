@@ -180,7 +180,9 @@ def _merge_staged_taxa(db: Session, mapped_fields: List[str]) -> Dict[str, int]:
 
     current_count = db.scalar(text("SELECT count(*) FROM flora_taxon_latest")) or 0
     if not current_count:
-        raise ValueError("El CSV no contiene ningún taxonID válido; el backbone anterior sigue intacto.")
+        raise ValueError(
+            "El CSV no contiene ningún taxonID válido; el backbone anterior sigue intacto."
+        )
 
     mapper = inspect(Taxon)
     quote = db.get_bind().dialect.identifier_preparer.quote
@@ -219,8 +221,7 @@ def _merge_staged_taxa(db: Session, mapped_fields: List[str]) -> Dict[str, int]:
     conflict_values = [f"EXCLUDED.{quote(column)}" for column in columns] + ["TRUE"]
     existing_values = [f"taxon.{quote(column)}" for column in columns] + ["taxon.is_current"]
     changed_from_excluded = (
-        f"ROW({', '.join(existing_values)}) "
-        f"IS DISTINCT FROM ROW({', '.join(conflict_values)})"
+        f"ROW({', '.join(existing_values)}) IS DISTINCT FROM ROW({', '.join(conflict_values)})"
     )
     db.execute(
         text(
@@ -435,7 +436,9 @@ def process_taxon_flora_csv_background(
 
             blocked_fields = {"id", "taxonId", "isCurrent"}
             updatable_fields = model_attrs - blocked_fields
-            mapped_fields = list(dict.fromkeys(name for name in headers if name in updatable_fields))
+            mapped_fields = list(
+                dict.fromkeys(name for name in headers if name in updatable_fields)
+            )
 
             if not mapped_fields:
                 logger.error(
@@ -465,7 +468,9 @@ def process_taxon_flora_csv_background(
                             ") ON COMMIT DROP"
                         )
                     )
-                    db.execute(text("ALTER TABLE flora_taxon_stage ALTER COLUMN taxon_id DROP NOT NULL"))
+                    db.execute(
+                        text("ALTER TABLE flora_taxon_stage ALTER COLUMN taxon_id DROP NOT NULL")
+                    )
                     mapper = inspect(Taxon)
                     copied_fields = [field for field in mapped_fields if field != "wfoTaxonId"]
                     copy_columns = [

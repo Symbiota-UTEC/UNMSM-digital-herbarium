@@ -1,6 +1,7 @@
 services:
   db:
     image: postgis/postgis:16-3.5-alpine
+    platform: linux/amd64
     container_name: herbarium_db
     environment:
       POSTGRES_USER: ${USERNAME:-herbarium}
@@ -32,7 +33,7 @@ services:
       db:
         condition: service_healthy
     ports: ["8000:8000"]
-    command: ["sh", "-c", "python -m backend.scripts.create_models && python -m backend.scripts.create_admin && exec python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000"]
+    command: ["sh", "-c", "python -m backend.scripts.create_models && exec python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000"]
     healthcheck:
       # Chequea que el puerto acepte conexiones (sin hacer un request HTTP)
       test: ["CMD", "python", "-c", "import socket,sys; s=socket.socket(); s.settimeout(2); sys.exit(0 if s.connect_ex(('127.0.0.1', 8000)) == 0 else 1)"]
@@ -47,7 +48,7 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     container_name: herbarium_backend_dev
-    command: ["sh", "-c", "python -m backend.scripts.create_models && python -m backend.scripts.create_admin && exec python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload"]
+    command: ["sh", "-c", "python -m backend.scripts.create_models && exec python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload"]
     volumes:
       - ./backend:/app/backend
     env_file:

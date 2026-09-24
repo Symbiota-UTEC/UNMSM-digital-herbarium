@@ -387,8 +387,7 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       value: "Identification.identificationVerificationStatus",
       label: "dwc:Identification:identificationVerificationStatus",
       inForm: true,
-      helpEs:
-        "Indicador categórico del grado en que la identificación ha sido verificada como correcta.",
+      helpEs: "Indicador categórico del grado en que la identificación ha sido verificada como correcta.",
     },
   ],
 };

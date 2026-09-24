@@ -14,6 +14,7 @@ The easiest way is Docker, from the repo root:
 cp .env.sample .env                              # Postgres credentials for docker compose
 cp backend/config/.env.sample backend/config/.env   # backend settings (set SECRET_KEY)
 make dev                                         # API on http://localhost:8001
+make seed-admin                                  # once backend-dev is healthy: default admin + admin divisions
 ```
 
 Interactive docs (Swagger): http://localhost:8001/docs

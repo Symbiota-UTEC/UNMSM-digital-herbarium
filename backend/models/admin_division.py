@@ -5,6 +5,7 @@ Nivel 1 = departamento/región (dwc:stateProvince), nivel 2 = provincia
 catálogo INEI (ubigeo) con polígonos oficiales (PostGIS); los demás países
 de GeoNames (ADM1/ADM2), sin geometría.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -21,7 +22,9 @@ class AdminDivision(Base):
     __tablename__ = "admin_division"
     __table_args__ = (
         UniqueConstraint(
-            "country_code", "level", "code",
+            "country_code",
+            "level",
+            "code",
             name="uq_admin_division_country_level_code",
         ),
     )
@@ -29,9 +32,7 @@ class AdminDivision(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         "id", Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    countryCode: Mapped[str] = mapped_column(
-        "country_code", String(2), nullable=False, index=True
-    )
+    countryCode: Mapped[str] = mapped_column("country_code", String(2), nullable=False, index=True)
     level: Mapped[int] = mapped_column("level", Integer, nullable=False)
     # Ubigeo (PE) o código GeoNames (p.ej. 'PE.15')
     code: Mapped[str] = mapped_column("code", String(20), nullable=False)

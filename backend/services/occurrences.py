@@ -531,7 +531,9 @@ def update_occurrence(
                 if payload.typeStatus is not None:
                     current_ident.typeStatus = payload.typeStatus
                 if "identificationVerificationStatus" in payload.model_fields_set:
-                    current_ident.identificationVerificationStatus = payload.identificationVerificationStatus
+                    current_ident.identificationVerificationStatus = (
+                        payload.identificationVerificationStatus
+                    )
 
                 if payload.identifiers is not None:
                     # Reemplazar identificadores: borrar los viejos y crear los nuevos

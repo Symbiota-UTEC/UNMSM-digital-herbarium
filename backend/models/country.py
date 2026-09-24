@@ -3,6 +3,7 @@
 La tabla `country` se deriva de las fuentes sembradas (INEI para Perú,
 GeoNames para el resto) y es la única lista de países que consume la UI.
 """
+
 from __future__ import annotations
 
 from sqlalchemy import Integer, String
@@ -20,6 +21,4 @@ class Country(Base):
     # Fuente del catálogo: 'INEI' | 'GEONAMES'
     source: Mapped[str] = mapped_column("source", String(20), nullable=False)
     # Niveles administrativos disponibles en el catálogo (PE: 3, resto: 2)
-    adminLevels: Mapped[int] = mapped_column(
-        "admin_levels", Integer, nullable=False, default=2
-    )
+    adminLevels: Mapped[int] = mapped_column("admin_levels", Integer, nullable=False, default=2)

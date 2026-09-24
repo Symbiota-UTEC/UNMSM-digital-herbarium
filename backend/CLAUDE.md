@@ -194,7 +194,7 @@ If a rule is wrong for a specific file, add a `per-file-ignores` entry with the 
 
 ### Start (Docker)
 
-From the repo root: `make dev` (backend with `--reload` on http://localhost:8001, plus db, SeaweedFS and the frontend) or `make prd` (backend on http://localhost:8000). Both run `scripts/create_admin.py` before starting Uvicorn. See the root `CLAUDE.md`.
+From the repo root: `make dev` (backend with `--reload` on http://localhost:8001, plus db, SeaweedFS and the frontend) or `make prd` (backend on http://localhost:8000). Neither creates the default admin — `make seed-admin` does that (`scripts/create_admin.py`) plus the administrative-divisions catalog, once the backend container is healthy. See the root `CLAUDE.md`.
 
 ---
 

@@ -6,12 +6,12 @@ from sqlalchemy.orm import Session
 
 from backend.models.models import AdminDivision, Country
 from backend.schemas.admin_division import (
-    AdminDivisionOut,
     AdminDivisionListOut,
+    AdminDivisionOut,
     CountryListOut,
     CountryOut,
-    ResolveOut,
     ResolvedDivision,
+    ResolveOut,
 )
 
 
@@ -85,13 +85,14 @@ def resolve_point(db: Session, lat: float, lon: float) -> ResolveOut:
         {"lat": lat, "lon": lon},
     ).fetchall()
     by_level = {r.level: r for r in rows}
-    div = (
-        lambda r: ResolvedDivision(
-            name=r.name, code=r.code, locationId=_location_id("INEI", r.code)
+
+    def div(r):
+        return (
+            ResolvedDivision(name=r.name, code=r.code, locationId=_location_id("INEI", r.code))
+            if r
+            else None
         )
-        if r
-        else None
-    )
+
     return ResolveOut(
         department=div(by_level.get(1)),
         province=div(by_level.get(2)),

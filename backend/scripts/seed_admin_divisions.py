@@ -17,6 +17,7 @@ Uso:
     python -m backend.scripts.seed_admin_divisions
     python -m backend.scripts.seed_admin_divisions --adm3 BR,MX
 """
+
 from __future__ import annotations
 
 import argparse
@@ -39,8 +40,8 @@ from sqlalchemy.orm import Session
 from backend.config.database import (
     Base,
     SessionLocal,
-    ensure_database_extensions,
     engine,
+    ensure_database_extensions,
 )
 from backend.models.models import AdminDivision, Country
 
@@ -71,6 +72,7 @@ def normalize_name(name: str) -> str:
 # --------------------------------------------------------------------------
 # Upserts genéricos
 # --------------------------------------------------------------------------
+
 
 def load_countries(adm3_countries: Iterable[str]) -> List[Tuple[str, str, str, int]]:
     """(code, name, source, admin_levels) para todos los países de countryInfo.txt."""
@@ -129,9 +131,7 @@ def upsert_divisions(
     for code, (name, source_id) in rows.items():
         row = existing.get(code)
         if row is None:
-            row = AdminDivision(
-                countryCode=country_code, level=level, code=code, source=source
-            )
+            row = AdminDivision(countryCode=country_code, level=level, code=code, source=source)
             db.add(row)
             existing[code] = row
         row.name = name
@@ -173,23 +173,30 @@ def link_parents(
 # Perú (INEI ubigeo)
 # --------------------------------------------------------------------------
 
+
 def seed_peru(db: Session) -> None:
     departamentos = json.loads((UBIGEO_DIR / "ubigeo_peru_2016_departamentos.json").read_text())
     provincias = json.loads((UBIGEO_DIR / "ubigeo_peru_2016_provincias.json").read_text())
     distritos = json.loads((UBIGEO_DIR / "ubigeo_peru_2016_distritos.json").read_text())
 
     upsert_divisions(
-        db, "PE", 1,
+        db,
+        "PE",
+        1,
         {d["id"]: (d["name"], d["id"]) for d in departamentos},
         source="INEI",
     )
     upsert_divisions(
-        db, "PE", 2,
+        db,
+        "PE",
+        2,
         {p["id"]: (p["name"], p["id"]) for p in provincias},
         source="INEI",
     )
     upsert_divisions(
-        db, "PE", 3,
+        db,
+        "PE",
+        3,
         {d["id"]: (d["name"], d["id"]) for d in distritos},
         source="INEI",
     )
@@ -200,6 +207,7 @@ def seed_peru(db: Session) -> None:
 # --------------------------------------------------------------------------
 # GeoNames
 # --------------------------------------------------------------------------
+
 
 def _ensure_geonames_file(filename: str) -> Path:
     GEONAMES_DIR.mkdir(parents=True, exist_ok=True)
@@ -303,6 +311,7 @@ def io_iter_lines(fh) -> Iterable[str]:
 # Perú: polígonos oficiales INEI (PostGIS)
 # --------------------------------------------------------------------------
 
+
 def _gpkg_wkb(blob: bytes) -> bytes:
     """Extrae el WKB estándar de un binario GeoPackage (cabecera 'GP')."""
     flags = blob[3]
@@ -335,9 +344,7 @@ def _ensure_inei_gpkg() -> Path:
     if not rar_path.exists():
         _download_inei_rar(rar_path)
 
-    extractor = next(
-        (b for b in ("unrar", "unar", "7z", "7za", "bsdtar") if shutil.which(b)), None
-    )
+    extractor = next((b for b in ("unrar", "unar", "7z", "7za", "bsdtar") if shutil.which(b)), None)
     if extractor is None:
         raise RuntimeError(
             "No hay extractor RAR disponible (instala unrar/7z) o coloca el "
@@ -345,14 +352,19 @@ def _ensure_inei_gpkg() -> Path:
         )
     with tempfile.TemporaryDirectory() as tmp:
         if extractor in ("7z", "7za"):
-            subprocess.run([extractor, "x", "-y", f"-o{tmp}", str(rar_path)], check=True,
-                           stdout=subprocess.DEVNULL)
+            subprocess.run(
+                [extractor, "x", "-y", f"-o{tmp}", str(rar_path)],
+                check=True,
+                stdout=subprocess.DEVNULL,
+            )
         elif extractor == "unrar":
-            subprocess.run([extractor, "x", "-y", str(rar_path), tmp], check=True,
-                           stdout=subprocess.DEVNULL)
+            subprocess.run(
+                [extractor, "x", "-y", str(rar_path), tmp], check=True, stdout=subprocess.DEVNULL
+            )
         elif extractor == "unar":
-            subprocess.run([extractor, "-q", "-o", tmp, str(rar_path)], check=True,
-                           stdout=subprocess.DEVNULL)
+            subprocess.run(
+                [extractor, "-q", "-o", tmp, str(rar_path)], check=True, stdout=subprocess.DEVNULL
+            )
         else:  # bsdtar
             subprocess.run([extractor, "-xf", str(rar_path), "-C", tmp], check=True)
         gpkg = next(Path(tmp).rglob("*.gpkg"))
@@ -381,16 +393,10 @@ def seed_inei_boundaries(db: Session) -> int:
     existing_codes = {
         d.code
         for d in db.scalars(
-            select(AdminDivision).where(
-                AdminDivision.countryCode == "PE", AdminDivision.level == 3
-            )
+            select(AdminDivision).where(AdminDivision.countryCode == "PE", AdminDivision.level == 3)
         )
     }
-    nuevos = {
-        r[0]: (str(r[1]).title(), r[0])
-        for r in rows
-        if r[0] not in existing_codes
-    }
+    nuevos = {r[0]: (str(r[1]).title(), r[0]) for r in rows if r[0] not in existing_codes}
     if nuevos:
         upsert_divisions(db, "PE", 3, nuevos, source="INEI")
         link_parents(db, "PE", 3, {code: code[:4] for code in nuevos})
@@ -405,27 +411,33 @@ def seed_inei_boundaries(db: Session) -> int:
         db.execute(update, {"wkb": _gpkg_wkb(geom), "ubigeo": ubigeo})
 
     # Provincia y departamento: unión de sus distritos
-    db.execute(text(
-        "UPDATE admin_division p SET boundary = u.g FROM ("
-        "  SELECT substr(code, 1, 4) AS pref, "
-        "         ST_Multi(ST_UnaryUnion(ST_Collect(boundary))) AS g"
-        "  FROM admin_division"
-        "  WHERE country_code = 'PE' AND level = 3 AND boundary IS NOT NULL"
-        "  GROUP BY substr(code, 1, 4)"
-        ") u WHERE p.country_code = 'PE' AND p.level = 2 AND p.code = u.pref"
-    ))
-    db.execute(text(
-        "UPDATE admin_division d SET boundary = u.g FROM ("
-        "  SELECT substr(code, 1, 2) AS pref, "
-        "         ST_Multi(ST_UnaryUnion(ST_Collect(boundary))) AS g"
-        "  FROM admin_division"
-        "  WHERE country_code = 'PE' AND level = 2 AND boundary IS NOT NULL"
-        "  GROUP BY substr(code, 1, 2)"
-        ") u WHERE d.country_code = 'PE' AND d.level = 1 AND d.code = u.pref"
-    ))
+    db.execute(
+        text(
+            "UPDATE admin_division p SET boundary = u.g FROM ("
+            "  SELECT substr(code, 1, 4) AS pref, "
+            "         ST_Multi(ST_UnaryUnion(ST_Collect(boundary))) AS g"
+            "  FROM admin_division"
+            "  WHERE country_code = 'PE' AND level = 3 AND boundary IS NOT NULL"
+            "  GROUP BY substr(code, 1, 4)"
+            ") u WHERE p.country_code = 'PE' AND p.level = 2 AND p.code = u.pref"
+        )
+    )
+    db.execute(
+        text(
+            "UPDATE admin_division d SET boundary = u.g FROM ("
+            "  SELECT substr(code, 1, 2) AS pref, "
+            "         ST_Multi(ST_UnaryUnion(ST_Collect(boundary))) AS g"
+            "  FROM admin_division"
+            "  WHERE country_code = 'PE' AND level = 2 AND boundary IS NOT NULL"
+            "  GROUP BY substr(code, 1, 2)"
+            ") u WHERE d.country_code = 'PE' AND d.level = 1 AND d.code = u.pref"
+        )
+    )
 
     n3 = db.scalar(
-        select(func.count()).select_from(AdminDivision).where(
+        select(func.count())
+        .select_from(AdminDivision)
+        .where(
             AdminDivision.countryCode == "PE",
             AdminDivision.level == 3,
             AdminDivision.boundary.isnot(None),
@@ -438,6 +450,7 @@ def seed_inei_boundaries(db: Session) -> int:
 # --------------------------------------------------------------------------
 # main
 # --------------------------------------------------------------------------
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -477,15 +490,15 @@ def main() -> None:
         ).all()
         print("[seed] PE: " + ", ".join(f"nivel {lv}: {n}" for lv, n in sorted(rows)))
         geonames_count = db.scalar(
-            select(func.count()).select_from(AdminDivision).where(
-                AdminDivision.source == "GEONAMES"
-            )
+            select(func.count())
+            .select_from(AdminDivision)
+            .where(AdminDivision.source == "GEONAMES")
         )
         print(f"[seed] GeoNames (todos los países): {geonames_count} divisiones.")
         boundaries = db.scalar(
-            select(func.count()).select_from(AdminDivision).where(
-                AdminDivision.boundary.isnot(None)
-            )
+            select(func.count())
+            .select_from(AdminDivision)
+            .where(AdminDivision.boundary.isnot(None))
         )
         print(f"[seed] Polígonos INEI cargados: {boundaries}.")
     except Exception:
