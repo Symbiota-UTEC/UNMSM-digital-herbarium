@@ -1,0 +1,6 @@
+/* <main> es un contenedor flex en columna con scroll: sin esto, una página más alta que la
+   pantalla se "encoge" a la altura del contenedor y, si además está centrada, su parte
+   superior queda fuera del área desplazable (no se puede subir del todo). */
+.hb-main > * {
+  flex-shrink: 0;
+}

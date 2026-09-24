@@ -1,0 +1,35 @@
+/* Landing pública. index.css está precompilado: las clases responsive nuevas van aquí.
+   Los espacios verticales se ajustan a la altura de la pantalla para que las
+   características se vean sin tener que hacer scroll en pantallas normales. */
+
+.hb-hero {
+  padding-block: clamp(2rem, 6vh, 5rem);
+}
+
+.hb-hero-title {
+  font-size: clamp(2.25rem, 7vw, 3rem);
+}
+
+.hb-section {
+  padding-block: clamp(2rem, 6vh, 4rem);
+}
+
+.hb-section-title {
+  margin-bottom: clamp(1.5rem, 4vh, 3rem);
+  font-size: clamp(1.5rem, 5vw, 1.875rem);
+}
+
+/* Navbar: en pantallas angostas se oculta "Home" y se acorta "Solicitud de Registro". */
+.hb-nav .hb-nav-home,
+.hb-nav .hb-nav-long {
+  display: none;
+}
+
+@media (min-width: 40rem) {
+  .hb-nav .hb-nav-home {
+    display: inline-flex;
+  }
+  .hb-nav .hb-nav-long {
+    display: inline;
+  }
+}

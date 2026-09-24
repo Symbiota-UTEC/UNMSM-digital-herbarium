@@ -1,25 +1,25 @@
 # backend/services/dwc_import.py
 from __future__ import annotations
-from uuid import UUID
 
 import csv
 import io
 import json
-
 from typing import Any, Dict, List, Optional, Tuple
+from uuid import UUID
 
 from fastapi import HTTPException, UploadFile, status
-from sqlalchemy import select, or_
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from backend.models.models import User, Collection, Occurrence, Taxon, Identifier, Identification
+from backend.models.models import Collection, Identification, Identifier, Occurrence, Taxon, User
 from backend.services.collection_permissions import user_can_edit_collection
-from backend.utils.dwc import DWC_HEADER_RE, ALLOWED_FIELDS
-
+from backend.services.occurrences import sync_geo_columns
+from backend.utils.dwc import ALLOWED_FIELDS, DWC_HEADER_RE
 
 # ----------------------------
 # Helpers claves / parsing
 # ----------------------------
+
 
 def _taxon_key(scientific_name: str, authorship: Optional[str]) -> Tuple[str, str]:
     """Clave simple para Taxon dentro de ESTA carga."""
@@ -49,9 +49,7 @@ def _strict_parse_headers(headers: List[str]) -> Dict[Tuple[str, str], int]:
             continue
 
         if field not in allowed:
-            errors.append(
-                f"Field no permitido para {entity}: '{field}' (header '{h}')"
-            )
+            errors.append(f"Field no permitido para {entity}: '{field}' (header '{h}')")
             continue
 
         mapping[(entity, field)] = idx
@@ -201,9 +199,8 @@ def _resolve_unique_taxon_for_identification(
 # Caso de uso: import CSV DwC
 # =========================
 
-def import_dwc_csv(
-    db: Session, collection_id: UUID, file: UploadFile, current_user: User
-) -> dict:
+
+def import_dwc_csv(db: Session, collection_id: UUID, file: UploadFile, current_user: User) -> dict:
     # -------- Validaciones básicas de archivo --------
     filename = (file.filename or "").lower()
     if not filename.endswith(".csv"):
@@ -215,9 +212,7 @@ def import_dwc_csv(
     # -------- Colección + permisos --------
     collection = db.scalar(select(Collection).where(Collection.collectionId == collection_id))
     if not collection:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Collection not found")
 
     if not user_can_edit_collection(db, current_user, collection):
         raise HTTPException(
@@ -266,9 +261,7 @@ def import_dwc_csv(
         ("Identification", "identifiedBy"),  # header obligatorio, valor por fila puede ser vacío
     ]
     missing_cols = [
-        f"dwc:{ent}:{field}"
-        for (ent, field) in required_headers
-        if (ent, field) not in colmap
+        f"dwc:{ent}:{field}" for (ent, field) in required_headers if (ent, field) not in colmap
     ]
     if missing_cols:
         raise HTTPException(
@@ -328,9 +321,18 @@ def import_dwc_csv(
                     elif field in {
                         "decimalLatitude",
                         "decimalLongitude",
+                        "coordinateUncertaintyInMeters",
                     }:
                         if hasattr(Occurrence, field):
-                            occ_d[field] = _to_float(val)
+                            number = _to_float(val)
+                            # DwC: la incertidumbre debe ser > 0; 0 o negativo se trata como desconocida.
+                            if (
+                                field == "coordinateUncertaintyInMeters"
+                                and number is not None
+                                and number <= 0
+                            ):
+                                number = None
+                            occ_d[field] = number
                     else:
                         if hasattr(Occurrence, field):
                             occ_d[field] = val
@@ -372,6 +374,7 @@ def import_dwc_csv(
             occ = Occurrence(**occ_d)
             occ.collectionId = collection_id
             occ.digitizerUserId = current_user.userId
+            sync_geo_columns(db, occ)
 
             db.add(occ)
             db.flush()  # obtener occ.occurrenceId
@@ -401,10 +404,12 @@ def import_dwc_csv(
             names_list = _split_list(identified_by_text)
 
             for name in names_list:
-                db.add(Identifier(
-                    identificationId=identification_obj.identificationId,
-                    fullName=name,
-                ))
+                db.add(
+                    Identifier(
+                        identificationId=identification_obj.identificationId,
+                        fullName=name,
+                    )
+                )
                 stats["identifiersInserted"] += 1
 
             # ---- Commit por lotes ----

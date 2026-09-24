@@ -1,37 +1,20 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "../ui/alert-dialog";
-import {
-  ArrowLeft,
-  Eye,
-  Leaf,
-  CheckCircle,
-  XCircle,
-  AlertCircle,
-  Pencil,
-  Trash2,
-} from "lucide-react";
-import { toast } from "sonner@2.0.3";
+import { ArrowLeft, Eye, Leaf, CheckCircle, XCircle, AlertCircle, Pencil } from "lucide-react";
 
 import { useAuth } from "@contexts/AuthContext";
 import { occurrencesService } from "@services/occurrences.service";
 import { uploadService } from "@services/upload.service";
 import type { OccurrenceItem } from "@interfaces/occurrence";
+import { OccurrenceLocationMap } from "../OccurrenceLocationMap";
+import { ImageLightbox } from "../ImageLightbox";
+import "../image-manager.css";
 
 interface OccurrenceDetailPageProps {
   occurrenceId: string;
   onNavigate: (page: string, params?: Record<string, any>) => void;
-  returnTo?: "occurrences" | "collection" | "taxon";
+  returnTo?: "occurrences" | "collection" | "taxon" | "map";
   collectionId?: string;
   collectionName?: string;
   isOwner?: boolean;
@@ -48,6 +31,26 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "images", label: "Imágenes" },
 ];
 
+const show = (v: unknown) => (v === null || v === undefined || v === "" ? "—" : String(v));
+
+/* Fila etiqueta/valor. A nivel de módulo: dentro del componente se remontaría en cada render. */
+const Field = ({
+  label,
+  value,
+  mono = false,
+  italic = false,
+}: {
+  label: string;
+  value: unknown;
+  mono?: boolean;
+  italic?: boolean;
+}) => (
+  <div className="space-y-1">
+    <p className="text-xs font-medium text-muted-foreground">{label}</p>
+    <p className={[mono ? "font-mono" : "", italic ? "italic" : "", "text-sm"].join(" ")}>{show(value)}</p>
+  </div>
+);
+
 export function OccurrenceDetailPage({
   occurrenceId,
   onNavigate,
@@ -62,11 +65,7 @@ export function OccurrenceDetailPage({
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>("occurrence");
-  const [pendingDeleteImageId, setPendingDeleteImageId] = useState<string | null>(null);
-  const [deletingImageId, setDeletingImageId] = useState<string | null>(null);
-
-  const show = (v: unknown) =>
-    v === null || v === undefined || v === "" ? "—" : String(v);
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
   const formatDateTime = (iso?: string | null) => {
     if (!iso) return "—";
@@ -90,7 +89,9 @@ export function OccurrenceDetailPage({
       }
     };
     fetchOccurrence();
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+    };
   }, [occurrenceId]);
 
   const currentIdentification = useMemo(() => {
@@ -116,10 +117,7 @@ export function OccurrenceDetailPage({
     [currentIdentification],
   );
 
-  const sciAuth = useMemo(
-    () => currentIdentification?.scientificNameAuthorship || "",
-    [currentIdentification],
-  );
+  const sciAuth = useMemo(() => currentIdentification?.scientificNameAuthorship || "", [currentIdentification]);
 
   const handleBack = () => {
     if (returnTo === "taxon" && taxonId) {
@@ -130,6 +128,8 @@ export function OccurrenceDetailPage({
         collectionName: collectionName || "",
         isOwner: isOwner || false,
       });
+    } else if (returnTo === "map") {
+      onNavigate("map", { restoreSearch: true });
     } else {
       onNavigate("occurrences");
     }
@@ -146,47 +146,18 @@ export function OccurrenceDetailPage({
     });
   };
 
-  const handleDeleteImage = async () => {
-    if (!pendingDeleteImageId) return;
-    const imageId = pendingDeleteImageId;
-    setPendingDeleteImageId(null);
-    setDeletingImageId(imageId);
-    try {
-      await uploadService.deleteImage(apiFetch, imageId);
-      setData((prev) =>
-        prev
-          ? { ...prev, images: (prev.images ?? []).filter((img) => img.occurrenceImageId !== imageId) }
-          : prev
-      );
-      toast.success("Imagen eliminada");
-    } catch {
-      toast.error("No se pudo eliminar la imagen");
-    } finally {
-      setDeletingImageId(null);
-    }
-  };
-
   const goToTaxon = (taxonId?: string | null) => {
     if (!taxonId) return;
     onNavigate("taxon-detail", {
       taxonId,
       returnTo: "occurrence-detail",
+      originReturnTo: returnTo,
       returnOccurrenceId: occurrenceId,
       collectionId,
       collectionName,
       isOwner,
     });
   };
-
-  /* ── Field row helper ── */
-  const Field = ({ label, value, mono = false, italic = false }: { label: string; value: unknown; mono?: boolean; italic?: boolean }) => (
-    <div className="space-y-1">
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className={[mono ? "font-mono" : "", italic ? "italic" : "", "text-sm"].join(" ")}>
-        {show(value)}
-      </p>
-    </div>
-  );
 
   if (loading) {
     return (
@@ -210,9 +181,7 @@ export function OccurrenceDetailPage({
           Volver
         </Button>
         <div className="rounded-lg border bg-card p-8">
-          <p className="text-center text-red-600">
-            No se pudo cargar la ocurrencia: {error || "Desconocido"}
-          </p>
+          <p className="text-center text-red-600">No se pudo cargar la ocurrencia: {error || "Desconocido"}</p>
         </div>
       </div>
     );
@@ -263,9 +232,7 @@ export function OccurrenceDetailPage({
 
       {data.dynamicProperties && Object.keys(data.dynamicProperties).length > 0 && (
         <div className="rounded-md border bg-muted/30 p-3 space-y-2">
-          <p className="text-xs font-medium text-muted-foreground">
-            Propiedades adicionales
-          </p>
+          <p className="text-xs font-medium text-muted-foreground">Propiedades adicionales</p>
           <div className="flex flex-wrap gap-1.5">
             {Object.entries(data.dynamicProperties)
               .sort(([a], [b]) => a.localeCompare(b))
@@ -310,6 +277,13 @@ export function OccurrenceDetailPage({
 
   const renderLocationTab = () => (
     <div className="space-y-6">
+      <OccurrenceLocationMap
+        lat={data.decimalLatitude}
+        lon={data.decimalLongitude}
+        footprintWKT={data.footprintWKT}
+        uncertaintyMeters={data.coordinateUncertaintyInMeters}
+      />
+
       <div className="grid md:grid-cols-4 gap-4">
         <div className="space-y-1">
           <p className="text-xs font-medium text-muted-foreground">País</p>
@@ -336,19 +310,19 @@ export function OccurrenceDetailPage({
       <div className="grid md:grid-cols-3 gap-4">
         <Field label="Latitud decimal" value={data.decimalLatitude} mono />
         <Field label="Longitud decimal" value={data.decimalLongitude} mono />
+        <Field
+          label="Incertidumbre de la coordenada"
+          value={data.coordinateUncertaintyInMeters != null ? `${data.coordinateUncertaintyInMeters} m` : null}
+        />
+      </div>
+
+      <div className="grid md:grid-cols-3 gap-4">
         <Field label="Elevación en etiqueta" value={data.verbatimElevation} />
       </div>
 
       <div className="grid md:grid-cols-2 gap-4">
         <Field label="Estado de verificación de georreferenciación" value={data.georeferenceVerificationStatus} />
       </div>
-
-      {data.footprintWKT && (
-        <div className="space-y-1">
-          <p className="text-xs font-medium text-muted-foreground">Área de la ocurrencia (huella WKT)</p>
-          <p className="text-xs font-mono break-all bg-muted/40 rounded p-2">{data.footprintWKT}</p>
-        </div>
-      )}
     </div>
   );
 
@@ -359,15 +333,10 @@ export function OccurrenceDetailPage({
       ) : (
         <div className="space-y-3">
           {sortedIdentifications.map((ident) => (
-            <div
-              key={ident.identificationId}
-              className="rounded-lg border bg-muted/20 p-4 space-y-3"
-            >
+            <div key={ident.identificationId} className="rounded-lg border bg-muted/20 p-4 space-y-3">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div>
-                  <p className="text-sm font-semibold italic leading-tight">
-                    {show(ident.scientificName)}
-                  </p>
+                  <p className="text-sm font-semibold italic leading-tight">{show(ident.scientificName)}</p>
                   {ident.scientificNameAuthorship && (
                     <p className="text-xs text-muted-foreground">{ident.scientificNameAuthorship}</p>
                   )}
@@ -438,50 +407,68 @@ export function OccurrenceDetailPage({
     </div>
   );
 
-  const renderImagesTab = () => (
-    <div className="space-y-4">
-      {data.images && data.images.length > 0 ? (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {data.images.map((img) => {
-            const isDeleting = deletingImageId === img.occurrenceImageId;
-            return (
-              <div key={img.occurrenceImageId} className="relative group rounded-lg overflow-hidden border bg-muted/20">
-                <img
-                  src={uploadService.imageUrl(img.occurrenceImageId)}
-                  alt="Imagen de ocurrencia"
-                  className={`w-full h-48 object-contain bg-muted/30 transition-opacity ${isDeleting ? "opacity-40" : ""}`}
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src =
-                      'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 24 24" fill="none" stroke="%23888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>';
-                  }}
-                />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors pointer-events-none" />
-                {isOwner && (
-                  <button
-                    type="button"
-                    disabled={isDeleting || !!deletingImageId}
-                    onClick={() => setPendingDeleteImageId(img.occurrenceImageId)}
-                    className="absolute top-2 right-2 flex items-center gap-1.5 bg-black/60 backdrop-blur-sm text-white text-xs font-medium px-2.5 py-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-all hover:bg-red-600 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
-                    title="Eliminar imagen"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Eliminar
-                  </button>
-                )}
-                {img.photographer && (
-                  <div className="px-2 py-1 text-xs bg-background border-t truncate">
-                    <span className="text-muted-foreground">Fotógrafo: </span>{img.photographer}
-                  </div>
-                )}
+  /* Solo lectura: las imágenes se eliminan o corrigen desde "Editar". */
+  const renderImagesTab = () => {
+    const images = (data.images ?? []).map((img) => ({
+      id: img.occurrenceImageId,
+      src: uploadService.imageUrl(img.occurrenceImageId),
+      name: (img.imagePath.split("/").pop() ?? "").replace(/^[0-9a-f-]{36}_/, ""),
+      photographer: img.photographer,
+    }));
+
+    if (images.length === 0) {
+      return <p className="text-sm text-muted-foreground">Esta ocurrencia no tiene imágenes asociadas.</p>;
+    }
+
+    return (
+      <div className="space-y-4">
+        <div className="hb-image-grid">
+          {images.map((img, i) => (
+            <div key={img.id} className="hb-image-card">
+              <div className="hb-image-thumb">
+                <img src={img.src} alt={img.name || "Imagen de la ocurrencia"} loading="lazy" />
+                <button
+                  type="button"
+                  className="hb-image-view"
+                  onClick={() => setViewerIndex(i)}
+                  title="Ver en pantalla completa"
+                  aria-label="Ver en pantalla completa"
+                >
+                  <Eye className="h-4 w-4" />
+                </button>
               </div>
-            );
-          })}
+              <div className="hb-image-body">
+                <div className="hb-image-meta">
+                  <span className="hb-image-name" title={img.name}>
+                    {img.name}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Fotógrafo/a:{" "}
+                  {img.photographer ? (
+                    <span className="text-foreground">{img.photographer}</span>
+                  ) : (
+                    <span className="italic">no indicado</span>
+                  )}
+                </p>
+              </div>
+            </div>
+          ))}
         </div>
-      ) : (
-        <p className="text-sm text-muted-foreground">Esta ocurrencia no tiene imágenes asociadas.</p>
-      )}
-    </div>
-  );
+
+        <ImageLightbox
+          images={images.map((img) => ({
+            src: img.src,
+            title: img.name || "Imagen de la ocurrencia",
+            caption: img.photographer ? `Fotógrafo/a: ${img.photographer}` : undefined,
+          }))}
+          index={viewerIndex}
+          onIndexChange={setViewerIndex}
+          onClose={() => setViewerIndex(null)}
+        />
+      </div>
+    );
+  };
 
   /* ══ MAIN RENDER ══ */
   return (
@@ -490,7 +477,11 @@ export function OccurrenceDetailPage({
       <div className="mb-6">
         <Button variant="ghost" onClick={handleBack} className="mb-4">
           <ArrowLeft className="h-4 w-4 mr-2" />
-          {returnTo === "collection" ? `Volver a ${collectionName}` : "Volver a ocurrencias"}
+          {returnTo === "collection"
+            ? "Volver a Colección"
+            : returnTo === "map"
+              ? "Volver al Mapa"
+              : "Volver a ocurrencias"}
         </Button>
 
         <div className="flex items-start justify-between gap-4">
@@ -560,29 +551,6 @@ export function OccurrenceDetailPage({
         {activeTab === "taxon" && renderTaxonTab()}
         {activeTab === "images" && renderImagesTab()}
       </div>
-
-      <AlertDialog
-        open={!!pendingDeleteImageId}
-        onOpenChange={(open: boolean) => { if (!open) setPendingDeleteImageId(null); }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar imagen?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Esta acción no se puede deshacer. La imagen será eliminada permanentemente.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-red-600 hover:bg-red-700"
-              onClick={handleDeleteImage}
-            >
-              Eliminar
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

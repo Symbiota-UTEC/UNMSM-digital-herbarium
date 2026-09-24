@@ -1,14 +1,16 @@
 from __future__ import annotations
+
+from typing import Optional
 from uuid import UUID
+
 # backend/routers/upload/images.py
-
 from fastapi import APIRouter, Depends, File, Form, UploadFile, status
-
 from sqlalchemy.orm import Session
 
-from backend.config.database import get_db
 from backend.auth.jwt import get_current_user
+from backend.config.database import get_db
 from backend.models.models import User
+from backend.schemas.occurrence import ImageUpdateIn
 from backend.services import images as images_service
 
 router = APIRouter(tags=["Files"])
@@ -22,11 +24,27 @@ router = APIRouter(tags=["Files"])
 def upload_image_seaweedfs(
     occurrence_id: UUID = Form(..., description="ID de la Ocurrencia destino"),
     file: UploadFile = File(..., description="Archivo de imagen"),
+    photographer: Optional[str] = Form(
+        None, max_length=255, description="Quien tomó la foto (opcional; vacío = sin dato)"
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Sube una imagen al cluster de SeaweedFS y crea un OccurrenceImage."""
-    return images_service.upload_image(db, occurrence_id, file, current_user)
+    return images_service.upload_image(db, occurrence_id, file, current_user, photographer)
+
+
+@router.patch(
+    "/image/{image_id}",
+    summary="Editar los datos de una imagen (fotógrafo)",
+)
+def update_image(
+    image_id: UUID,
+    payload: ImageUpdateIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return images_service.update_image(db, image_id, payload, current_user)
 
 
 @router.delete(

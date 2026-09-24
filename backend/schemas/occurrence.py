@@ -1,12 +1,13 @@
 from __future__ import annotations
-from uuid import UUID
-# backend/schemas/occurrence.py
 
-from datetime import datetime, date
-from typing import Any, Dict, List, Optional
+# backend/schemas/occurrence.py
+from datetime import date, datetime
+from typing import Any, Dict, List, Literal, Optional
+from uuid import UUID
+
+from pydantic import BaseModel, Field
 
 from backend.schemas.common.base import ORMBaseModel, StrictBaseModel
-from pydantic import BaseModel, Field
 
 # -----------------------------
 # Resumenes / submodelos
@@ -57,6 +58,7 @@ class OccurrenceImageOut(ORMBaseModel):
     """
     Imagen asociada a una ocurrencia (refleja el modelo OccurrenceImage).
     """
+
     occurrenceImageId: UUID
     occurrenceId: UUID
 
@@ -66,6 +68,12 @@ class OccurrenceImageOut(ORMBaseModel):
 
     createdAt: datetime
     updatedAt: datetime
+
+
+class ImageUpdateIn(StrictBaseModel):
+    """Datos editables de una imagen ya subida."""
+
+    photographer: Optional[str] = Field(default=None, max_length=255)
 
 
 # -----------------------------
@@ -103,6 +111,7 @@ class OccurrenceOut(ORMBaseModel):
 
     decimalLatitude: Optional[float] = None
     decimalLongitude: Optional[float] = None
+    coordinateUncertaintyInMeters: Optional[float] = None
     verbatimElevation: Optional[str] = None
 
     countryCode: Optional[str] = None
@@ -160,6 +169,7 @@ class OccurrenceBriefItem(ORMBaseModel):
 # Inputs
 # -----------------------------
 
+
 class IdentifierIn(StrictBaseModel):
     name: str
     orcid: Optional[str] = None
@@ -172,7 +182,7 @@ class OccurrenceCreateIn(StrictBaseModel):
     catalogNumber: str
     recordNumber: Optional[str] = None
     recordedBy: Optional[str] = None
-    
+
     # Event
     eventDate: Optional[str] = None
     verbatimEventDate: Optional[str] = None
@@ -191,6 +201,8 @@ class OccurrenceCreateIn(StrictBaseModel):
     verbatimLocality: Optional[str] = None
     decimalLatitude: Optional[float] = None
     decimalLongitude: Optional[float] = None
+    coordinateUncertaintyInMeters: Optional[float] = Field(default=None, gt=0)
+    footprintWKT: Optional[str] = None
     verbatimElevation: Optional[str] = None
 
     # Extra mapped directly (if exist in models)
@@ -220,7 +232,6 @@ class OccurrenceCreateIn(StrictBaseModel):
     dynamicProperties: Optional[Dict[str, Any]] = None
 
 
-
 class OccurrenceUpdateIn(StrictBaseModel):
     catalogNumber: Optional[str] = None
     recordNumber: Optional[str] = None
@@ -244,6 +255,8 @@ class OccurrenceUpdateIn(StrictBaseModel):
     verbatimLocality: Optional[str] = None
     decimalLatitude: Optional[float] = None
     decimalLongitude: Optional[float] = None
+    coordinateUncertaintyInMeters: Optional[float] = Field(default=None, gt=0)
+    footprintWKT: Optional[str] = None
     verbatimElevation: Optional[str] = None
 
     # Occurrence extra
@@ -298,3 +311,28 @@ class OccurrenceFilters(BaseModel):
 
     collection_id: Optional[UUID] = None
     institution_id: Optional[UUID] = None
+
+    # Búsqueda geoespacial: radio (near_*/radius_km) o polígono WKT.
+    near_lat: Optional[float] = None
+    near_lon: Optional[float] = None
+    radius_km: Optional[float] = None
+    within_polygon: Optional[str] = None
+
+
+class OccurrenceMapPointOut(ORMBaseModel):
+    """Punto del mapa. locationType indica cómo se registró la ubicación: point (exacta),
+    circle (punto con coordinateUncertaintyInMeters) o polygon (footprintWKT)."""
+
+    occurrenceId: UUID
+    code: Optional[str] = None
+    scientificName: Optional[str] = None
+    lat: float
+    lon: float
+    locationType: Literal["point", "circle", "polygon"]
+    uncertaintyMeters: Optional[float] = None
+
+
+class OccurrenceMapOut(ORMBaseModel):
+    items: List[OccurrenceMapPointOut]
+    total: int
+    truncated: bool

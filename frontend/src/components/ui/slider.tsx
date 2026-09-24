@@ -1,7 +1,7 @@
 "use client";
 
-import * as React from "react";
-import * as SliderPrimitive from "@radix-ui/react-slider@1.2.3";
+import { useMemo, type ComponentProps } from "react";
+import * as SliderPrimitive from "@radix-ui/react-slider";
 
 import { cn } from "./utils";
 
@@ -12,14 +12,9 @@ function Slider({
   min = 0,
   max = 100,
   ...props
-}: React.ComponentProps<typeof SliderPrimitive.Root>) {
-  const _values = React.useMemo(
-    () =>
-      Array.isArray(value)
-        ? value
-        : Array.isArray(defaultValue)
-          ? defaultValue
-          : [min, max],
+}: ComponentProps<typeof SliderPrimitive.Root>) {
+  const _values = useMemo(
+    () => (Array.isArray(value) ? value : Array.isArray(defaultValue) ? defaultValue : [min, max]),
     [value, defaultValue, min, max],
   );
 
@@ -44,9 +39,7 @@ function Slider({
       >
         <SliderPrimitive.Range
           data-slot="slider-range"
-          className={cn(
-            "bg-primary absolute data-[orientation=horizontal]:h-full data-[orientation=vertical]:w-full",
-          )}
+          className={cn("bg-primary absolute data-[orientation=horizontal]:h-full data-[orientation=vertical]:w-full")}
         />
       </SliderPrimitive.Track>
       {Array.from({ length: _values.length }, (_, index) => (

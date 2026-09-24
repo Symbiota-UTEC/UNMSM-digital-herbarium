@@ -1,14 +1,12 @@
 # backend/scripts/create_admin.py
 from __future__ import annotations
 
-from uuid import uuid4
-
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from backend.config.database import Base, engine, SessionLocal, ensure_database_extensions
+from backend.config.database import Base, SessionLocal, engine, ensure_database_extensions
 from backend.config.env import getenv
-from backend.models.models import User, Institution
+from backend.models.models import Institution, User
 from backend.utils.security import hash_password
 
 
@@ -41,9 +39,7 @@ def upsert_institution(db: Session) -> Institution:
     email = getenv("INSTITUTION_EMAIL")
     phone = getenv("INSTITUTION_PHONE")
 
-    inst = db.scalar(
-        select(Institution).where(Institution.institutionId == institution_id)
-    )
+    inst = db.scalar(select(Institution).where(Institution.institutionId == institution_id))
 
     if inst:
         changed = False

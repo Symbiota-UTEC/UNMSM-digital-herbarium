@@ -4,6 +4,7 @@ Punto único de carga de variables de entorno para todo el backend.
 El resto de `config/` y `scripts/create_admin.py` importan `getenv`/
 `getenv_list` de aquí en vez de llamar a `load_dotenv()` por su cuenta.
 """
+
 from __future__ import annotations
 
 import os

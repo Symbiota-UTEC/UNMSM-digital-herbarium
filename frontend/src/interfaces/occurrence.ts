@@ -90,6 +90,7 @@ export interface OccurrenceItem {
 
   decimalLatitude: number | null;
   decimalLongitude: number | null;
+  coordinateUncertaintyInMeters: number | null;
   verbatimElevation: string | null;
 
   countryCode: string | null;

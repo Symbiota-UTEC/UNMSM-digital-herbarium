@@ -4,31 +4,36 @@ Occurrence <-> Identification se referencian mutuamente; para evitar un import
 circular, las referencias a Identification se resuelven en funciones (SQLAlchemy
 las llama recién al configurar los mappers, cuando ambos módulos ya cargaron).
 """
+
 from __future__ import annotations
 
 import uuid
-from typing import List, Optional, Any
+from datetime import datetime
+from typing import Any, List, Optional
 
-from sqlalchemy import String, Text, Integer, Float, DateTime, ForeignKey, Uuid
+from geoalchemy2 import Geography, Geometry
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, Uuid
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.config.database import Base
-from datetime import datetime
 
 
 def _identification_occurrence_id_fk():
     from backend.models.identification import Identification
+
     return [Identification.occurrenceId]
 
 
 def _occurrence_identifications_primaryjoin():
     from backend.models.identification import Identification
+
     return Occurrence.occurrenceId == Identification.occurrenceId
 
 
 def _occurrence_current_identification_primaryjoin():
     from backend.models.identification import Identification
+
     return Occurrence.currentIdentificationId == Identification.identificationId
 
 
@@ -186,6 +191,14 @@ class Occurrence(Base):
         index=True,
         doc="DwC decimalLongitude: longitud en grados decimales (WGS84) (nice to have).",
     )
+    coordinateUncertaintyInMeters: Mapped[Optional[float]] = mapped_column(
+        "coordinate_uncertainty_in_meters",
+        Float,
+        doc=(
+            "DwC coordinateUncertaintyInMeters: radio (m) del círculo más pequeño, centrado en "
+            "decimalLatitude/decimalLongitude, que contiene la localidad. Mayor que 0; vacío si se desconoce."
+        ),
+    )
     # OPCIONALES
 
     # ---- Occurrence opcionales ----
@@ -245,10 +258,30 @@ class Occurrence(Base):
         doc="DwC locationID: identificador del lugar en un gazetteer "
         "(p.ej. URI de AdminDivision con ubigeo o GeoNames) (opcional).",
     )
+    # WKT (Well-Known Text): geometría como texto, p. ej. POLYGON((lon lat, lon lat, ...)); orden lon lat.
     footprintWKT: Mapped[Optional[str]] = mapped_column(
         "footprint_wkt",
         Text(),
         doc="DwC footprintWKT: polígono/área de la ocurrencia en WKT (opcional).",
+    )
+
+    # ---- Columnas espaciales (PostGIS) ----
+    # services/occurrences.py lo deriva de decimalLatitude/decimalLongitude en cada create/update.
+    location: Mapped[Optional[Any]] = mapped_column(
+        "location",
+        Geography(geometry_type="POINT", srid=4326),
+        nullable=True,
+        doc="Punto (WGS84) derivado de decimalLatitude/decimalLongitude, para búsquedas por radio.",
+    )
+    # services/occurrences.py lo deriva en cada create/update.
+    footprintGeom: Mapped[Optional[Any]] = mapped_column(
+        "footprint_geom",
+        Geometry(geometry_type="POLYGON", srid=4326),
+        nullable=True,
+        doc=(
+            "Forma de la localidad (WGS84): el polígono de footprintWKT (un POLYGON simple) o, "
+            "sin polígono, el círculo de coordinateUncertaintyInMeters. NULL si es un punto exacto."
+        ),
     )
 
     # Trazabilidad de creación / modificación
@@ -307,8 +340,8 @@ class Occurrence(Base):
         ForeignKey(
             "identification.identification_id",
             ondelete="SET NULL",
-            use_alter=True, # Rompe el ciclo en la creación/borrado
-            name="fk_occurrence_current_id"
+            use_alter=True,  # Rompe el ciclo en la creación/borrado
+            name="fk_occurrence_current_id",
         ),
         nullable=True,
         index=True,

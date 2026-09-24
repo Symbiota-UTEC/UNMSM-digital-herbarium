@@ -1,32 +1,39 @@
 # backend/services/images.py
 from __future__ import annotations
-from uuid import UUID
 
 import logging
 import uuid
+from uuid import UUID
 
 import requests
-
 from fastapi import HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from backend.config.settings import seaweedfs_internal_url, seaweedfs_public_url
-from backend.models.models import User, Occurrence, OccurrenceImage
+from backend.models.models import Occurrence, OccurrenceImage, User
+from backend.schemas.occurrence import ImageUpdateIn
 from backend.services.collection_permissions import user_can_edit_collection
 
 logger = logging.getLogger(__name__)
 
 
+def _clean_photographer(value: str | None) -> str | None:
+    """El fotógrafo lo escribe quien sube la imagen; vacío se guarda como NULL (nunca se autocompleta)."""
+    return (value or "").strip() or None
+
+
 def upload_image(
-    db: Session, occurrence_id: UUID, file: UploadFile, current_user: User
+    db: Session,
+    occurrence_id: UUID,
+    file: UploadFile,
+    current_user: User,
+    photographer: str | None = None,
 ) -> dict:
     occurrence = db.scalar(select(Occurrence).where(Occurrence.occurrenceId == occurrence_id))
     if not occurrence:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Occurrence not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Occurrence not found")
 
     if not user_can_edit_collection(db, current_user, occurrence.collection):
         raise HTTPException(
@@ -41,9 +48,15 @@ def upload_image(
         catalog_number = occurrence.catalogNumber or "UnknownCatalog"
 
         if occurrence.collection:
-            collection_id = str(occurrence.collection.collectionId) if occurrence.collection.collectionId else "UnknownCollection"
+            collection_id = (
+                str(occurrence.collection.collectionId)
+                if occurrence.collection.collectionId
+                else "UnknownCollection"
+            )
             if occurrence.collection.institution:
-                institution_name = occurrence.collection.institution.institutionName or "UnknownInstitution"
+                institution_name = (
+                    occurrence.collection.institution.institutionName or "UnknownInstitution"
+                )
 
         # Sanitizar rutas para URL
         institution_name_safe = institution_name.replace(" ", "_").replace("/", "-")
@@ -75,7 +88,7 @@ def upload_image(
         occurrenceId=occurrence.occurrenceId,
         imagePath=image_path,
         fileSize=file_size,
-        photographer=current_user.fullName or current_user.username
+        photographer=_clean_photographer(photographer),
     )
 
     db.add(occ_img)
@@ -87,8 +100,36 @@ def upload_image(
         "occurrenceImageId": occ_img.occurrenceImageId,
         "occurrenceId": occurrence.occurrenceId,
         "imagePath": image_path,
+        "photographer": occ_img.photographer,
         "size": file_size,
-        "publicUrl": f"{seaweedfs_public_url}{image_path}"
+        "publicUrl": f"{seaweedfs_public_url}{image_path}",
+    }
+
+
+def update_image(db: Session, image_id: UUID, payload: ImageUpdateIn, current_user: User) -> dict:
+    image = db.scalar(select(OccurrenceImage).where(OccurrenceImage.occurrenceImageId == image_id))
+    if not image:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image not found")
+
+    occurrence = db.scalar(
+        select(Occurrence)
+        .options(selectinload(Occurrence.collection))
+        .where(Occurrence.occurrenceId == image.occurrenceId)
+    )
+    if not occurrence or not occurrence.collection:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    if not user_can_edit_collection(db, current_user, occurrence.collection):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para editar esta imagen",
+        )
+
+    image.photographer = _clean_photographer(payload.photographer)
+    db.commit()
+    db.refresh(image)
+    return {
+        "occurrenceImageId": image.occurrenceImageId,
+        "photographer": image.photographer,
     }
 
 
@@ -106,7 +147,10 @@ def delete_image(db: Session, image_id: UUID, current_user: User) -> None:
     if not occurrence or not occurrence.collection:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
     if not user_can_edit_collection(db, current_user, occurrence.collection):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permisos para eliminar esta imagen")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para eliminar esta imagen",
+        )
 
     # Delete from SeaweedFS
     try:
@@ -122,24 +166,21 @@ def delete_image(db: Session, image_id: UUID, current_user: User) -> None:
 def get_image(db: Session, image_id: UUID) -> StreamingResponse:
     image = db.scalar(select(OccurrenceImage).where(OccurrenceImage.occurrenceImageId == image_id))
     if not image:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Image not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image not found")
 
-    # URL interna definida para SeaweedFS en docker network
-    download_url = f"http://herbarium_seaweedfs:8888{image.imagePath}"
+    download_url = f"{seaweedfs_internal_url}{image.imagePath}"
 
     try:
         response = requests.get(download_url, stream=True)
         response.raise_for_status()
 
         return StreamingResponse(
-            response.iter_content(chunk_size=1024*1024),
+            response.iter_content(chunk_size=1024 * 1024),
             media_type=response.headers.get("Content-Type", "image/jpeg"),
         )
     except requests.exceptions.RequestException as e:
         logger.error(f"Error downloading image from SeaweedFS: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error downloading image from SeaweedFS"
+            detail="Error downloading image from SeaweedFS",
         )

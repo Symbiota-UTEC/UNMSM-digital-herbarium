@@ -1,33 +1,34 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { PasswordInput } from "../ui/password-input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Leaf, Loader2 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 
 interface LoginPageProps {
   onNavigate: (page: string) => void;
 }
 
 export function LoginPage({ onNavigate }: LoginPageProps) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    
+
     try {
       await login(email, password);
-      toast.success('Inicio de sesión exitoso');
-      onNavigate('collections');
+      toast.success("Inicio de sesión exitoso");
+      onNavigate("collections");
     } catch (error) {
       console.log(error);
-      toast.error('Error al iniciar sesión');
+      toast.error("Error al iniciar sesión");
     } finally {
       setLoading(false);
     }
@@ -39,9 +40,7 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
         <CardHeader className="text-center">
           <Leaf className="h-12 w-12 text-primary mx-auto mb-4" />
           <CardTitle>Iniciar Sesión</CardTitle>
-          <CardDescription>
-            Accede a tu cuenta de Herbario Digital
-          </CardDescription>
+          <CardDescription>Accede a tu cuenta de Herbario Digital</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -58,9 +57,9 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Contraseña</Label>
-              <Input
+              <PasswordInput
                 id="password"
-                type="password"
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -73,18 +72,15 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
                   Iniciando sesión...
                 </>
               ) : (
-                'Iniciar Sesión'
+                "Iniciar Sesión"
               )}
             </Button>
           </form>
-          
+
           <div className="mt-6 text-center text-sm">
             <p className="text-muted-foreground mb-2">
-              ¿No tienes una cuenta?{' '}
-              <button 
-                onClick={() => onNavigate('register')}
-                className="text-primary hover:underline"
-              >
+              ¿No tienes una cuenta?{" "}
+              <button onClick={() => onNavigate("register")} className="text-primary hover:underline">
                 Solicitar Registro
               </button>
             </p>

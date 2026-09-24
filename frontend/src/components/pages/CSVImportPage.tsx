@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ChangeEvent } from "react";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Alert, AlertDescription } from "../ui/alert";
@@ -16,9 +16,10 @@ import {
   AlertDialogTitle,
 } from "../ui/alert-dialog";
 import { ArrowLeft, Upload, FileSpreadsheet, CheckCircle, X, Info, Download } from "lucide-react";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 import { useAuth } from "@contexts/AuthContext";
-import { API } from "@constants/api";
+import { ApiError } from "@services/api.error";
+import { uploadService } from "@services/upload.service";
 import { DWC_FIELDS, DwCFieldOption, DwCEntity } from "@constants/dwc";
 
 interface CSVImportPageProps {
@@ -65,8 +66,7 @@ const AUTO_MAP_RULES: Array<{ pattern: RegExp; target: string }> = [
     target: "Occurrence.catalogNumber",
   },
   {
-    pattern:
-      /\b(record number|numero de colecta|nro colecta|num colecta|n de colecta|field number|numero de campo)\b/,
+    pattern: /\b(record number|numero de colecta|nro colecta|num colecta|n de colecta|field number|numero de campo)\b/,
     target: "Occurrence.recordNumber",
   },
   {
@@ -82,8 +82,7 @@ const AUTO_MAP_RULES: Array<{ pattern: RegExp; target: string }> = [
     target: "Occurrence.organismQuantityType",
   },
   {
-    pattern:
-      /\b(georeference verification status|estado georreferenciacion|verificacion georreferenciacion)\b/,
+    pattern: /\b(georeference verification status|estado georreferenciacion|verificacion georreferenciacion)\b/,
     target: "Occurrence.georeferenceVerificationStatus",
   },
   {
@@ -103,20 +102,17 @@ const AUTO_MAP_RULES: Array<{ pattern: RegExp; target: string }> = [
     target: "Occurrence.associatedReferences",
   },
   {
-    pattern:
-      /\b(associated taxa|taxa asociados|taxones asociados|hospedero|huesped|parasito|forofito)\b/,
+    pattern: /\b(associated taxa|taxa asociados|taxones asociados|hospedero|huesped|parasito|forofito)\b/,
     target: "Occurrence.associatedTaxa",
   },
   {
-    pattern:
-      /\b(dynamic properties?|propiedades dinamicas?|propiedades dinamicas|campos extra|datos adicionales)\b/,
+    pattern: /\b(dynamic properties?|propiedades dinamicas?|propiedades dinamicas|campos extra|datos adicionales)\b/,
     target: "Occurrence.dynamicProperties",
   },
 
   // --------- Event ----------
   {
-    pattern:
-      /\b(fecha verbatim|fecha original|fecha etiqueta|fecha texto|verbatim event date)\b/,
+    pattern: /\b(fecha verbatim|fecha original|fecha etiqueta|fecha texto|verbatim event date)\b/,
     target: "Event.verbatimEventDate",
   },
   {
@@ -128,8 +124,7 @@ const AUTO_MAP_RULES: Array<{ pattern: RegExp; target: string }> = [
   { pattern: /\b(day|dia)\b/, target: "Event.day" },
   { pattern: /\b(habitat)\b/, target: "Event.habitat" },
   {
-    pattern:
-      /\b(event remarks?|observaciones del evento|notas del evento|notas de muestreo)\b/,
+    pattern: /\b(event remarks?|observaciones del evento|notas del evento|notas de muestreo)\b/,
     target: "Event.eventRemarks",
   },
   {
@@ -140,8 +135,7 @@ const AUTO_MAP_RULES: Array<{ pattern: RegExp; target: string }> = [
   { pattern: /\b(pais|country)\b/, target: "Location.country" },
   { pattern: /\b(departamento|region|state province)\b/, target: "Location.stateProvince" },
   {
-    pattern:
-      /\b(localidad verbatim|localidad original|localidad etiqueta|localidad texto)\b/,
+    pattern: /\b(localidad verbatim|localidad original|localidad etiqueta|localidad texto)\b/,
     target: "Location.verbatimLocality",
   },
   {
@@ -155,24 +149,25 @@ const AUTO_MAP_RULES: Array<{ pattern: RegExp; target: string }> = [
   },
   { pattern: /\b(localidad|locality)\b/, target: "Location.locality" },
   {
-    pattern:
-      /\b(location remarks?|observaciones de la localidad|notas de localidad)\b/,
+    pattern: /\b(location remarks?|observaciones de la localidad|notas de localidad)\b/,
     target: "Location.locationRemarks",
   },
   { pattern: /\b(latitud|lat)\b/, target: "Location.decimalLatitude" },
   { pattern: /\b(longitud|lon|lng|long)\b/, target: "Location.decimalLongitude" },
   {
+    pattern: /\b(incertidumbre|coordinate uncertainty|uncertainty)\b/,
+    target: "Location.coordinateUncertaintyInMeters",
+  },
+  {
     pattern: /\b(country code|codigo pais|codigo de pais)\b/,
     target: "Location.countryCode",
   },
   {
-    pattern:
-      /\b(verbatim coordinate system|sistema de coordenadas|sist coord)\b/,
+    pattern: /\b(verbatim coordinate system|sistema de coordenadas|sist coord)\b/,
     target: "Location.verbatimCoordinateSystem",
   },
   {
-    pattern:
-      /\b(footprint wkt|poligono|area de muestreo|area muestreo)\b/,
+    pattern: /\b(footprint wkt|poligono|area de muestreo|area muestreo)\b/,
     target: "Location.footprintWKT",
   },
 
@@ -191,11 +186,6 @@ const AUTO_MAP_RULES: Array<{ pattern: RegExp; target: string }> = [
     pattern: /\b(identified by|identificado por|determinado por|det\.)\b/,
     target: "Identification.identifiedBy",
   },
-  {
-    pattern:
-      /\b(identification verification status|estado de verificacion|estado de verificación|verificacion de identificacion|verificación de identificación)\b/,
-    target: "Identification.identificationVerificationStatus",
-  },
 ];
 
 // ==============================
@@ -203,13 +193,7 @@ const AUTO_MAP_RULES: Array<{ pattern: RegExp; target: string }> = [
 // ==============================
 type Guess = { text: string; encoding: string; source: "bom" | "heuristic" };
 
-const ENCODING_CANDIDATES = [
-  "utf-8",
-  "windows-1252",
-  "iso-8859-1",
-  "iso-8859-15",
-  "macintosh",
-] as const;
+const ENCODING_CANDIDATES = ["utf-8", "windows-1252", "iso-8859-1", "iso-8859-15", "macintosh"] as const;
 
 const decodeWith = (bytes: Uint8Array, enc: string): string => {
   let out = new TextDecoder(enc as any, { fatal: false }).decode(bytes);
@@ -227,8 +211,7 @@ const countControlWeird = (s: string) => {
   return bad;
 };
 const looksLikeUTF8Misdecoded = (s: string) => /Ã[\x80-\xBFÀ-ÿA-Za-z]/.test(s);
-const countSpanishDiacritics = (s: string) =>
-  (s.match(/[áéíóúÁÉÍÓÚñÑüÜ]/g) || []).length;
+const countSpanishDiacritics = (s: string) => (s.match(/[áéíóúÁÉÍÓÚñÑüÜ]/g) || []).length;
 
 const scoreDecoded = (s: string) => {
   const rep = hasManyReplacements(s);
@@ -326,12 +309,8 @@ const labelFor = (opt: DwCFieldOption) => opt.label;
 // ==============================
 // Componente
 // ==============================
-export function CSVImportPage({
-  collectionId,
-  collectionName,
-  onNavigate,
-}: CSVImportPageProps) {
-  const { token } = useAuth();
+export function CSVImportPage({ collectionId, collectionName, onNavigate }: CSVImportPageProps) {
+  const { apiFetch } = useAuth();
 
   const [datasetModel, setDatasetModel] = useState<DwCEntity>("Occurrence");
   const [csvFile, setCSVFile] = useState<File | null>(null);
@@ -351,20 +330,14 @@ export function CSVImportPage({
   const [isProcessing, setIsProcessing] = useState(false);
 
   // APLANA todas las entidades de DWC_FIELDS
-  const ALL_FIELDS: DwCFieldOption[] = useMemo(
-    () => Object.values(DWC_FIELDS).flat(),
-    []
-  );
+  const ALL_FIELDS: DwCFieldOption[] = useMemo(() => Object.values(DWC_FIELDS).flat(), []);
 
   const FIELD_OPTIONS: DwCFieldOption[] = useMemo(() => {
     return [IGNORE_OPTION, ...ALL_FIELDS];
   }, [ALL_FIELDS]);
 
   // Targets permitidos (exactamente los presentes en DWC_FIELDS)
-  const ALLOWED_TARGETS = useMemo(
-    () => new Set(ALL_FIELDS.map((f) => f.value)),
-    [ALL_FIELDS]
-  );
+  const ALLOWED_TARGETS = useMemo(() => new Set(ALL_FIELDS.map((f) => f.value)), [ALL_FIELDS]);
 
   // Auto-map sólo a targets permitidos y usando encabezado normalizado
   const autoMapHeader = (header: string): string => {
@@ -383,16 +356,13 @@ export function CSVImportPage({
       alternatives: [["Occurrence.catalogNumber", "Occurrence.recordNumber"]],
       required: [] as string[],
     }),
-    []
+    [],
   );
 
   // Obligatorios según el esquema (todos los DwCFieldOption con required: true)
   const REQUIRED_FROM_SCHEMA = useMemo(
-    () =>
-      new Set(
-        ALL_FIELDS.filter((f) => f.required).map((f) => f.value)
-      ),
-    [ALL_FIELDS]
+    () => new Set(ALL_FIELDS.filter((f) => f.required).map((f) => f.value)),
+    [ALL_FIELDS],
   );
 
   const headerDupReport = useMemo(() => {
@@ -416,7 +386,7 @@ export function CSVImportPage({
     return { hasDuplicates: duplicates.length > 0, duplicates, byDwc, allowMulti: ALLOW_MULTI_MAP };
   }, [columnMapping, FIELD_OPTIONS]);
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!(file.type === "text/csv" || file.name.toLowerCase().endsWith(".csv"))) {
@@ -707,12 +677,13 @@ export function CSVImportPage({
     "dwc:RecordLevel:dynamicProperties",
   ] as const;
 
+  /** Sube el CSV mapeado. Devuelve null si no hay columnas para importar; lanza ApiError si el backend lo rechaza. */
   const submitImportWithDynamicHeader = async (dynamicHeaderLabel: string) => {
     const csvOut = buildMappedCSV({ "Occurrence.dynamicProperties": dynamicHeaderLabel });
 
     if (!csvOut) {
       toast.error("No hay columnas mapeadas para importar.");
-      return { ok: false, res: null as any };
+      return null;
     }
 
     const ts = new Date().toISOString().replace(/[:.]/g, "-");
@@ -720,21 +691,7 @@ export function CSVImportPage({
     const blob = new Blob([csvOut], { type: "text/csv;charset=utf-8" });
     const fileToSend = new File([blob], filename, { type: "text/csv" });
 
-    const form = new FormData();
-    form.append("collection_id", String(collectionId));
-    form.append("file", fileToSend);
-
-    const url = `${API.BASE_URL}/upload/dwc-csv`;
-    const res = await fetch(url, {
-      method: "POST",
-      body: form,
-      headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      credentials: "include",
-    });
-
-    return { ok: res.status === 201, res };
+    return uploadService.uploadDwcCsv(apiFetch, String(collectionId), fileToSend);
   };
 
   const handleConfirmImport = async () => {
@@ -745,44 +702,37 @@ export function CSVImportPage({
       let lastText: string | null = null;
       for (let i = 0; i < DYNAMIC_HEADER_TRY.length; i++) {
         const label = DYNAMIC_HEADER_TRY[i];
-        const { ok, res } = await submitImportWithDynamicHeader(label);
-        if (ok) {
-          let stats: any = null;
-          try {
-            stats = await res.json();
-          } catch {}
-          const msg = stats
-            ? `Importadas ${stats.occurrences_inserted ?? "?"} ocurrencias.`
-            : "Importación completada.";
+        try {
+          const stats = await submitImportWithDynamicHeader(label);
+          if (!stats) return;
+
+          const msg = `Importadas ${stats.occurrencesInserted} ocurrencias.`;
           toast.success(`${msg} (encabezado usado: ${label})`);
           onNavigate("collection-detail", { collectionId, collectionName, isOwner: true });
           return;
-        } else if (res.status === 400) {
-          const txt = await res.text();
-          lastText = txt;
-          if (txt && /dynamicProperties/i.test(txt)) {
-            if (i < DYNAMIC_HEADER_TRY.length - 1) {
+        } catch (err) {
+          if (!(err instanceof ApiError)) throw err;
+          const txt = err.detail ?? "";
+
+          if (err.status === 400) {
+            lastText = txt;
+            if (txt && /dynamicProperties/i.test(txt) && i < DYNAMIC_HEADER_TRY.length - 1) {
               toast.message(`Reintentando con encabezado alternativo para dynamicProperties…`, {
                 description: DYNAMIC_HEADER_TRY[i + 1],
               });
               continue;
             }
+            toast.error(txt || "CSV inválido. Revisa los encabezados y el formato.");
+          } else if (err.status === 403) {
+            toast.error("No tienes permisos para importar en esta colección.");
+          } else if (err.status === 404) {
+            toast.error("Colección no encontrada.");
+          } else if (err.status === 413) {
+            toast.error("Archivo demasiado grande.");
+          } else {
+            lastText = txt;
+            toast.error(txt || "Error inesperado al importar.");
           }
-          toast.error(txt || "CSV inválido. Revisa los encabezados y el formato.");
-          return;
-        } else if (res.status === 403) {
-          toast.error("No tienes permisos para importar en esta colección.");
-          return;
-        } else if (res.status === 404) {
-          toast.error("Colección no encontrada.");
-          return;
-        } else if (res.status === 413) {
-          toast.error("Archivo demasiado grande.");
-          return;
-        } else {
-          const txt = await res.text();
-          lastText = txt;
-          toast.error(txt || "Error inesperado al importar.");
           return;
         }
       }
@@ -806,7 +756,7 @@ export function CSVImportPage({
 
   const mappedCount = useMemo(
     () => Object.values(columnMapping).filter((v) => v && v !== "ignore").length,
-    [columnMapping]
+    [columnMapping],
   );
 
   // Resumen de requeridos (grupos alternativos + obligatorios de esquema)
@@ -818,7 +768,7 @@ export function CSVImportPage({
             const opt = ALL_FIELDS.find((f) => f.value === g);
             return opt ? opt.label : `dwc:${g.replace(".", ":")}`;
           })
-          .join(" o ")
+          .join(" o "),
       )
       .join(" • ");
 
@@ -850,14 +800,14 @@ export function CSVImportPage({
       <div className="mb-6">
         <Button variant="ghost" onClick={handleCancel} className="mb-4">
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Volver a {collectionName}
+          Volver a Colección
         </Button>
 
-      <div>
+        <div>
           <h1 className="text-3xl mb-2">Importar Ocurrencias desde CSV</h1>
           <p className="text-muted-foreground">
-            Carga un archivo CSV y mapea las columnas a términos{" "}
-            <span className="font-medium">Darwin Core</span> de tu modelo.
+            Carga un archivo CSV y mapea las columnas a términos <span className="font-medium">Darwin Core</span> de tu
+            modelo.
           </p>
         </div>
       </div>
@@ -996,8 +946,8 @@ export function CSVImportPage({
                 <span className="font-medium">Event.eventDate</span>,{" "}
                 <span className="font-medium">Location.locality</span> y/o coordenadas.
                 <br />
-                Puedes mapear varias columnas a <code>Occurrence.dynamicProperties</code>; se combinarán en un solo campo
-                JSON por fila.
+                Puedes mapear varias columnas a <code>Occurrence.dynamicProperties</code>; se combinarán en un solo
+                campo JSON por fila.
               </div>
 
               <Table>
@@ -1062,8 +1012,8 @@ export function CSVImportPage({
                   headerDupReport.hasDuplicates
                     ? "Hay encabezados DWC duplicados"
                     : mappedCount === 0
-                    ? "Mapea al menos una columna"
-                    : "Descargar CSV mapeado"
+                      ? "Mapea al menos una columna"
+                      : "Descargar CSV mapeado"
                 }
               >
                 <Download className="h-4 w-4 mr-2" />

@@ -2,11 +2,11 @@
 
 ## Overview
 
-FastAPI application exposing a Darwin Core (DwC)-compliant REST API for managing herbarium specimens. Backed by PostgreSQL, with SeaweedFS for image storage.
+FastAPI application exposing a Darwin Core (DwC)-compliant REST API for managing herbarium specimens. Backed by PostgreSQL/PostGIS, with SeaweedFS for image storage. Human quick start: [`README.md`](README.md). The client that consumes this API is documented in [`../frontend/CLAUDE.md`](../frontend/CLAUDE.md).
 
 - **Framework:** FastAPI
-- **ORM:** SQLAlchemy 2.0 (declarative, future-mode)
-- **Database:** PostgreSQL via `psycopg2-binary`
+- **ORM:** SQLAlchemy 2.0 (declarative, future-mode) + GeoAlchemy2
+- **Database:** PostgreSQL 16 + PostGIS via `psycopg2-binary`
 - **Auth:** JWT (HS256) via `python-jose`, passwords via `passlib` bcrypt_sha256
 - **Validation:** Pydantic v2 (`>=2.5,<3`)
 
@@ -77,8 +77,10 @@ backend/
 ├── utils/
 │   ├── dwc.py                # DwC CSV header validation constants
 │   └── security.py           # hash_password, verify_password
-└── scripts/
-    └── create_admin.py       # Bootstrap: creates default institution + admin user
+├── scripts/
+│   └── create_admin.py       # Bootstrap: creates default institution + admin user
+└── samples/                  # Sample/reference files (not code)
+    └── wfo_classification_solanum_tuberosum_lineage.csv  # 9 WFO taxa: Plantae -> Solanum tuberosum
 ```
 
 ---
@@ -167,21 +169,32 @@ there must match the same-named variables in `config/.env`.
 
 ### Start (development)
 
+Run from the **repo root** (the package is `backend`, so `backend.main` must be importable), with a PostGIS database up (`docker compose up db` exposes it on port 5433):
+
 ```bash
-cd backend
+pip install -r backend/requirements.txt
+python -m backend.scripts.create_models     # create tables
+python -m backend.scripts.create_admin      # default institution + admin
 python -m uvicorn backend.main:app --reload --port 8000
 ```
 
 Interactive docs: `http://localhost:8000/docs`
 
-### Start (Docker)
+### Lint and format
+
+[Ruff](https://docs.astral.sh/ruff/) does both, configured in [`ruff.toml`](ruff.toml) (line length 100; rules E4/E7/E9, F and import sorting). It runs on every commit through pre-commit (see the root `CLAUDE.md`); by hand, from the repo root:
 
 ```bash
-docker build -t herbarium-backend .
-docker run --env-file .env -p 8000:8000 herbarium-backend
+pip install ruff
+ruff check backend --fix
+ruff format backend
 ```
 
-The `entrypoint.sh` runs `scripts/create_admin.py` before starting Uvicorn.
+If a rule is wrong for a specific file, add a `per-file-ignores` entry with the reason (as done for `models/*.py`, where `relationship("Name")` resolves by name) instead of scattering `# noqa`.
+
+### Start (Docker)
+
+From the repo root: `make dev` (backend with `--reload` on http://localhost:8001, plus db, SeaweedFS and the frontend) or `make prd` (backend on http://localhost:8000). Both run `scripts/create_admin.py` before starting Uvicorn. See the root `CLAUDE.md`.
 
 ---
 
@@ -221,9 +234,77 @@ Identification ──< IdentificationIdentifier >── Identifier
 - **Identification** links an Occurrence to a Taxon. `isCurrent=True` marks the accepted determination.
 - **One current identification per occurrence** is enforced by the partial unique index `uq_identification_one_current_per_occurrence` (on `identification(occurrence_id) WHERE is_current`, defined in `models/models.py`). It is not DEFERRABLE — write paths in `services/occurrences.py` demote the previous current row and flush before promoting the new one; keep that ordering in any new code that touches `isCurrent`.
 
-### UUID primary keys
+### Geospatial queries (PostGIS)
 
-All models use `UUID` PKs (Python `uuid.uuid4`).
+`db` runs `postgis/postgis:16-3.4` (not plain `postgres`). `Occurrence` has two
+PostGIS columns that are **never set directly by input schemas** — they're
+derived server-side, the same pattern as `year`/`month`/`day` being derived
+from `eventDate`:
+
+| DwC field (source of truth)                                              | Derived PostGIS column          | Used for                                     |
+|---------------------------------------------------------------------------|----------------------------------|-----------------------------------------------|
+| `decimalLatitude` + `decimalLongitude`                                    | `location` (`geography(Point)`)  | search: the point is inside the area           |
+| `footprintWKT` (one simple `POLYGON`) or, without it, `coordinateUncertaintyInMeters` | `footprintGeom` (`geometry`) | search: the shape touches the area |
+
+`footprintGeom` is the record's **shape**, chosen by priority: the polygon if
+`footprintWKT` exists; otherwise the circle of radius `coordinateUncertaintyInMeters`
+(> 0, DwC) around the point; otherwise `NULL` (an exact point). When a polygon exists
+the uncertainty is stored but never turned into a circle — the polygon is more precise
+than the circle that would enclose it.
+
+**The API is agnostic about how a record was located.** It never derives a
+point from a polygon: the client sends `decimalLatitude`/`decimalLongitude`
+(and optionally `footprintWKT`). For a record entered as a polygon, the
+frontend computes the representative point (`getInteriorPoint()`) and sends it
+as lat/lon together with the WKT. A record with `footprintWKT` and no lat/lon
+(e.g. a CSV import) simply has `location = NULL`.
+
+`services/occurrences.py::sync_geo_columns()` recomputes `location`/
+`footprintGeom` on every `create_occurrence`/`update_occurrence` call and on
+every row of the DwC CSV import (`services/dwc_import.py`), regardless of
+which fields changed. Any new code path that creates or edits an `Occurrence`
+must call it too, otherwise those rows are invisible to spatial search.
+
+**Polygons are a single, simple `POLYGON`** — never a `MULTIPOLYGON`, never
+self-intersecting (a concave shape is fine, and so is any winding order), and with
+no holes. `services/geometry.py::check_simple_polygon()` enforces it with
+PostGIS (`ST_IsValid`), and it is the one rule shared by `footprintWKT` (`422`
+on create/update, and the whole DwC CSV import is rejected) and by the search
+polygon `withinPolygon` (`400`). `footprintGeom` is typed `geometry(Polygon)`, so
+the database rejects anything else too. The frontend refuses to draw a
+self-crossing polygon (`utils/polygonDraw.ts`), but this backend check is the
+source of truth for other clients and for CSV rows.
+
+**Search filters** (`OccurrenceFilters` / `get_occurrence_filters` /
+`build_geo_condition` in `services/occurrence_filters.py`), accepted by both
+`GET /api/occurrences` and `GET /api/occurrences/map`:
+
+- **Radius**: `nearLat` + `nearLon` + `radiusKm` (all three or none — a
+  partial combination is a `400`). `ST_DWithin` on `geography`, so distance is
+  true great-circle meters.
+- **Polygon**: `withinPolygon` (one simple WKT `POLYGON(...)`,
+  WGS84). `ST_Contains` on `location` cast to `geometry` — a planar
+  point-in-polygon check in degree-space, accurate enough at herbarium scale
+  (no antimeridian or polar regions). An invalid polygon is a `400`.
+
+There is **one matching rule, with no options**: a record matches an area if
+its location — the point, the uncertainty circle or the polygon
+(`location` / `footprintGeom`) — touches it. Users don't need to know how a
+record was located. If both a radius and a polygon are sent, both must match;
+attribute filters (collector, family, dates…) are ANDed on top.
+
+**`GET /api/occurrences/map`** returns every matching point unpaginated (up to
+`limit`, default 5000, with `truncated` when there were more) for the map view.
+Each point carries a `locationType` (`point` exact, `circle` = point with
+`coordinateUncertaintyInMeters`, `polygon` = `footprintWKT`) and
+`uncertaintyMeters`; the UI only uses them to tell exact from approximate
+locations. With no area it returns every record that has coordinates. A
+polygon-only record with no lat/lon is drawn at `ST_PointOnSurface` of its
+polygon — display only, nothing stored.
+
+The paginated list and the map share `_visible_occurrences_select()` in
+`services/occurrences.py`, so they apply identical access rules and filters.
+Keep it that way: don't add a third copy of the permission logic.
 
 ---
 
@@ -319,9 +400,17 @@ CREATE EXTENSION IF NOT EXISTS unaccent;
 
 ## Image Storage (SeaweedFS)
 
-- `POST /api/upload/image-seaweedfs` — uploads a file to SeaweedFS, stores the returned `fid` path in `OccurrenceImage.imagePath`.
-- `GET /api/upload/image-seaweedfs?image_path=<fid>` — proxies the file from SeaweedFS (with collection-level access control).
-- Internal SeaweedFS URL is used for server-to-server calls; the public URL is used for direct browser access.
+All under `/api/upload/image` (`routers/upload/images.py`, logic in `services/images.py`):
+
+- `POST` — multipart `occurrence_id`, `file` and an optional `photographer`. Uploads the file to the SeaweedFS Filer and creates an `OccurrenceImage` whose `imagePath` is the Filer path (`/images/<institution>/<collection>/<catalogNumber>/<uuid>_<name>`).
+- `PATCH /{image_id}` — edits the photographer (`ImageUpdateIn`).
+- `GET /{image_id}` — streams the file through the backend. It has no auth dependency on purpose: it is used as `<img src>`, and a browser can't attach the Bearer header there.
+- `DELETE /{image_id}` — removes the file and the row.
+- Upload, edit and delete require edit rights on the collection (`user_can_edit_collection`).
+
+**`photographer` is written by the person, never derived from the logged-in user**: empty or blank is stored as `NULL`.
+
+The backend talks to SeaweedFS through `SEAWEEDFS_INTERNAL_URL` (Docker network hostname); `SEAWEEDFS_PUBLIC_URL` is only echoed back as `publicUrl` on upload.
 
 ---
 
@@ -354,8 +443,7 @@ Follow the 3 layers (see "Architecture" above) in this order:
    for anything that can go wrong (404/403/409/422/...). A service function
    signature looks like:
    ```python
-   def do_the_thing(db: Session, some_id: UUID, payload: SomeIn, current_user: User) -> SomeModel:
-       ...
+   def do_the_thing(db: Session, some_id: UUID, payload: SomeIn, current_user: User) -> SomeModel: ...
    ```
    Return the ORM instance (or an already-built `Page[T]`/dict) — don't
    import `fastapi` response schemas into the service just to instantiate

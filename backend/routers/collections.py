@@ -1,24 +1,23 @@
 # backend/routers/collections.py
+from typing import Literal, Optional
 from uuid import UUID
-from typing import Optional, Literal
 
-from fastapi import APIRouter, Depends, status, Query
-
-from backend.config.database import get_db
-from backend.auth.jwt import get_current_user
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
+
+from backend.auth.jwt import get_current_user
+from backend.config.database import get_db
 from backend.models.models import User
-from backend.schemas.common.pages import Page
 from backend.schemas.collections import (
-    CollectionOut,
-    CollectionCreate,
-    CollectionAccessUser,
     AddUserToCollectionBody,
+    CollectionAccessUser,
+    CollectionCreate,
+    CollectionOut,
     CollectionPermissionOut,
 )
+from backend.schemas.common.pages import Page
 from backend.schemas.occurrence import OccurrenceBriefItem
 from backend.services import collections as collections_service
-
 
 router = APIRouter(prefix="/collections", tags=["Collections"])
 
@@ -90,9 +89,7 @@ def list_occurrences_brief_by_collection_id(
     collection_id: UUID,
     q: Optional[str] = Query(
         None,
-        description=(
-            "Buscar en código, nombre científico, familia, ubicación o recolector"
-        ),
+        description=("Buscar en código, nombre científico, familia, ubicación o recolector"),
     ),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
@@ -116,6 +113,4 @@ def add_user_to_collection(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return collections_service.add_user_to_collection(
-        db, collection_id, payload, current_user
-    )
+    return collections_service.add_user_to_collection(db, collection_id, payload, current_user)

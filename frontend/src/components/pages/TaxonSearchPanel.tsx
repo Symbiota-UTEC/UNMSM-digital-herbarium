@@ -45,20 +45,14 @@ export function TaxonSearchPanel({ onNavigate }: TaxonSearchPanelProps) {
 
       if (requestId !== searchRequestIdRef.current) return;
 
-      setSearchResults((prev) =>
-        page === 1 ? data.items ?? [] : [...prev, ...(data.items ?? [])]
-      );
+      setSearchResults((prev) => (page === 1 ? (data.items ?? []) : [...prev, ...(data.items ?? [])]));
       setSearchCurrentPage(data.currentPage);
       setSearchTotalPages(data.totalPages);
       setSearchTotal(data.total);
     } catch (error: any) {
       if (requestId !== searchRequestIdRef.current) return;
       console.error(error);
-      setSearchError(
-        error?.detail ||
-          error?.message ||
-          "Ocurrió un error al buscar taxones."
-      );
+      setSearchError(error?.detail || error?.message || "Ocurrió un error al buscar taxones.");
       if (page === 1) {
         setSearchResults([]);
         setSearchCurrentPage(0);
@@ -109,8 +103,7 @@ export function TaxonSearchPanel({ onNavigate }: TaxonSearchPanelProps) {
   }, [debouncedSearchQuery, apiFetch]);
 
   const hasActiveSearch = debouncedSearchQuery.trim().length > 0;
-  const canLoadMoreSearchResults =
-    searchTotalPages > 0 && searchCurrentPage < searchTotalPages;
+  const canLoadMoreSearchResults = searchTotalPages > 0 && searchCurrentPage < searchTotalPages;
 
   return (
     <div className="mb-6 space-y-3">
@@ -136,9 +129,7 @@ export function TaxonSearchPanel({ onNavigate }: TaxonSearchPanelProps) {
                   : `${searchTotal.toLocaleString("es-PE")} coincidencias para "${debouncedSearchQuery.trim()}".`}
               </div>
             </div>
-            {isSearching && (
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            )}
+            {isSearching && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
           </div>
 
           {searchError ? (
@@ -152,9 +143,7 @@ export function TaxonSearchPanel({ onNavigate }: TaxonSearchPanelProps) {
               <span>Buscando taxones...</span>
             </div>
           ) : searchResults.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No se encontraron taxones para esa búsqueda.
-            </p>
+            <p className="text-sm text-muted-foreground">No se encontraron taxones para esa búsqueda.</p>
           ) : (
             <div className="space-y-2">
               {searchResults.map((result) => (
@@ -165,13 +154,9 @@ export function TaxonSearchPanel({ onNavigate }: TaxonSearchPanelProps) {
                   onClick={() => handleSearchResultClick(result.taxonId)}
                 >
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="italic">
-                      {result.scientificName || "(sin nombre)"}
-                    </span>
+                    <span className="italic">{result.scientificName || "(sin nombre)"}</span>
                     {result.scientificNameAuthorship && (
-                      <span className="text-xs text-muted-foreground">
-                        {result.scientificNameAuthorship}
-                      </span>
+                      <span className="text-xs text-muted-foreground">{result.scientificNameAuthorship}</span>
                     )}
                     {result.taxonRank && (
                       <Badge variant="outline" className="text-[10px]">
@@ -185,9 +170,7 @@ export function TaxonSearchPanel({ onNavigate }: TaxonSearchPanelProps) {
                     )}
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground">
-                    {result.family
-                      ? `Familia: ${result.family}`
-                      : "Sin familia registrada"}
+                    {result.family ? `Familia: ${result.family}` : "Sin familia registrada"}
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground">
                     {result.occurrenceCount.toLocaleString("es-PE")} ocurrencias asociadas
@@ -196,12 +179,7 @@ export function TaxonSearchPanel({ onNavigate }: TaxonSearchPanelProps) {
               ))}
 
               {canLoadMoreSearchResults && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleLoadMoreSearchResults}
-                  disabled={isSearching}
-                >
+                <Button variant="outline" size="sm" onClick={handleLoadMoreSearchResults} disabled={isSearching}>
                   {isSearching ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />

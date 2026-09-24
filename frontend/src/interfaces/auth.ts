@@ -1,5 +1,5 @@
 // interface/auth.ts
-import { Role } from '@constants/roles';
+import { Role } from "@constants/roles";
 
 /* =======================
  * Domain models (Frontend)
@@ -13,8 +13,8 @@ export interface BasicUserInfo {
 
 export interface User extends BasicUserInfo {
   role: Role;
-  institutionId?: string | null;   // UUID, alineado al backend
-  institution?: string | null;     // opcional si luego mapeas el nombre
+  institutionId?: string | null; // UUID, alineado al backend
+  institution?: string | null; // opcional si luego mapeas el nombre
 }
 
 /** Contexto de autenticación del front */
@@ -46,19 +46,19 @@ export interface ApiUserOut {
 
 /** Objeto + unión para Visibility */
 export const VISIBILITY = {
-  FULL: 'full',
-  LIMITED: 'limited',
-  NONE: 'none',
+  FULL: "full",
+  LIMITED: "limited",
+  NONE: "none",
 } as const;
 
-export type Visibility = typeof VISIBILITY[keyof typeof VISIBILITY];
+export type Visibility = (typeof VISIBILITY)[keyof typeof VISIBILITY];
 
 /** Respuesta del endpoint /by-email */
 export interface ApiUserLookupResponse {
   found: boolean;
-  sameInstitution?: boolean;   // puede omitirse si visibility='none'
-  visibility: Visibility;      // 'full' | 'limited' | 'none'
-  user?: ApiUserOut;           // presente solo si visibility='full'
+  sameInstitution?: boolean; // puede omitirse si visibility='none'
+  visibility: Visibility; // 'full' | 'limited' | 'none'
+  user?: ApiUserOut; // presente solo si visibility='full'
   message?: string;
 }
 
@@ -70,7 +70,7 @@ export interface UserLookupResult {
   found: boolean;
   sameInstitution?: boolean;
   visibility: Visibility;
-  user: User | null;            // null cuando visibility !== 'full'
+  user: User | null; // null cuando visibility !== 'full'
   message?: string;
 }
 
@@ -110,9 +110,7 @@ export const mapApiLookupToResult = (api: ApiUserLookupResponse): UserLookupResu
 };
 
 /** Type guard: resultado con visibilidad completa y user no-nulo */
-export const isFullVisibility = (
-  r: UserLookupResult
-): r is UserLookupResult & { user: User } =>
+export const isFullVisibility = (r: UserLookupResult): r is UserLookupResult & { user: User } =>
   r.visibility === VISIBILITY.FULL && r.user !== null;
 
 /** Helper: determina si al menos hay info mínima para mostrar en UI */

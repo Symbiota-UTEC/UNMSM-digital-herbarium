@@ -42,11 +42,13 @@ def ensure_database_extensions() -> None:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS unaccent SCHEMA public"))
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA public"))
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis SCHEMA public"))
-        conn.execute(text("""
+        conn.execute(
+            text("""
             CREATE OR REPLACE FUNCTION public.unaccent_immutable(text)
             RETURNS text LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE AS
             $$ BEGIN RETURN public.unaccent($1); END; $$
-        """))
+            """)
+        )
 
 
 def reset_database():

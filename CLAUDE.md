@@ -29,80 +29,38 @@ make stop-all     # stops + removes containers, networks, volumes
 make logs         # live logs
 make ps           # container status
 
-# Frontend only (outside Docker)
+# Frontend only (outside Docker) — see frontend/CLAUDE.md
 cd frontend && npm run dev    # port 3000
 cd frontend && npm run build
-cd frontend && npm run lint
 ```
+
+## Code Quality (pre-commit)
+
+`.pre-commit-config.yaml` runs on every commit, only over the staged files:
+
+- **Everywhere:** trailing whitespace, final newline, line endings, YAML/JSON validity, merge-conflict markers, files > 1 MB.
+- **Backend:** Ruff (`ruff-check --fix` + `ruff-format`, config in `backend/ruff.toml`).
+- **Frontend:** ESLint, Prettier and `tsc --noEmit` (config in `frontend/`; they need `cd frontend && npm install`).
+
+Once per clone: `pip install pre-commit && pre-commit install`. On demand over everything: `pre-commit run --all-files`. When a hook fixes files the commit is aborted: review, `git add` and commit again. Don't skip it with `--no-verify`; whatever slips through is caught by the same command in review. `.editorconfig` mirrors the same rules for editors.
+
+The one-off "format everything" commit is listed in `.git-blame-ignore-revs`; enable it with `git config blame.ignoreRevsFile .git-blame-ignore-revs`.
 
 ## Architecture
 
-### Backend (`backend/`)
+Two independent apps that talk over a REST API (`/api`); each has its own `CLAUDE.md` with the details, its own `README.md`, and follows the same layout: Overview, Project Structure, Architecture, Running Locally, Conventions.
 
-FastAPI app with SQLAlchemy 2.0 ORM, PostgreSQL, and JWT auth. See [`backend/CLAUDE.md`](backend/CLAUDE.md) for full details.
+- **Backend (`backend/`)** — FastAPI + SQLAlchemy 2.0 + PostgreSQL/PostGIS, JWT auth, SeaweedFS for images, in 3 layers (`routers/` → `services/` → `models/`). See [`backend/CLAUDE.md`](backend/CLAUDE.md).
+- **Frontend (`frontend/`)** — React 18 + TypeScript + Vite, Tailwind v4 (pre-compiled), shadcn/ui, OpenLayers. See [`frontend/CLAUDE.md`](frontend/CLAUDE.md).
 
-**Key patterns:**
-- All routes prefixed `/api`, one router file per resource in `routers/`
-- Auth dependencies: `get_current_user`, `require_admin`, `require_superuser` from `auth/jwt.py`
-- Models split by domain under `models/` (one file per aggregate); `models/models.py` re-exports all of them so `from backend.models.models import X` keeps working everywhere. UUID PKs throughout
-- No Alembic — schema changes require manual DDL or `Base.metadata.create_all()`
-- Paginated responses use generic `Page[T]` schema (fields: `items`, `total`, `currentPage`, `totalPages`, etc.)
-
-### Frontend (`frontend/src/`)
-
-React 18 + TypeScript, Vite, Tailwind v4, shadcn/ui components.
-
-**Routing:** `App.tsx` manages all navigation via React Router. `onNavigate(page, params)` is passed to every page component as a prop — pages call it instead of using `useNavigate` directly.
-
-**Service layer:** All API calls go through `@services/*.service.ts` files using `apiFetch` from `useAuth()`. The `apiFetch` wrapper automatically attaches the Bearer token.
-
-**Path aliases (defined in `vite.config.ts`):**
-- `@constants` → `src/constants/`
-- `@config` → `src/config/`
-- `@interfaces` → `src/interfaces/`
-- `@contexts` → `src/contexts/`
-- `@utils` → `src/utils/`
-- `@services` → `src/services/`
-- `@` → `src/`
-
-**UI components:** shadcn/ui components live in `src/components/ui/`. Use `Table`, `Card`, `Badge`, `Button`, `Dialog`, `Select`, `Input`, `Label`, `Textarea` from there.
-
-**Page structure convention:**
-```tsx
-<div className="container mx-auto px-4 py-8">
-  <div className="flex justify-between items-center mb-6">
-    <div>
-      <h1 className="text-3xl font-semibold tracking-tight mb-2">Page Title</h1>
-      <p className="text-sm text-muted-foreground">Subtitle</p>
-    </div>
-    {/* action button */}
-  </div>
-  <Card>
-    <CardHeader>...</CardHeader>
-    <CardContent>
-      <Table>...</Table>
-      {/* pagination */}
-    </CardContent>
-  </Card>
-</div>
-```
-
-### CSS / Theming
-
-**Critical:** `frontend/src/index.css` is the **pre-compiled Tailwind v4 output** — the browser reads this file directly. `frontend/src/styles/globals.css` is the source that needs to be recompiled with Tailwind CLI to update `index.css`.
-
-**To change theme colors without rebuilding:** Edit the `:root` block directly in `index.css` (around line 2642). All theme tokens (`--background`, `--card`, `--foreground`, `--primary`, etc.) live there.
-
-**New Tailwind utility classes** not already present in `index.css` won't apply via Vite HMR. Use inline `style={{}}` props for one-off values, or rebuild Tailwind.
-
-### Sidebar
-
-`PrivateSidebar.tsx` uses hardcoded color constants (`BG`, `BG_HOVER`, `BG_ACTIVE`) rather than CSS variables. Change those constants directly when adjusting sidebar colors.
+Cross-cutting rules that touch both:
+- The API uses camelCase field names (Darwin Core terms) and the frontend types mirror them; a schema change in `backend/schemas/` needs the matching change in `frontend/src/interfaces/` and `services/`.
+- Paginated endpoints return `Page[T]` (`items`, `total`, `currentPage`, `totalPages`, …); the frontend consumes them through `DataTable`.
 
 ## Docker Services
 
 ```yaml
-db          # PostgreSQL 16
+db          # PostGIS (PostgreSQL 16)
 seaweedfs   # Image/file storage
 backend-dev # FastAPI --reload on port 8001
 frontend-dev# Vite dev server on port 5173

@@ -1,6 +1,7 @@
 fastapi
 uvicorn[standard]
 sqlalchemy
+GeoAlchemy2>=0.14,<0.15
 psycopg2-binary
 python-dotenv
 python-jose

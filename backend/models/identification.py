@@ -1,15 +1,16 @@
 """Modelos DwC: Identification e Identifier."""
+
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import String, Text, Boolean, DateTime, ForeignKey, Uuid
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.config.database import Base
 from backend.models.occurrence import Occurrence
-from datetime import datetime
 
 
 class Identifier(Base):

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from backend.config.database import get_db
+from backend.config.settings import peru_admin_resolver
 from backend.schemas.admin_division import (
     AdminDivisionListOut,
     CountryListOut,
@@ -14,6 +15,12 @@ from backend.schemas.admin_division import (
 from backend.services import admin_divisions as admin_divisions_service
 
 router = APIRouter(prefix="/admin-divisions", tags=["admin-divisions"])
+
+
+@router.get("/config")
+def resolver_config():
+    """Public, non-secret setting consumed by the occurrence location picker."""
+    return {"peruResolver": peru_admin_resolver}
 
 
 @router.get("/countries", response_model=CountryListOut)

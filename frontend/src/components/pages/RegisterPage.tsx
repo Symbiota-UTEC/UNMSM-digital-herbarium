@@ -1,13 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { PasswordInput } from "../ui/password-input";
 import { Textarea } from "../ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Separator } from "../ui/separator";
-import { Leaf, Loader2, User, UserCircle } from "lucide-react";
-import { toast } from "sonner@2.0.3";
-import { API } from "@constants/api";
+import { Leaf, Loader2, User } from "lucide-react";
+import { toast } from "sonner";
+import { authService } from "@services/auth.service";
+import { publicFetch } from "@services/http";
 import { AutocompleteInstitution } from "../AutocompleteInstitution";
 
 interface RegisterPageProps {
@@ -35,14 +37,7 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
 
   const [loading, setLoading] = useState(false);
 
-  // fetch sin auth (borra cualquier Authorization que añada el Autocomplete)
-  const unAuthFetch = async (input: RequestInfo, init?: RequestInit) => {
-    const headersObj: Record<string, string> = { ...(init?.headers as Record<string, string>) };
-    if (headersObj && "Authorization" in headersObj) delete headersObj.Authorization;
-    return fetch(input, { ...init, headers: headersObj });
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
     if (!userData.institutionId) {
@@ -73,20 +68,7 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
     };
 
     try {
-      const res = await fetch(`${API.BASE_URL}${API.PATHS.AUTH.REG_REQUEST}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        let errorText = `HTTP ${res.status}`;
-        try {
-          const errJson = await res.json();
-          if (errJson?.detail) errorText = errJson.detail;
-        } catch {}
-        throw new Error(errorText);
-      }
+      await authService.register(body);
 
       toast.success("Solicitud de registro enviada correctamente. Te contactaremos pronto.");
       setUserData({
@@ -105,14 +87,14 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
     }
   };
 
-  const handleUserChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUserChange = (e: ChangeEvent<HTMLInputElement>) => {
     setUserData((prev) => ({
       ...prev,
       [e.target.id]: e.target.value,
     }));
   };
 
-  const handleAgentChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleAgentChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setAgentData((prev) => ({
       ...prev,
       [e.target.id]: e.target.value,
@@ -128,15 +110,38 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
           <CardDescription>Completa el formulario para solicitar acceso al Herbario Digital</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-8">
-            {/* SECCIÓN 1: Información de Usuario */}
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Datos personales, cuenta, institución y contacto en una sola sección */}
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <User className="h-5 w-5 text-primary" />
                 <h3 className="text-lg">Información de Usuario</h3>
               </div>
 
-              <div className="space-y-4 pl-7">
+              <div className="space-y-4">
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="givenName">Nombre(s) *</Label>
+                    <Input
+                      id="givenName"
+                      value={agentData.givenName}
+                      onChange={handleAgentChange}
+                      placeholder="Juan"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="familyName">Apellido(s) *</Label>
+                    <Input
+                      id="familyName"
+                      value={agentData.familyName}
+                      onChange={handleAgentChange}
+                      placeholder="Pérez García"
+                      required
+                    />
+                  </div>
+                </div>
+
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="username">Nombre de Usuario *</Label>
@@ -164,9 +169,9 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="password">Contraseña *</Label>
-                    <Input
+                    <PasswordInput
                       id="password"
-                      type="password"
+                      autoComplete="new-password"
                       value={userData.password}
                       onChange={handleUserChange}
                       placeholder="Mínimo 8 caracteres"
@@ -175,9 +180,9 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="confirmPassword">Confirmar Contraseña *</Label>
-                    <Input
+                    <PasswordInput
                       id="confirmPassword"
-                      type="password"
+                      autoComplete="new-password"
                       value={userData.confirmPassword}
                       onChange={handleUserChange}
                       placeholder="Repite la contraseña"
@@ -190,8 +195,7 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
                 <div className="space-y-2">
                   <Label>Institución / Universidad *</Label>
                   <AutocompleteInstitution
-                    token=""
-                    apiFetch={unAuthFetch}
+                    apiFetch={publicFetch}
                     placeholder="Escribe y selecciona tu institución…"
                     value={instText}
                     onChange={(t) => {
@@ -209,41 +213,6 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
                   )}
                   <p className="text-xs text-muted-foreground">Empieza a escribir para ver sugerencias.</p>
                 </div>
-              </div>
-            </div>
-
-            <Separator />
-
-            {/* SECCIÓN 2: Información de Curador/Agente */}
-            <div>
-              <div className="flex items-center gap-2 mb-4">
-                <UserCircle className="h-5 w-5 text-primary" />
-                <h3 className="text-lg">Información de Curador</h3>
-              </div>
-
-              <div className="space-y-4 pl-7">
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="givenName">Nombre(s) *</Label>
-                    <Input
-                      id="givenName"
-                      value={agentData.givenName}
-                      onChange={handleAgentChange}
-                      placeholder="Juan"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="familyName">Apellido(s) *</Label>
-                    <Input
-                      id="familyName"
-                      value={agentData.familyName}
-                      onChange={handleAgentChange}
-                      placeholder="Pérez García"
-                      required
-                    />
-                  </div>
-                </div>
 
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -254,7 +223,7 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
                       onChange={handleAgentChange}
                       placeholder="0000-0001-2345-6789"
                     />
-                    <p className="text-sm text-muted-foreground">Identificador único de investigador</p>
+                    <p className="text-xs text-muted-foreground">Identificador único de investigador (opcional)</p>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="phone">Teléfono</Label>

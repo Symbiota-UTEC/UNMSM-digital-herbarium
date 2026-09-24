@@ -33,7 +33,7 @@ Adds a new filter field to an existing page that uses `FiltersCard` from `compon
 
    h. Update `filtersActive` boolean to include the new field if it affects the "active" state
 
-5. **Visual hierarchy rules** (from SKILLS.md — must be followed):
+5. **Visual hierarchy rules** (from frontend/CLAUDE.md > "Design rules" and "CSS / Theming" — must be followed):
    - Field labels use `className={filterLabelClass}` (which is `text-xs font-semibold text-muted-foreground`) — never larger
    - `FiltersCard` title stays `text-lg` — always larger than labels
    - Only use Tailwind classes confirmed in the compiled `index.css`. For anything else use inline `style={{}}`:

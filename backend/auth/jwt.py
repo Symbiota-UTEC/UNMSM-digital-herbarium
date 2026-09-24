@@ -7,16 +7,16 @@ from typing import Any, Dict, Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
-from sqlalchemy.orm import Session
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
+from backend.config.auth import (
+    access_token_expire_minutes,
+    algorithm,
+    secret_key,
+)
 from backend.config.database import get_db
 from backend.models.models import User
-from backend.config.auth import (
-    secret_key,
-    algorithm,
-    access_token_expire_minutes,
-)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
@@ -89,10 +89,7 @@ def get_current_user(
     payload: Dict[str, Any] = Depends(get_current_payload),
     db: Session = Depends(get_db),
 ) -> User:
-    user = (
-        db.execute(select(User).where(User.userId == payload["user_id"]))
-        .scalar_one_or_none()
-    )
+    user = db.execute(select(User).where(User.userId == payload["user_id"])).scalar_one_or_none()
     if not user or not user.isActive:
         raise HTTPException(status_code=401, detail="Inactive or missing user")
     return user
@@ -101,6 +98,7 @@ def get_current_user(
 # ==============================
 #  Reglas de autorización
 # ==============================
+
 
 def require_admin(current_user: User = Depends(get_current_user)) -> User:
     """

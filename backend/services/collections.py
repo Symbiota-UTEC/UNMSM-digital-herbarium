@@ -1,33 +1,33 @@
 # backend/services/collections.py
+from typing import List, Literal, Optional
 from uuid import UUID
-from typing import List, Optional, Literal
 
 from fastapi import HTTPException, status
-from sqlalchemy import select, and_, or_, func, case
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, selectinload
 
 from backend.models.models import (
     Collection,
     CollectionPermission,
+    Identification,
     Institution,
-    User,
     Occurrence,
     Taxon,
-    Identification,
+    User,
 )
-from backend.schemas.common.pages import Page
 from backend.schemas.collections import (
-    CollectionOut,
-    CollectionCreate,
-    CollectionAccessUser,
     AddUserToCollectionBody,
+    CollectionAccessUser,
+    CollectionCreate,
+    CollectionOut,
     CollectionPermissionOut,
 )
+from backend.schemas.common.pages import Page
 from backend.schemas.occurrence import OccurrenceBriefItem
 from backend.services.collection_permissions import (
-    user_can_view_collection,
     user_can_manage_collection_permissions,
+    user_can_view_collection,
 )
 
 
@@ -100,10 +100,7 @@ def _build_collections_page(
             my_role = "superuser"
         elif role:
             my_role = role
-        elif (
-            current_user.isInstitutionAdmin
-            and current_user.institutionId == col.institutionId
-        ):
+        elif current_user.isInstitutionAdmin and current_user.institutionId == col.institutionId:
             my_role = "institution_admin"
         else:
             my_role = None
@@ -170,9 +167,7 @@ def get_collections(
     return _build_collections_page(db, current_user, ids_q, limit, offset)
 
 
-def create_collection(
-    db: Session, payload: CollectionCreate, current_user: User
-) -> CollectionOut:
+def create_collection(db: Session, payload: CollectionCreate, current_user: User) -> CollectionOut:
     # Verificar usuario activo
     if not current_user.isActive:
         raise HTTPException(
@@ -214,17 +209,14 @@ def create_collection(
     db.commit()
 
     # Recargar con relaciones
-    col = (
-        db.execute(
-            select(Collection)
-            .where(Collection.collectionId == col.collectionId)
-            .options(
-                selectinload(Collection.institution),
-                selectinload(Collection.creator),
-            )
+    col = db.execute(
+        select(Collection)
+        .where(Collection.collectionId == col.collectionId)
+        .options(
+            selectinload(Collection.institution),
+            selectinload(Collection.creator),
         )
-        .scalar_one()
-    )
+    ).scalar_one()
 
     # Recién creada: sin ocurrencias
     return CollectionOut(
@@ -460,15 +452,11 @@ def add_user_to_collection(
         )
 
     # 3) Usuario objetivo por email (case-insensitive)
-    target = db.execute(
-        select(User).where(User.email.ilike(payload.email))
-    ).scalar_one_or_none()
+    target = db.execute(select(User).where(User.email.ilike(payload.email))).scalar_one_or_none()
     if not target:
         raise HTTPException(status_code=404, detail="Usuario (email) no encontrado")
     if not target.isActive:
-        raise HTTPException(
-            status_code=400, detail="Usuario inactivo: no puede ser agregado"
-        )
+        raise HTTPException(status_code=400, detail="Usuario inactivo: no puede ser agregado")
 
     # 4) Insertar permiso con rol viewer/editor (409 si ya existe cualquier rol)
     perm = CollectionPermission(
@@ -491,10 +479,7 @@ def add_user_to_collection(
         if existing_role:
             raise HTTPException(
                 status_code=409,
-                detail=(
-                    "El usuario ya tiene acceso a esta colección "
-                    f"con rol '{existing_role}'"
-                ),
+                detail=(f"El usuario ya tiene acceso a esta colección con rol '{existing_role}'"),
             )
         raise
 

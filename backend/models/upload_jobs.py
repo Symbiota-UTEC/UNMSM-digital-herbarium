@@ -1,14 +1,26 @@
 """Modelo: TaxonFloraImportJob (seguimiento de importaciones async del backbone Taxon)."""
+
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import String, Text, Integer, BigInteger, Float, DateTime, ForeignKey, Index, Enum, Uuid
+from sqlalchemy import (
+    BigInteger,
+    DateTime,
+    Enum,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    Uuid,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.config.database import Base
-from datetime import datetime
 
 
 class TaxonFloraImportJob(Base):
@@ -33,9 +45,7 @@ class TaxonFloraImportJob(Base):
     )
     stage: Mapped[Optional[str]] = mapped_column("stage", String(255), nullable=True)
     detail: Mapped[Optional[str]] = mapped_column("detail", Text(), nullable=True)
-    errorMessage: Mapped[Optional[str]] = mapped_column(
-        "error_message", Text(), nullable=True
-    )
+    errorMessage: Mapped[Optional[str]] = mapped_column("error_message", Text(), nullable=True)
 
     fileSizeBytes: Mapped[Optional[int]] = mapped_column(
         "file_size_bytes", BigInteger, nullable=True
@@ -75,16 +85,10 @@ class TaxonFloraImportJob(Base):
     createdAt: Mapped[datetime] = mapped_column(
         "created_at", DateTime, nullable=False, default=datetime.utcnow, index=True
     )
-    startedAt: Mapped[Optional[datetime]] = mapped_column(
-        "started_at", DateTime, nullable=True
-    )
-    finishedAt: Mapped[Optional[datetime]] = mapped_column(
-        "finished_at", DateTime, nullable=True
-    )
+    startedAt: Mapped[Optional[datetime]] = mapped_column("started_at", DateTime, nullable=True)
+    finishedAt: Mapped[Optional[datetime]] = mapped_column("finished_at", DateTime, nullable=True)
     uploadedByUserId: Mapped[Optional[uuid.UUID]] = mapped_column(
         "uploaded_by_user_id", ForeignKey("users.user_id"), nullable=True, index=True
     )
 
-    __table_args__ = (
-        Index("ix_taxon_flora_import_job_created_status", "created_at", "status"),
-    )
+    __table_args__ = (Index("ix_taxon_flora_import_job_created_status", "created_at", "status"),)

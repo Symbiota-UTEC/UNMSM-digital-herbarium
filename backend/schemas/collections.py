@@ -1,6 +1,7 @@
-from uuid import UUID
 # backend/schemas/collections.py
-from typing import Optional, Literal
+from typing import Literal, Optional
+from uuid import UUID
+
 from pydantic import EmailStr
 
 from backend.schemas.common.base import ORMBaseModel, StrictBaseModel

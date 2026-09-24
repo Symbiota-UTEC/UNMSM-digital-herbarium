@@ -1,17 +1,20 @@
-import React, {
+import {
   createContext,
+  useCallback,
   useContext,
-  useState,
   useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FC,
+  type ReactNode,
 } from "react";
-
 
 import { User, AuthContextType, mapApiUserToUser } from "@interfaces/auth";
 import { Role } from "@constants/roles";
-import { API } from "@constants/api"
-import { STORAGE_KEYS } from "@constants/storageKeys"
-import { ChartColumnStackedIcon } from "lucide-react";
-
+import { authService } from "@services/auth.service";
+import { createApiFetch } from "@services/http";
+import { STORAGE_KEYS } from "@constants/storageKeys";
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -27,37 +30,47 @@ function decodeJwtPayload(token: string): any | null {
   }
 }
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AuthProvider: FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
 
-  // limpiar cualquier timer de auto-logout
-  const [logoutTimer, setLogoutTimer] = useState<number | null>(null);
+  // Timer de auto-logout. Ref, no estado: así las funciones de abajo mantienen identidad estable.
+  const logoutTimer = useRef<number | null>(null);
 
-  const clearLogoutTimer = () => {
-    if (logoutTimer) {
-      window.clearTimeout(logoutTimer);
-      setLogoutTimer(null);
+  const clearLogoutTimer = useCallback(() => {
+    if (logoutTimer.current) {
+      window.clearTimeout(logoutTimer.current);
+      logoutTimer.current = null;
     }
-  };
+  }, []);
 
-  const scheduleAutoLogout = (jwt: string) => {
+  const logout = useCallback(() => {
     clearLogoutTimer();
-    const payload = decodeJwtPayload(jwt);
-    if (!payload?.exp) return;
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    setToken(null);
+    setUser(null);
 
-    const msUntilExp = payload.exp * 1000 - Date.now();
-    if (msUntilExp <= 0) {
-      // ya expirado
-      logout();
-      return;
-    }
-    // pequeño margen de 1s
-    const id = window.setTimeout(() => {
-      logout();
-    }, msUntilExp + 1000);
-    setLogoutTimer(id);
-  };
+    window.dispatchEvent(new CustomEvent("auth:logged-out"));
+  }, [clearLogoutTimer]);
+
+  const scheduleAutoLogout = useCallback(
+    (jwt: string) => {
+      clearLogoutTimer();
+      const payload = decodeJwtPayload(jwt);
+      if (!payload?.exp) return;
+
+      const msUntilExp = payload.exp * 1000 - Date.now();
+      if (msUntilExp <= 0) {
+        // ya expirado
+        logout();
+        return;
+      }
+      // pequeño margen de 1s
+      logoutTimer.current = window.setTimeout(logout, msUntilExp + 1000);
+    },
+    [clearLogoutTimer, logout],
+  );
 
   // recuperar sesión
   useEffect(() => {
@@ -85,88 +98,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const login = async (email: string, password: string) => {
-    const formData = new URLSearchParams();
-    formData.append("username", email);
-    formData.append("password", password);
+  const login = useCallback(
+    async (email: string, password: string) => {
+      const data = await authService.login(email, password);
 
-    const response = await fetch(`${API.BASE_URL}${API.PATHS.AUTH.LOGIN}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: formData.toString(),
-    });
+      localStorage.setItem(STORAGE_KEYS.TOKEN, data.access_token);
+      setToken(data.access_token);
+      scheduleAutoLogout(data.access_token);
 
-    if (!response.ok) {
-      const txt = await response.text();
-      console.error("Respuesta no OK:", txt);
-      throw new Error("Credenciales incorrectas");
-    }
+      const mappedUser: User = mapApiUserToUser(data.user);
+      setUser(mappedUser);
+      localStorage.setItem("user", JSON.stringify(mappedUser));
 
-    const data = await response.json();
-    console.log(data);
-
-    if (!data.access_token || !data.user) {
-      throw new Error("Respuesta del servidor inválida");
-    }
-
-    localStorage.setItem(STORAGE_KEYS.TOKEN, data.access_token);
-    setToken(data.access_token);
-    scheduleAutoLogout(data.access_token);
-
-    const u = data.user;
-    console.log("user data: ", u)
-    const mappedUser: User = mapApiUserToUser(u);
-
-    setUser(mappedUser);
-    localStorage.setItem("user", JSON.stringify(mappedUser));
-
-    window.dispatchEvent(new CustomEvent("auth:logged-in"));
-  };
-
-  const logout = () => {
-    clearLogoutTimer();
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    setToken(null);
-    setUser(null);
-
-    window.dispatchEvent(new CustomEvent("auth:logged-out"));
-  };
-
-  const apiFetch: AuthContextType["apiFetch"] = async (input, init = {}) => {
-    const headers = new Headers(init.headers || {});
-    if (token) headers.set("Authorization", `Bearer ${token}`);
-    
-    // Si la data es FormData, omitir establecer el Content-Type para que el navegador genere su boundary naturalmente
-    if (init.body instanceof FormData) {
-      headers.delete("Content-Type");
-    } else {
-      headers.set("Content-Type", headers.get("Content-Type") || "application/json");
-    }
-
-    const res = await fetch(input, { ...init, headers });
-
-    if (res.status === 401 || res.status === 403) {
-      logout();
-      throw new Error("No autorizado");
-    }
-    return res;
-  };
-
-  return (
-      <AuthContext.Provider
-          value={{
-            user,
-            token,
-            login,
-            logout,
-            isAuthenticated: !!user,
-            apiFetch,
-          }}
-      >
-        {children}
-      </AuthContext.Provider>
+      window.dispatchEvent(new CustomEvent("auth:logged-in"));
+    },
+    [scheduleAutoLogout],
   );
+
+  const apiFetch = useMemo(() => createApiFetch({ getToken: () => token, onUnauthorized: logout }), [token, logout]);
+
+  const value = useMemo(
+    () => ({ user, token, login, logout, isAuthenticated: !!user, apiFetch }),
+    [user, token, login, logout, apiFetch],
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = () => {

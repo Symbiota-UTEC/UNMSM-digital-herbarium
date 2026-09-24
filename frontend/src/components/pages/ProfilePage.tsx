@@ -1,72 +1,19 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Avatar, AvatarFallback } from "../ui/avatar";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
-import { Mail, Calendar, Building, Award, Loader2 } from "lucide-react";
+import { Mail, Calendar, Building } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@contexts/AuthContext";
-import { API } from "@constants/api";
 import { Role } from "@constants/roles";
-import type { PaginatedResponse } from "@interfaces/utils/pagination";
-import type { CollectionOut } from "@interfaces/collection";
-
-type CollectionsResponse = PaginatedResponse<CollectionOut> | CollectionOut[];
-
-interface UserProfileResponse {
-  userId: string;
-  username: string;
-  email: string;
-  is_active: boolean;
-  is_superuser: boolean;
-  is_institution_admin: boolean;
-  institution_id: string | null;
-  created_at: string | null;
-}
-
-interface OccurrenceListResponse {
-  items?: Array<{ scientificName?: string | null }>;
-  total?: number;
-}
-
-interface StatBuckets {
-  collections: number | null;
-  occurrences: number | null;
-  taxa: number | null;
-  contributions: number | null;
-}
+import { usersService, type UserProfileResponse } from "@services/users.service";
 
 const ROLE_LABELS: Record<Role, string> = {
   [Role.Admin]: "Administrador",
   [Role.InstitutionAdmin]: "Admin. de institución",
   [Role.User]: "Usuario",
-};
-
-const parseJson = async <T,>(res: Response, fallbackMessage: string): Promise<T> => {
-  if (!res.ok) {
-    const detail = await res.text();
-    throw new Error(detail || fallbackMessage);
-  }
-  return (await res.json()) as T;
-};
-
-const extractCollectionsTotal = (payload: CollectionsResponse | null): number | null => {
-  if (!payload) return null;
-  if (Array.isArray(payload)) return payload.length;
-  if (typeof payload.total === "number") return payload.total;
-  if (Array.isArray(payload.items)) return payload.items.length;
-  return null;
-};
-
-const formatNumber = (value: number | string | null | undefined) => {
-  if (value === null || value === undefined || value === "") {
-    return "—";
-  }
-  if (typeof value === "number") {
-    return value.toLocaleString("es-PE");
-  }
-  return value;
 };
 
 const initialsFrom = (primary?: string | null, fallback?: string | null) => {
@@ -93,95 +40,30 @@ const formatDateLong = (value?: string | null) => {
 
 export function ProfilePage() {
   const { user, apiFetch } = useAuth();
-  console.log("ProfilePage user:", user);
   const [profileDetails, setProfileDetails] = useState<UserProfileResponse | null>(null);
-  const [statBuckets, setStatBuckets] = useState<StatBuckets>({
-    collections: null,
-    occurrences: null,
-    taxa: null,
-    contributions: null,
-  });
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    console.log("Fetching profile data for user:", user);
     if (!user) return;
     let isMounted = true;
 
-    const fetchProfileData = async () => {
-      setIsLoading(true);
-      setErrorMessage(null);
-      try {
-        const profilePromise = apiFetch(`${API.BASE_URL}/users/${user.userId}`).then((res) =>
-          parseJson<UserProfileResponse>(res, "No se pudo recuperar tu perfil")
-        );
-
-        const allowedPromise = apiFetch(`${API.BASE_URL}/collections?access=allowed&limit=1&offset=0`).then(
-          async (res) => {
-            const data = await parseJson<CollectionsResponse>(
-              res,
-              "No se pudieron cargar las colecciones compartidas"
-            );
-            return extractCollectionsTotal(data);
-          }
-        );
-
-        const ownedPromise = apiFetch(`${API.BASE_URL}/collections?access=owner&limit=1&offset=0`).then(
-          async (res) => {
-            const data = await parseJson<CollectionsResponse>(
-              res,
-              "No se pudieron cargar tus colecciones"
-            );
-            return extractCollectionsTotal(data);
-          }
-        );
-
-        const occurrencesPromise = apiFetch(
-          `${API.BASE_URL}/occurrences?page=1&page_size=50`
-        ).then((res) =>
-          parseJson<OccurrenceListResponse>(res, "No se pudieron cargar las ocurrencias")
-        );
-
-        const [profile, allowedTotal, ownedTotal, occurrencesData] = await Promise.all([
-          profilePromise,
-          allowedPromise,
-          ownedPromise,
-          occurrencesPromise,
-        ]);
-
+    setIsLoading(true);
+    setErrorMessage(null);
+    usersService
+      .getById(apiFetch, user.userId)
+      .then((profile) => {
+        if (isMounted) setProfileDetails(profile);
+      })
+      .catch((error) => {
         if (!isMounted) return;
-
-        const taxaCount = Array.isArray(occurrencesData.items)
-          ? Array.from(
-              new Set(
-                occurrencesData.items
-                  .map((item) => item.scientificName)
-                  .filter((name): name is string => Boolean(name))
-              )
-            ).length
-          : null;
-
-        setProfileDetails(profile);
-        setStatBuckets({
-          collections: allowedTotal,
-          occurrences: typeof occurrencesData.total === "number" ? occurrencesData.total : null,
-          taxa: taxaCount,
-          contributions: ownedTotal,
-        });
-      } catch (error) {
-        if (!isMounted) return;
-        const message = error instanceof Error ? error.message : "Ocurrió un error al cargar el perfil";
+        const message = error instanceof Error ? error.message : "No se pudo recuperar tu perfil";
         setErrorMessage(message);
         toast.error(message);
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    fetchProfileData();
+      })
+      .finally(() => {
+        if (isMounted) setIsLoading(false);
+      });
 
     return () => {
       isMounted = false;
@@ -207,16 +89,6 @@ export function ProfilePage() {
   const institutionName = user.institution || "Sin institución asignada";
   const memberSince = formatDateLong(profileDetails?.createdAt);
 
-  const stats = useMemo(
-    () => [
-      { label: "Colecciones", value: statBuckets.collections },
-      { label: "Ocurrencias", value: statBuckets.occurrences },
-      { label: "Taxones", value: statBuckets.taxa },
-      { label: "Contribuciones", value: statBuckets.contributions },
-    ],
-    [statBuckets.collections, statBuckets.occurrences, statBuckets.taxa, statBuckets.contributions]
-  );
-
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl">
       <h1 className="text-3xl mb-6">Mi Perfil</h1>
@@ -232,9 +104,7 @@ export function ProfilePage() {
           <Card>
             <CardHeader className="text-center">
               <Avatar className="h-24 w-24 mx-auto mb-4">
-                <AvatarFallback className="bg-primary text-white text-2xl">
-                  {initials}
-                </AvatarFallback>
+                <AvatarFallback className="bg-primary text-white text-2xl">{initials}</AvatarFallback>
               </Avatar>
               <CardTitle>{displayName}</CardTitle>
               <CardDescription>{user.email}</CardDescription>
