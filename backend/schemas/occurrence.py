@@ -321,7 +321,10 @@ class OccurrenceFilters(BaseModel):
 
 class OccurrenceMapPointOut(ORMBaseModel):
     """Punto del mapa. locationType indica cómo se registró la ubicación: point (exacta),
-    circle (punto con coordinateUncertaintyInMeters) o polygon (footprintWKT)."""
+    circle (punto con coordinateUncertaintyInMeters) o polygon (footprintWKT).
+    fullyContained es None sin área de búsqueda; con área (radio y/o polígono), True si
+    esta contiene por completo la ubicación real (su footprint o, si no tiene, su punto)
+    y False si solo la toca —por su incertidumbre podría quedar parcialmente fuera—."""
 
     occurrenceId: UUID
     code: Optional[str] = None
@@ -330,6 +333,7 @@ class OccurrenceMapPointOut(ORMBaseModel):
     lon: float
     locationType: Literal["point", "circle", "polygon"]
     uncertaintyMeters: Optional[float] = None
+    fullyContained: Optional[bool] = None
 
 
 class OccurrenceMapOut(ORMBaseModel):

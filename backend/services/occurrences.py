@@ -39,7 +39,10 @@ from backend.services.collection_permissions import (
     user_can_view_collection,
 )
 from backend.services.geometry import InvalidPolygon, check_simple_polygon
-from backend.services.occurrence_filters import apply_occurrence_filters
+from backend.services.occurrence_filters import (
+    apply_occurrence_filters,
+    build_full_containment_expr,
+)
 
 # =========================
 # Helpers
@@ -416,6 +419,7 @@ def list_occurrence_map_points(
     )
 
     code_expr = func.coalesce(Occurrence.catalogNumber, Occurrence.recordNumber)
+    fully_contained = build_full_containment_expr(filters)
 
     rows_select = _visible_occurrences_select(
         current_user,
@@ -428,6 +432,7 @@ def list_occurrence_map_points(
         lon.label("lon"),
         location_type.label("location_type"),
         Occurrence.coordinateUncertaintyInMeters.label("uncertainty"),
+        fully_contained.label("fully_contained"),
     ).where(lat.isnot(None), lon.isnot(None))
     count_select = _visible_occurrences_select(
         current_user, collection_id, filters, Occurrence.occurrenceId
@@ -446,6 +451,7 @@ def list_occurrence_map_points(
                 lon=r.lon,
                 locationType=r.location_type,
                 uncertaintyMeters=r.uncertainty,
+                fullyContained=r.fully_contained,
             )
             for r in rows
         ],

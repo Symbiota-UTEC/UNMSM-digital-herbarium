@@ -60,6 +60,7 @@ function newEdgeCrosses(vertices: XY[], next: XY): boolean {
 }
 
 const INVALID_MESSAGE = "El polígono no puede cruzarse consigo mismo";
+const NOT_ENOUGH_POINTS_MESSAGE = "El polígono necesita al menos 3 puntos distintos";
 const DOUBLE_CLICK_MS = 400;
 
 /**
@@ -93,6 +94,13 @@ export function createSimplePolygonDraw(
       };
       // Un clic sobre el primer o el último vértice cierra el polígono: lo decide finishCondition.
       if (v.length >= 3 && (near(v[0]) || near(v[v.length - 1]))) return true;
+      // Con menos de 3 vértices, un clic sobre el último (p.ej. el doble clic con el que se
+      // intenta cerrar) no debe colarse como un vértice duplicado: eso deja un punto repetido
+      // que arruina toda validación posterior. Se rechaza con un mensaje claro en su lugar.
+      if (v.length < 3 && near(v[v.length - 1])) {
+        onInvalid(NOT_ENOUGH_POINTS_MESSAGE);
+        return false;
+      }
       if (newEdgeCrosses(v, event.coordinate)) {
         onInvalid(INVALID_MESSAGE);
         return false;
@@ -100,7 +108,12 @@ export function createSimplePolygonDraw(
       return true;
     },
     finishCondition: () => {
-      if (isSimpleRing(vertices())) return true;
+      const v = vertices();
+      if (v.length < 3) {
+        onInvalid(NOT_ENOUGH_POINTS_MESSAGE);
+        return false;
+      }
+      if (isSimpleRing(v)) return true;
       onInvalid(INVALID_MESSAGE);
       return false;
     },

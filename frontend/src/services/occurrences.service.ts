@@ -66,6 +66,9 @@ export interface OccurrenceMapPoint {
   lon: number;
   locationType: OccurrenceLocationType;
   uncertaintyMeters?: number | null;
+  // null sin área de búsqueda; con área, si esta contiene por completo la ubicación real
+  // (footprint o punto) o solo la toca (podría quedar parcialmente fuera por su incertidumbre).
+  fullyContained?: boolean | null;
 }
 
 export interface OccurrenceMapResponse {
