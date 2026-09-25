@@ -1,6 +1,6 @@
 COMPOSE = docker compose
 
-.PHONY: dev prd stop stop-all logs ps seed-admin
+.PHONY: dev prd stop stop-all logs ps seed-admin seed-geo seed-all reset-db
 
 ## Auto-refresh: backend --reload + Vite HMR (sin build, cambios en vivo)
 ## Frontend: http://localhost:5173 | Backend: http://localhost:8001
@@ -28,10 +28,25 @@ logs:
 ps:
 	$(COMPOSE) ps
 
-## Crea el admin por defecto y siembra países + divisiones administrativas (INEI + GeoNames).
-## No corre solo con `make dev`: hay que lanzarlo a mano una vez el backend esté healthy.
-## Uso: make seed-admin [ADM3="BR,MX"] para añadir nivel 3 de otros países
+## ¡Destructivo! Borra todas las tablas y las recrea vacías. Solo backend-dev (make dev);
+## no se corre solo, hay que lanzarlo a mano cuando de verdad quieras una base limpia.
+reset-db:
+	$(COMPOSE) exec -T backend-dev python -m backend.scripts.reset_database
+
+# Ninguno de los siguientes corre solo con `make dev`: se lanzan a mano una vez el backend
+# esté healthy. SERVICE=backend-dev por defecto (make dev); usa SERVICE=backend para sembrar
+# contra `make prd`.
 ADM3 ?=
+SERVICE ?= backend-dev
+
+## Crea el admin por defecto. Uso: make seed-admin [SERVICE=backend]
 seed-admin:
-	$(COMPOSE) exec -T backend-dev python -m backend.scripts.create_admin
-	$(COMPOSE) exec -T backend-dev python -m backend.scripts.seed_admin_divisions $(if $(ADM3),--adm3 $(ADM3),)
+	$(COMPOSE) exec -T $(SERVICE) python -m backend.scripts.create_admin
+
+## Siembra países + divisiones administrativas (INEI + GeoNames).
+## Uso: make seed-geo [ADM3="BR,MX"] [SERVICE=backend] — ADM3 añade nivel 3 de otros países
+seed-geo:
+	$(COMPOSE) exec -T $(SERVICE) python -m backend.scripts.seed_admin_divisions $(if $(ADM3),--adm3 $(ADM3),)
+
+## Admin + divisiones administrativas, en ese orden. Uso: make seed-all [ADM3="BR,MX"] [SERVICE=backend]
+seed-all: seed-admin seed-geo

@@ -173,10 +173,13 @@ Run from the **repo root** (the package is `backend`, so `backend.main` must be 
 
 ```bash
 pip install -r backend/requirements.txt
-python -m backend.scripts.create_models     # create tables
 python -m backend.scripts.create_admin      # default institution + admin
 python -m uvicorn backend.main:app --reload --port 8000
 ```
+
+Tables and extensions are created on import by `main.py` itself (see "Database Initialization"
+below) — no separate table-creation step needed. Want a clean slate instead? `python -m
+backend.scripts.reset_database` drops and recreates the whole `public` schema (destructive).
 
 Interactive docs: `http://localhost:8000/docs`
 
@@ -194,7 +197,7 @@ If a rule is wrong for a specific file, add a `per-file-ignores` entry with the 
 
 ### Start (Docker)
 
-From the repo root: `make dev` (backend with `--reload` on http://localhost:8001, plus db, SeaweedFS and the frontend) or `make prd` (backend on http://localhost:8000). Neither creates the default admin — `make seed-admin` does that (`scripts/create_admin.py`) plus the administrative-divisions catalog, once the backend container is healthy. See the root `CLAUDE.md`.
+From the repo root: `make dev` (backend with `--reload` on http://localhost:8001, plus db, SeaweedFS and the frontend) or `make prd` (backend on http://localhost:8000). Neither wipes the database on start (see "Database Initialization") and neither creates the default admin or the admin-divisions catalog — `make seed-admin` (`scripts/create_admin.py`), `make seed-geo` (`scripts/seed_admin_divisions.py`) and `make seed-all` (both) do that once the backend container is healthy; all three default to `backend-dev` and take `SERVICE=backend` to target `make prd` instead. Want a clean local database? `make reset-db` (destructive, `backend-dev` only, run on demand — never part of `make dev` itself). See the root `CLAUDE.md`.
 
 ---
 
@@ -297,10 +300,21 @@ attribute filters (collector, family, dates…) are ANDed on top.
 `limit`, default 5000, with `truncated` when there were more) for the map view.
 Each point carries a `locationType` (`point` exact, `circle` = point with
 `coordinateUncertaintyInMeters`, `polygon` = `footprintWKT`) and
-`uncertaintyMeters`; the UI only uses them to tell exact from approximate
-locations. With no area it returns every record that has coordinates. A
-polygon-only record with no lat/lon is drawn at `ST_PointOnSurface` of its
-polygon — display only, nothing stored.
+`uncertaintyMeters`, which the UI uses to describe how a record was located
+(exact point vs. circle vs. polygon). With no area it returns every record
+that has coordinates. A polygon-only record with no lat/lon is drawn at
+`ST_PointOnSurface` of its polygon — display only, nothing stored.
+
+Each point also carries `fullyContained` (`build_full_containment_expr` in
+`services/occurrence_filters.py`): `None` with no area; with an area (radius
+and/or polygon), `True` if it fully contains the record's real shape
+(`footprintGeom`, or the point if there's no footprint) and `False` if it only
+touches it — i.e. the record matched the filter but, because of its own
+uncertainty circle or polygon, part of it could actually be outside the
+searched area. The UI colors these two cases differently on the map so a
+"confirmed" match is visually distinct from a "possibly outside" one; this has
+nothing to do with `locationType`, which is about how the record was located,
+not whether it fits the current search.
 
 The paginated list and the map share `_visible_occurrences_select()` in
 `services/occurrences.py`, so they apply identical access rules and filters.
@@ -422,7 +436,15 @@ On startup, `main.py` calls:
 Base.metadata.create_all(bind=engine)
 ```
 
-This creates any missing tables but does not run migrations. There is no Alembic setup — schema changes require manual table alterations or a `reset_database()` call (destructive).
+This creates any missing tables but does not run migrations, and it never drops or touches
+existing data — it runs unconditionally on every start (`make dev`, `make prd`, or importing
+`backend.main` directly), by design. There is no Alembic setup — a real schema change (renaming
+or dropping a column, changing a type) needs manual DDL, since `create_all()` only adds what's
+missing.
+
+For a full wipe (drop `public` and recreate it empty), `scripts/reset_database.py` calls
+`reset_database()` — destructive, opt-in only, wired into `make reset-db` (`backend-dev`, not the
+production `backend` service). It is never part of the normal startup path.
 
 ---
 

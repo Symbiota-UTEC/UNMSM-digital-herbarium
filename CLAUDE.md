@@ -22,6 +22,12 @@ make dev          # Frontend: http://localhost:5173 | Backend: http://localhost:
 # Production (rebuilds without cache)
 make prd
 
+# Backend data (run by hand, never automatic)
+make seed-admin   # default admin (SERVICE=backend for make prd)
+make seed-geo     # countries + admin-divisions catalog (SERVICE=backend for make prd)
+make seed-all     # both of the above, once backend-dev is healthy
+make reset-db     # destructive: wipes and recreates all tables (backend-dev only)
+
 # Stop/teardown
 make stop         # stops containers (keeps data)
 make stop-all     # stops + removes containers, networks, volumes

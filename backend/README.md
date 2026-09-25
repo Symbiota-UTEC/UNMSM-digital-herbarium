@@ -14,16 +14,20 @@ The easiest way is Docker, from the repo root:
 cp .env.sample .env                              # Postgres credentials for docker compose
 cp backend/config/.env.sample backend/config/.env   # backend settings (set SECRET_KEY)
 make dev                                         # API on http://localhost:8001
-make seed-admin                                  # once backend-dev is healthy: default admin + admin divisions
+make seed-all                                    # once backend-dev is healthy: default admin + admin divisions
 ```
 
 Interactive docs (Swagger): http://localhost:8001/docs
+
+Neither `make dev` nor `make prd` ever wipes the database — tables and extensions are created
+automatically (see "Database Initialization" in [`CLAUDE.md`](CLAUDE.md)). Want a clean local
+database instead? `make reset-db` (destructive, `backend-dev` only, run it yourself when you
+actually want one).
 
 Without Docker (from the repo root, with a PostGIS database reachable as configured in `backend/config/.env`):
 
 ```bash
 pip install -r backend/requirements.txt
-python -m backend.scripts.create_models     # create tables
 python -m backend.scripts.create_admin      # default institution + admin user
 python -m uvicorn backend.main:app --reload --port 8000
 ```
@@ -46,7 +50,7 @@ services/   Business logic, permissions, queries
 models/     SQLAlchemy entities (one file per aggregate)
 schemas/    Pydantic input/output models
 auth/       JWT and role dependencies
-scripts/    create_models.py, create_admin.py
+scripts/    create_admin.py, seed_admin_divisions.py, reset_database.py (destructive, opt-in — see make reset-db)
 samples/    Sample files (e.g. a small WFO CSV to try the taxonomy import)
 ```
 
