@@ -280,23 +280,75 @@ export const readFileBytes = (file: File): Promise<Uint8Array> =>
 // ==============================
 // CSV utils
 // ==============================
-const splitCSVLine = (line: string): string[] => {
-  const parts = line.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/g);
-  return parts.map((c) => {
-    let v = c.trim();
-    if (v.startsWith('"') && v.endsWith('"')) v = v.slice(1, -1);
-    v = v.replace(/""/g, '"');
-    return v;
-  });
+const parseCSVAll = (csvContent: string): { headers: string[]; rows: string[][] } => {
+  const records: string[][] = [];
+  let record: string[] = [];
+  let field = "";
+  let inQuotes = false;
+  let recordHasContent = false;
+
+  const finishField = () => {
+    let value = field.trim();
+    if (value.startsWith('"') && value.endsWith('"')) value = value.slice(1, -1);
+    record.push(value.replace(/""/g, '"'));
+    field = "";
+  };
+
+  const finishRecord = () => {
+    finishField();
+    if (recordHasContent) records.push(record);
+    record = [];
+    recordHasContent = false;
+  };
+
+  for (let i = 0; i < csvContent.length; i++) {
+    const char = csvContent[i];
+
+    if (char === '"') {
+      if (inQuotes && csvContent[i + 1] === '"') {
+        field += '""';
+        i++;
+      } else {
+        if (inQuotes || field.trim().length === 0) inQuotes = !inQuotes;
+        field += char;
+      }
+      recordHasContent = true;
+    } else if (!inQuotes && char === ",") {
+      finishField();
+      recordHasContent = true;
+    } else if (!inQuotes && (char === "\n" || char === "\r")) {
+      finishRecord();
+      if (char === "\r" && csvContent[i + 1] === "\n") i++;
+    } else {
+      field += char;
+      if (char.trim().length > 0) recordHasContent = true;
+    }
+  }
+
+  if (inQuotes) throw new Error("El CSV contiene comillas sin cerrar.");
+  if (field.length > 0 || record.length > 0) finishRecord();
+
+  return { headers: records[0] ?? [], rows: records.slice(1) };
 };
 
-const parseCSVAll = (csvContent: string): { headers: string[]; rows: string[][] } => {
-  const lines = csvContent.split(/\r?\n/).filter((l) => l.trim().length > 0);
-  if (lines.length === 0) return { headers: [], rows: [] };
-  const headers = splitCSVLine(lines[0]);
-  const rows = lines.slice(1).map(splitCSVLine);
-  return { headers, rows };
+const findRepeatedHeaders = (headers: string[]): Array<{ header: string; positions: number[] }> => {
+  const positionsByHeader = new Map<string, number[]>();
+  headers.forEach((header, index) => {
+    const normalized = header.trim();
+    const positions = positionsByHeader.get(normalized) ?? [];
+    positions.push(index + 1);
+    positionsByHeader.set(normalized, positions);
+  });
+
+  return Array.from(positionsByHeader.entries())
+    .filter(([, positions]) => positions.length > 1)
+    .map(([header, positions]) => ({ header: header || "(vacío)", positions }));
 };
+
+const repeatedHeaderMessage = (duplicates: Array<{ header: string; positions: number[] }>) =>
+  `Encabezados de origen repetidos: ${duplicates
+    .map(({ header, positions }) => `"${header}" (columnas ${positions.join(", ")})`)
+    .join("; ")}`;
 
 const csvEscape = (v: string): string => {
   if (/[",\n\r]/.test(v)) {
@@ -366,21 +418,22 @@ export function CSVImportPage({ collectionId, onNavigate }: CSVImportPageProps) 
     return "ignore";
   };
 
-  // Reglas adicionales para requeridos:
-  // - Grupo alternativo: al menos uno entre catalogNumber o recordNumber
-  const REQUIRED_VALUES = useMemo(
-    () => ({
-      alternatives: [["Occurrence.catalogNumber", "Occurrence.recordNumber"]],
-      required: [] as string[],
-    }),
-    [],
-  );
+  // La carga CSV requiere solo catalogNumber; los formularios usan otras reglas.
+  const CATALOG_TARGET = "Occurrence.catalogNumber";
 
-  // Obligatorios según el esquema (todos los DwCFieldOption con required: true)
-  const REQUIRED_FROM_SCHEMA = useMemo(
-    () => new Set(ALL_FIELDS.filter((f) => f.required).map((f) => f.value)),
-    [ALL_FIELDS],
-  );
+  const clearCsvState = () => {
+    setCSVFile(null);
+    setCsvBytes(null);
+    setEncodingUsed("utf-8");
+    setEncodingAuto(true);
+    setColumns([]);
+    setColumnMapping({});
+    setRowCount(0);
+    setRawCSVText("");
+    setCSVHeaders([]);
+    setCSVRows([]);
+    setShowConfirmDialog(false);
+  };
 
   const headerDupReport = useMemo(() => {
     const ALLOW_MULTI_MAP = new Set<string>(["Occurrence.dynamicProperties"]);
@@ -404,30 +457,40 @@ export function CSVImportPage({ collectionId, onNavigate }: CSVImportPageProps) 
   }, [columnMapping, FIELD_OPTIONS]);
 
   const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const fileInput = e.currentTarget;
     const file = e.target.files?.[0];
     if (!file) return;
     if (!(file.type === "text/csv" || file.name.toLowerCase().endsWith(".csv"))) {
+      clearCsvState();
+      fileInput.value = "";
       toast.error("Por favor, selecciona un archivo .csv");
       return;
     }
     try {
-      setCSVFile(file);
       setIsProcessing(true);
 
       const bytes = await readFileBytes(file);
-      setCsvBytes(bytes);
-
       const { text, encoding } = guessDecode(bytes);
-      setEncodingUsed(encoding);
-      setEncodingAuto(true);
-
       const { headers, rows } = parseCSVAll(text);
       if (headers.length === 0 || rows.length === 0) {
+        clearCsvState();
+        fileInput.value = "";
         toast.error("El archivo CSV debe tener encabezados y al menos una fila de datos");
-        setIsProcessing(false);
         return;
       }
 
+      const repeatedHeaders = findRepeatedHeaders(headers);
+      if (repeatedHeaders.length > 0) {
+        clearCsvState();
+        fileInput.value = "";
+        toast.error(repeatedHeaderMessage(repeatedHeaders));
+        return;
+      }
+
+      setCSVFile(file);
+      setCsvBytes(bytes);
+      setEncodingUsed(encoding);
+      setEncodingAuto(true);
       setRawCSVText(text);
       setCSVHeaders(headers);
       setCSVRows(rows);
@@ -449,6 +512,8 @@ export function CSVImportPage({ collectionId, onNavigate }: CSVImportPageProps) 
       toast.success(`Archivo cargado (${encoding}). Filas detectadas: ${rows.length}`);
     } catch (err) {
       console.error(err);
+      clearCsvState();
+      fileInput.value = "";
       toast.error("No se pudo leer el CSV.");
     } finally {
       setIsProcessing(false);
@@ -460,6 +525,16 @@ export function CSVImportPage({ collectionId, onNavigate }: CSVImportPageProps) 
     try {
       const text = decodeWith(csvBytes, enc);
       const { headers, rows } = parseCSVAll(text);
+      if (headers.length === 0 || rows.length === 0) {
+        toast.error("El archivo CSV debe tener encabezados y al menos una fila de datos");
+        return;
+      }
+      const repeatedHeaders = findRepeatedHeaders(headers);
+      if (repeatedHeaders.length > 0) {
+        toast.error(repeatedHeaderMessage(repeatedHeaders));
+        return;
+      }
+
       setRawCSVText(text);
       setCSVHeaders(headers);
       setCSVRows(rows);
@@ -504,61 +579,30 @@ export function CSVImportPage({ collectionId, onNavigate }: CSVImportPageProps) 
   };
 
   const handleRemoveFile = () => {
-    setCSVFile(null);
-    setCsvBytes(null);
-    setEncodingUsed("utf-8");
-    setEncodingAuto(true);
-    setColumns([]);
-    setColumnMapping({});
-    setRowCount(0);
-    setRawCSVText("");
-    setCSVHeaders([]);
-    setCSVRows([]);
+    clearCsvState();
   };
 
-  // Validación de obligatorios (campo required:true + reglas de grupo)
+  // Validación de la columna y sus valores antes de enviar el archivo.
   const validateRequired = (): { ok: boolean; messages: string[] } => {
-    const chosen = Object.values(columnMapping);
     const messages: string[] = [];
-
-    // 1) Grupos de alternativas (p.ej. catalogNumber O recordNumber)
-    for (const group of REQUIRED_VALUES.alternatives) {
-      if (!group.some((g) => chosen.includes(g))) {
-        const labels = group
-          .map((g) => {
-            const opt = ALL_FIELDS.find((f) => f.value === g);
-            return opt ? opt.label : `dwc:${g.replace(".", ":")}`;
-          })
-          .join(" o ");
-        messages.push(`Debes mapear al menos uno: ${labels}`);
+    const catalogIndex = csvHeaders.findIndex((header) => columnMapping[header] === CATALOG_TARGET);
+    if (catalogIndex < 0) {
+      messages.push("Debes mapear dwc:Occurrence:catalogNumber");
+    } else {
+      const seen = new Set<string>();
+      for (const [index, row] of csvRows.entries()) {
+        const number = (row[catalogIndex] ?? "").trim();
+        if (!/^[0-9]{1,100}$/.test(number)) {
+          messages.push(`Fila ${index + 1}: el número de catálogo debe contener entre 1 y 100 dígitos`);
+          break;
+        }
+        if (seen.has(number)) {
+          messages.push(`Fila ${index + 1}: número de catálogo duplicado (${number})`);
+          break;
+        }
+        seen.add(number);
       }
     }
-
-    // 2) Obligatorios tomados de DWC_FIELDS (required:true),
-    // excluyendo los que forman parte de grupos alternativos o REQUIRED_VALUES.required
-    const schemaRequired = new Set(REQUIRED_FROM_SCHEMA);
-    for (const group of REQUIRED_VALUES.alternatives) {
-      group.forEach((term) => schemaRequired.delete(term));
-    }
-    REQUIRED_VALUES.required.forEach((term) => schemaRequired.delete(term));
-
-    // 3) Obligatorios explícitos en REQUIRED_VALUES.required
-    for (const req of REQUIRED_VALUES.required) {
-      if (!chosen.includes(req)) {
-        const opt = ALL_FIELDS.find((f) => f.value === req);
-        const label = opt ? opt.label : `dwc:${req.replace(".", ":")}`;
-        messages.push(`Campo obligatorio no mapeado: ${label}`);
-      }
-    }
-
-    // 4) Obligatorios de esquema restantes
-    schemaRequired.forEach((req) => {
-      if (!chosen.includes(req)) {
-        const opt = ALL_FIELDS.find((f) => f.value === req);
-        const label = opt ? opt.label : `dwc:${req.replace(".", ":")}`;
-        messages.push(`Campo obligatorio no mapeado: ${label}`);
-      }
-    });
 
     return { ok: messages.length === 0, messages };
   };
@@ -729,7 +773,13 @@ export function CSVImportPage({ collectionId, onNavigate }: CSVImportPageProps) 
           return;
         } catch (err) {
           if (!(err instanceof ApiError)) throw err;
-          const txt = err.detail ?? "";
+          let txt = err.detail ?? "";
+          try {
+            const parsed = JSON.parse(txt);
+            if (typeof parsed.detail === "string") txt = parsed.detail;
+          } catch {
+            // Some API errors are plain text.
+          }
 
           if (err.status === 400) {
             lastText = txt;
@@ -740,6 +790,8 @@ export function CSVImportPage({ collectionId, onNavigate }: CSVImportPageProps) 
               continue;
             }
             toast.error(txt || "CSV inválido. Revisa los encabezados y el formato.");
+          } else if (err.status === 409) {
+            toast.error(txt || "El número de catálogo ya existe en esta institución.");
           } else if (err.status === 403) {
             toast.error("No tienes permisos para importar en esta colección.");
           } else if (err.status === 404) {
@@ -775,42 +827,6 @@ export function CSVImportPage({ collectionId, onNavigate }: CSVImportPageProps) 
     () => Object.values(columnMapping).filter((v) => v && v !== "ignore").length,
     [columnMapping],
   );
-
-  // Resumen de requeridos (grupos alternativos + obligatorios de esquema)
-  const requiredSummary = useMemo(() => {
-    const alt = REQUIRED_VALUES.alternatives
-      .map((group) =>
-        group
-          .map((g) => {
-            const opt = ALL_FIELDS.find((f) => f.value === g);
-            return opt ? opt.label : `dwc:${g.replace(".", ":")}`;
-          })
-          .join(" o "),
-      )
-      .join(" • ");
-
-    const schemaRequired = new Set(REQUIRED_FROM_SCHEMA);
-    for (const group of REQUIRED_VALUES.alternatives) {
-      group.forEach((term) => schemaRequired.delete(term));
-    }
-    REQUIRED_VALUES.required.forEach((term) => schemaRequired.delete(term));
-
-    const reqList: string[] = [];
-
-    REQUIRED_VALUES.required.forEach((g) => {
-      const opt = ALL_FIELDS.find((f) => f.value === g);
-      reqList.push(opt ? opt.label : `dwc:${g.replace(".", ":")}`);
-    });
-
-    schemaRequired.forEach((g) => {
-      const opt = ALL_FIELDS.find((f) => f.value === g);
-      reqList.push(opt ? opt.label : `dwc:${g.replace(".", ":")}`);
-    });
-
-    const req = reqList.join(" • ");
-
-    return { alt, req };
-  }, [REQUIRED_VALUES, ALL_FIELDS, REQUIRED_FROM_SCHEMA]);
 
   if (collectionError || (collection && !collection.canEdit)) {
     return (
@@ -885,7 +901,6 @@ export function CSVImportPage({ collectionId, onNavigate }: CSVImportPageProps) 
                 </label>
               </div>
               <p className="text-sm text-muted-foreground">Formatos aceptados: .csv</p>
-              <p className="text-xs text-muted-foreground mt-2">Tamaño máximo: 10 MB</p>
             </div>
           </CardContent>
         </Card>
@@ -946,13 +961,7 @@ export function CSVImportPage({ collectionId, onNavigate }: CSVImportPageProps) 
                 <CheckCircle className="h-4 w-4" />
                 <AlertDescription>
                   {mappedCount} de {columns.length} columnas mapeadas • Requisitos:{" "}
-                  <span className="font-medium">{requiredSummary.alt}</span>
-                  {requiredSummary.req && (
-                    <>
-                      {" "}
-                      y <span className="font-medium">{requiredSummary.req}</span>
-                    </>
-                  )}
+                  <span className="font-medium">dwc:Occurrence:catalogNumber (dígitos por fila)</span>
                 </AlertDescription>
               </Alert>
 
@@ -1006,7 +1015,7 @@ export function CSVImportPage({ collectionId, onNavigate }: CSVImportPageProps) 
                             {FIELD_OPTIONS.map((opt) => (
                               <SelectItem key={opt.value} value={opt.value}>
                                 {labelFor(opt)}
-                                {opt.required ? " *" : opt.recommended ? " •" : ""}
+                                {opt.value === CATALOG_TARGET ? " *" : opt.recommended ? " •" : ""}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -1018,7 +1027,7 @@ export function CSVImportPage({ collectionId, onNavigate }: CSVImportPageProps) 
               </Table>
 
               <div className="text-xs text-muted-foreground mt-3">
-                * obligatorio • recomendado — Para Occurrence, las opciones aparecen como{" "}
+                * obligatorio para la importación • recomendado — Para Occurrence, las opciones aparecen como{" "}
                 <code className="px-1 rounded bg-muted">dwc:Entidad:termino</code>.
               </div>
             </CardContent>
