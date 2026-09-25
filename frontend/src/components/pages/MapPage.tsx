@@ -58,8 +58,8 @@ type AreaMode = "none" | "radius" | "polygon";
 type Certainty = "confirmed" | "uncertain";
 
 const CERTAINTY_STYLE: Record<Certainty, { color: string; label: string }> = {
-  confirmed: { color: "#166534", label: "Dentro del área buscada" },
-  uncertain: { color: "#4ade80", label: "Podría quedar fuera (por su incertidumbre)" },
+  confirmed: { color: "#2e7d32", label: "Dentro del área buscada" },
+  uncertain: { color: "#81c784", label: "Podría quedar fuera (por su incertidumbre)" },
 };
 
 const certaintyOf = (p: OccurrenceMapPoint): Certainty => (p.fullyContained === false ? "uncertain" : "confirmed");
@@ -83,11 +83,12 @@ const pointStyles = Object.fromEntries(
   ]),
 ) as Record<Certainty, Style>;
 
-// Azul marino: distinto de los verdes de resultado, para que el punto/área de búsqueda no se confunda con ellos.
-const QUERY_COLOR = "#1e3a8a";
+// Rojo del sistema (el mismo de utils/mapStyles.ts): igual que en el resto de la app,
+// para el punto y el área de búsqueda — distinto de los verdes de resultado.
+const QUERY_COLOR = "#b91c1c";
 
 const areaStyle = new Style({
-  fill: new Fill({ color: "rgba(30, 58, 138, 0.12)" }),
+  fill: new Fill({ color: "rgba(185, 28, 28, 0.12)" }),
   stroke: new Stroke({ color: QUERY_COLOR, width: 2, lineDash: [6, 4] }),
 });
 
@@ -97,6 +98,21 @@ const centerStyle = new Style({
     fill: new Fill({ color: QUERY_COLOR }),
     stroke: new Stroke({ color: "#ffffff", width: 2 }),
   }),
+});
+
+// Resalte de la geometría propia de la ocurrencia seleccionada (su polígono o círculo de
+// incertidumbre): un verde distinto de los dos de CERTAINTY_STYLE (más intenso, con un
+// matiz esmeralda) para que se note como un resalte y no como un tercer nivel de certeza.
+const SELECTED_COLOR = "#059669";
+
+const selectedPolygonStyle = new Style({
+  fill: new Fill({ color: "rgba(5, 150, 105, 0.15)" }),
+  stroke: new Stroke({ color: SELECTED_COLOR, width: 2 }),
+});
+
+const selectedCircleStyle = new Style({
+  fill: new Fill({ color: "rgba(5, 150, 105, 0.08)" }),
+  stroke: new Stroke({ color: SELECTED_COLOR, width: 2, lineDash: [4, 3] }),
 });
 
 const LIMA: [number, number] = [-77.0428, -12.0464]; // [lon, lat]
@@ -187,6 +203,7 @@ export function MapPage({ onNavigate }: MapPageProps) {
   const pointsSourceRef = useRef<VectorSource>(new VectorSource());
   const polygonSourceRef = useRef<VectorSource>(new VectorSource());
   const radiusSourceRef = useRef<VectorSource>(new VectorSource());
+  const selectedGeomSourceRef = useRef<VectorSource>(new VectorSource());
   const polygonLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const radiusLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const drawRef = useRef<Draw | null>(null);
@@ -207,9 +224,11 @@ export function MapPage({ onNavigate }: MapPageProps) {
     const pointsSource = pointsSourceRef.current;
     const polygonSource = polygonSourceRef.current;
     const radiusSource = radiusSourceRef.current;
+    const selectedGeomSource = selectedGeomSourceRef.current;
 
     const polygonLayer = new VectorLayer({ source: polygonSource, style: areaStyle });
     const radiusLayer = new VectorLayer({ source: radiusSource, style: areaStyle });
+    const selectedGeomLayer = new VectorLayer({ source: selectedGeomSource });
     const pointsLayer = new VectorLayer({ source: pointsSource });
     polygonLayerRef.current = polygonLayer;
     radiusLayerRef.current = radiusLayer;
@@ -220,7 +239,7 @@ export function MapPage({ onNavigate }: MapPageProps) {
 
     const map = new Map({
       target: host,
-      layers: [baseLayer, polygonLayer, radiusLayer, pointsLayer],
+      layers: [baseLayer, polygonLayer, radiusLayer, selectedGeomLayer, pointsLayer],
       view: new View({ center: fromLonLat(LIMA), zoom: 11, minZoom: MAP_MIN_ZOOM, maxZoom: MAP_MAX_ZOOM }),
       controls: createMapControls(),
       interactions: createMapInteractions(),
@@ -312,6 +331,49 @@ export function MapPage({ onNavigate }: MapPageProps) {
       source.addFeature(new Feature(circle));
     }
   }, [center, radiusM]);
+
+  // Geometría propia de la ocurrencia seleccionada: su polígono, su círculo de incertidumbre
+  // o nada si es un punto exacto. El /map no trae footprintWKT (pesaría con miles de puntos),
+  // así que se pide la ocurrencia completa recién al seleccionarla.
+  useEffect(() => {
+    const source = selectedGeomSourceRef.current;
+    source.clear();
+    if (!selected) return;
+
+    let cancelled = false;
+    occurrencesService
+      .getById(apiFetch, selected.occurrenceId)
+      .then((occ) => {
+        if (cancelled) return;
+        const polygon = wktToPolygon(occ.footprintWKT);
+        if (polygon) {
+          const feature = new Feature(polygon.clone());
+          feature.setStyle(selectedPolygonStyle);
+          source.addFeature(feature);
+        } else if (
+          occ.decimalLatitude != null &&
+          occ.decimalLongitude != null &&
+          occ.coordinateUncertaintyInMeters != null &&
+          occ.coordinateUncertaintyInMeters > 0
+        ) {
+          const circle = circular(
+            [occ.decimalLongitude, occ.decimalLatitude],
+            occ.coordinateUncertaintyInMeters,
+            64,
+          ).transform("EPSG:4326", "EPSG:3857");
+          const feature = new Feature(circle);
+          feature.setStyle(selectedCircleStyle);
+          source.addFeature(feature);
+        }
+      })
+      .catch(() => {
+        // silencioso: si falla la consulta, simplemente no se resalta la geometría
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selected, apiFetch]);
 
   const drawnPolygon = () => polygonSourceRef.current.getFeatures().at(-1)?.getGeometry() as Polygon | undefined;
 
