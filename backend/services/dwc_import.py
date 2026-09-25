@@ -316,7 +316,9 @@ def import_dwc_csv(db: Session, collection_id: UUID, file: UploadFile, current_u
                             occ_d[field] = val
 
                 elif entity == "Location":
-                    if field in {
+                    if field == "locationID":
+                        occ_d["locationId"] = val
+                    elif field in {
                         "decimalLatitude",
                         "decimalLongitude",
                         "coordinateUncertaintyInMeters",
@@ -339,7 +341,7 @@ def import_dwc_csv(db: Session, collection_id: UUID, file: UploadFile, current_u
                     tax_d[field] = val
 
                 elif entity == "Identification":
-                    if field in {"isCurrent", "isVerified"}:
+                    if field == "isCurrent":
                         ident_d[field] = _to_bool(val)
                     else:
                         ident_d[field] = val
@@ -379,10 +381,6 @@ def import_dwc_csv(db: Session, collection_id: UUID, file: UploadFile, current_u
             stats["occurrencesInserted"] += 1
 
             # -------- Identificación + Identifiers --------
-            is_verified = ident_d.get("isVerified")
-            if is_verified is None:
-                is_verified = False
-
             identification_obj = Identification(
                 occurrenceId=occ.occurrenceId,
                 taxonId=taxon_obj.taxonId if taxon_obj is not None else None,
@@ -390,7 +388,7 @@ def import_dwc_csv(db: Session, collection_id: UUID, file: UploadFile, current_u
                 scientificNameAuthorship=sci_auth,
                 dateIdentified=ident_d.get("dateIdentified"),
                 isCurrent=True,
-                isVerified=is_verified,
+                identificationVerificationStatus=ident_d.get("identificationVerificationStatus"),
                 typeStatus=ident_d.get("typeStatus"),
             )
             db.add(identification_obj)

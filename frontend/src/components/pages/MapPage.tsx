@@ -19,6 +19,7 @@ import { Style, Fill, Stroke, Circle as CircleStyle } from "ol/style";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Button } from "../ui/button";
+import { Badge } from "../ui/badge";
 import { FiltersCard, filterInputClass, filterLabelClass } from "../ui/filters";
 import {
   OccurrenceFilterFields,
@@ -51,14 +52,17 @@ interface MapPageProps {
 
 type AreaMode = "none" | "radius" | "polygon";
 
-type Precision = "exact" | "approximate";
+// Sin área de búsqueda, todo resultado se pinta "confirmed" (no hay nada de qué diferenciarlo).
+// Con área, distingue lo que el área contiene por completo de lo que solo toca: por su
+// incertidumbre (círculo o polígono), esto último podría en realidad quedar fuera.
+type Certainty = "confirmed" | "uncertain";
 
-const PRECISION_STYLE: Record<Precision, { color: string; label: string }> = {
-  exact: { color: "#dc2626", label: "Ubicación exacta" },
-  approximate: { color: "#2563eb", label: "Ubicación aproximada (con incertidumbre o polígono)" },
+const CERTAINTY_STYLE: Record<Certainty, { color: string; label: string }> = {
+  confirmed: { color: "#166534", label: "Dentro del área buscada" },
+  uncertain: { color: "#4ade80", label: "Podría quedar fuera (por su incertidumbre)" },
 };
 
-const precisionOf = (p: OccurrenceMapPoint): Precision => (p.locationType === "point" ? "exact" : "approximate");
+const certaintyOf = (p: OccurrenceMapPoint): Certainty => (p.fullyContained === false ? "uncertain" : "confirmed");
 
 const locationText = (p: OccurrenceMapPoint) => {
   if (p.locationType === "point") return "Punto exacto";
@@ -67,27 +71,30 @@ const locationText = (p: OccurrenceMapPoint) => {
 };
 
 const pointStyles = Object.fromEntries(
-  (Object.keys(PRECISION_STYLE) as Precision[]).map((precision) => [
-    precision,
+  (Object.keys(CERTAINTY_STYLE) as Certainty[]).map((certainty) => [
+    certainty,
     new Style({
       image: new CircleStyle({
         radius: 7,
-        fill: new Fill({ color: PRECISION_STYLE[precision].color }),
+        fill: new Fill({ color: CERTAINTY_STYLE[certainty].color }),
         stroke: new Stroke({ color: "#ffffff", width: 2 }),
       }),
     }),
   ]),
-) as Record<Precision, Style>;
+) as Record<Certainty, Style>;
+
+// Azul marino: distinto de los verdes de resultado, para que el punto/área de búsqueda no se confunda con ellos.
+const QUERY_COLOR = "#1e3a8a";
 
 const areaStyle = new Style({
-  fill: new Fill({ color: "rgba(37, 99, 235, 0.12)" }),
-  stroke: new Stroke({ color: "#2563eb", width: 2, lineDash: [6, 4] }),
+  fill: new Fill({ color: "rgba(30, 58, 138, 0.12)" }),
+  stroke: new Stroke({ color: QUERY_COLOR, width: 2, lineDash: [6, 4] }),
 });
 
 const centerStyle = new Style({
   image: new CircleStyle({
     radius: 6,
-    fill: new Fill({ color: "#2563eb" }),
+    fill: new Fill({ color: QUERY_COLOR }),
     stroke: new Stroke({ color: "#ffffff", width: 2 }),
   }),
 });
@@ -100,7 +107,7 @@ const SEARCH_STORAGE_KEY = "herbarium.mapSearch";
 type SearchInput = {
   filters: OccurrenceFilterValues;
   areaMode: AreaMode;
-  radiusKm: string;
+  radiusM: string;
   center: [number, number] | null;
   polygonWkt: string | null;
 };
@@ -125,21 +132,21 @@ const storeSearch = (search: SavedSearch | null) => {
 };
 
 // Filtros de la API a partir de los criterios; null (con aviso) si falta algo del área.
-const buildQuery = ({ filters, areaMode, radiusKm, center, polygonWkt }: SearchInput): OccurrenceMapFilters | null => {
+const buildQuery = ({ filters, areaMode, radiusM, center, polygonWkt }: SearchInput): OccurrenceMapFilters | null => {
   const query: OccurrenceMapFilters = { ...filters };
   if (areaMode === "radius") {
-    const km = parseFloat(radiusKm);
+    const meters = parseFloat(radiusM);
     if (!center) {
       toast.error("Haz clic en el mapa para fijar el centro del radio");
       return null;
     }
-    if (!(km > 0)) {
+    if (!(meters > 0)) {
       toast.error("El radio debe ser mayor que 0");
       return null;
     }
     query.nearLat = center[1];
     query.nearLon = center[0];
-    query.radiusKm = km;
+    query.radiusKm = meters / 1000; // la API sigue esperando kilómetros
   } else if (areaMode === "polygon") {
     if (!polygonWkt) {
       toast.error("Dibuja un polígono en el mapa");
@@ -166,7 +173,7 @@ export function MapPage({ onNavigate }: MapPageProps) {
 
   const [filters, setFilters] = useState<OccurrenceFilterValues>(EMPTY_OCCURRENCE_FILTERS);
   const [areaMode, setAreaMode] = useState<AreaMode>("none");
-  const [radiusKm, setRadiusKm] = useState("10");
+  const [radiusM, setRadiusM] = useState("1000");
   const [center, setCenter] = useState<[number, number] | null>(null); // [lon, lat]
   const [polygonCount, setPolygonCount] = useState(0);
 
@@ -299,12 +306,12 @@ export function MapPage({ onNavigate }: MapPageProps) {
     marker.setStyle(centerStyle);
     source.addFeature(marker);
 
-    const km = parseFloat(radiusKm);
-    if (km > 0) {
-      const circle = circular(center, km * 1000, 64).transform("EPSG:4326", "EPSG:3857");
+    const meters = parseFloat(radiusM);
+    if (meters > 0) {
+      const circle = circular(center, meters, 64).transform("EPSG:4326", "EPSG:3857");
       source.addFeature(new Feature(circle));
     }
-  }, [center, radiusKm]);
+  }, [center, radiusM]);
 
   const drawnPolygon = () => polygonSourceRef.current.getFeatures().at(-1)?.getGeometry() as Polygon | undefined;
 
@@ -330,7 +337,7 @@ export function MapPage({ onNavigate }: MapPageProps) {
         data.items.map((p) => {
           const feature = new Feature(new Point(fromLonLat([p.lon, p.lat])));
           feature.set("point", p);
-          feature.setStyle(pointStyles[precisionOf(p)]);
+          feature.setStyle(pointStyles[certaintyOf(p)]);
           return feature;
         }),
       );
@@ -351,7 +358,7 @@ export function MapPage({ onNavigate }: MapPageProps) {
     const input: SearchInput = {
       filters,
       areaMode,
-      radiusKm,
+      radiusM,
       center,
       polygonWkt: areaMode === "polygon" ? polygonToWkt(drawnPolygon() ?? null) : null,
     };
@@ -366,7 +373,7 @@ export function MapPage({ onNavigate }: MapPageProps) {
     if (!saved) return;
     setFilters(saved.filters);
     setAreaMode(saved.areaMode);
-    setRadiusKm(saved.radiusKm);
+    setRadiusM(saved.radiusM);
     setCenter(saved.center);
     const polygon = wktToPolygon(saved.polygonWkt);
     if (polygon) polygonSourceRef.current.addFeature(new Feature(polygon));
@@ -391,8 +398,10 @@ export function MapPage({ onNavigate }: MapPageProps) {
     setSelected(null);
   };
 
-  const countByPrecision = (precision: Precision) =>
-    result?.items.filter((p) => precisionOf(p) === precision).length ?? 0;
+  const countByCertainty = (certainty: Certainty) =>
+    result?.items.filter((p) => certaintyOf(p) === certainty).length ?? 0;
+  // Sin área de búsqueda, fullyContained viene null en todos los puntos: no hay nada que distinguir.
+  const hasAreaSearch = result?.items.some((p) => p.fullyContained != null) ?? false;
 
   const filtersActive = hasActiveOccurrenceFilters(filters) || areaMode !== "none";
 
@@ -443,27 +452,28 @@ export function MapPage({ onNavigate }: MapPageProps) {
           </div>
 
           {areaMode === "radius" && (
-            <div className="flex flex-wrap items-end gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-3">
               <div className="flex flex-col gap-1">
-                <label htmlFor="radiusKm" className={filterLabelClass}>
-                  Radio (km)
+                <label htmlFor="radiusM" className={filterLabelClass}>
+                  Radio (m)
                 </label>
                 <input
-                  id="radiusKm"
+                  id="radiusM"
                   type="number"
                   min={0}
                   step="any"
                   className={filterInputClass}
-                  style={{ width: "7.5rem" }}
-                  value={radiusKm}
-                  onChange={(e) => setRadiusKm(e.target.value)}
+                  value={radiusM}
+                  onChange={(e) => setRadiusM(e.target.value)}
                 />
               </div>
-              <p className="text-xs text-muted-foreground" style={{ paddingBottom: "0.55rem" }}>
-                {center
-                  ? `Centro: ${center[1].toFixed(5)}, ${center[0].toFixed(5)} (haz clic en el mapa para moverlo)`
-                  : "Haz clic en el mapa para fijar el centro."}
-              </p>
+              <div className="md:col-span-2 lg:col-span-3 flex flex-col gap-1 justify-end">
+                <p className="text-xs text-muted-foreground">
+                  {center
+                    ? `Centro: ${center[1].toFixed(5)}, ${center[0].toFixed(5)} (haz clic en el mapa para moverlo)`
+                    : "Haz clic en el mapa para fijar el centro."}
+                </p>
+              </div>
             </div>
           )}
 
@@ -500,21 +510,38 @@ export function MapPage({ onNavigate }: MapPageProps) {
             <BasemapSwitcher value={basemap} onChange={setBasemap} />
           </div>
 
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
+          <div className="flex flex-wrap items-center gap-3">
             <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
               <MapPin className="h-4 w-4" />
-              {result ? `${result.total} ocurrencia${result.total === 1 ? "" : "s"}` : "Sin búsqueda realizada"}
+              {result ? (
+                <>
+                  <strong className="text-foreground">{result.total}</strong>{" "}
+                  {result.total === 1 ? "ocurrencia" : "ocurrencias"}
+                </>
+              ) : (
+                "Sin búsqueda realizada"
+              )}
             </span>
-            {(Object.keys(PRECISION_STYLE) as Precision[]).map((precision) => (
-              <span key={precision} className="flex items-center gap-2 text-muted-foreground">
-                <span
-                  className="inline-block h-3 w-3 shrink-0 rounded-full border border-white shadow"
-                  style={{ backgroundColor: PRECISION_STYLE[precision].color }}
-                />
-                {PRECISION_STYLE[precision].label}
-                {result && <strong className="text-foreground">({countByPrecision(precision)})</strong>}
-              </span>
-            ))}
+            {(hasAreaSearch ? (Object.keys(CERTAINTY_STYLE) as Certainty[]) : (["confirmed"] as Certainty[])).map(
+              (certainty) => (
+                <Badge
+                  key={certainty}
+                  variant="outline"
+                  className="gap-1.5 py-1 font-normal text-foreground"
+                  style={{
+                    backgroundColor: `${CERTAINTY_STYLE[certainty].color}1a`,
+                    borderColor: `${CERTAINTY_STYLE[certainty].color}4d`,
+                  }}
+                >
+                  <span
+                    className="inline-block h-2 w-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: CERTAINTY_STYLE[certainty].color }}
+                  />
+                  {hasAreaSearch ? CERTAINTY_STYLE[certainty].label : "Ocurrencias"}
+                  {hasAreaSearch && result && <strong>{countByCertainty(certainty)}</strong>}
+                </Badge>
+              ),
+            )}
           </div>
           {result?.truncated && (
             <p className="text-xs text-amber-600">
@@ -528,7 +555,7 @@ export function MapPage({ onNavigate }: MapPageProps) {
                 <div className="flex items-center gap-2">
                   <span
                     className="inline-block h-3 w-3 rounded-full"
-                    style={{ backgroundColor: PRECISION_STYLE[precisionOf(selected)].color }}
+                    style={{ backgroundColor: CERTAINTY_STYLE[certaintyOf(selected)].color }}
                   />
                   <span className="font-medium">{selected.code ?? "Sin código"}</span>
                   {selected.scientificName && (

@@ -22,7 +22,7 @@ interface TaxonIdentificationOut {
   scientificNameAuthorship: string | null;
   dateIdentified: string | null;
   isCurrent: boolean;
-  isVerified: boolean;
+  identificationVerificationStatus: string | null;
   typeStatus: string | null;
   identifiers: IdentifierOut[];
   createdAt: string;
@@ -465,15 +465,9 @@ export function TaxonDetailPage({
                         </Badge>
                       )}
 
-                      {identification.isVerified ? (
+                      {identification.identificationVerificationStatus && (
                         <Badge className="bg-blue-100 text-blue-800">
-                          <CheckCircle className="h-3 w-3 mr-1" />
-                          Verificada
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline">
-                          <AlertCircle className="h-3 w-3 mr-1" />
-                          Sin verificar
+                          {identification.identificationVerificationStatus}
                         </Badge>
                       )}
 

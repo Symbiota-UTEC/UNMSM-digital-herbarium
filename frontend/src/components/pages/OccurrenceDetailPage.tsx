@@ -321,7 +321,6 @@ export function OccurrenceDetailPage({
       </div>
 
       <div className="grid md:grid-cols-2 gap-4">
-        <Field label="Contexto hidrográfico" value={data.hydrographicContext} />
         <Field label="Estado de verificación de georreferenciación" value={data.georeferenceVerificationStatus} />
       </div>
     </div>
@@ -354,15 +353,9 @@ export function OccurrenceDetailPage({
                       No vigente
                     </Badge>
                   )}
-                  {ident.isVerified ? (
+                  {ident.identificationVerificationStatus && (
                     <Badge className="bg-blue-100 text-blue-800 text-[11px] font-medium rounded-full px-2 py-0.5">
-                      <CheckCircle className="h-3 w-3 mr-1" />
-                      Verificada
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="text-[11px] font-medium rounded-full px-2 py-0.5">
-                      <AlertCircle className="h-3 w-3 mr-1" />
-                      No verificada
+                      {ident.identificationVerificationStatus}
                     </Badge>
                   )}
                   {ident.taxon?.taxonId && (

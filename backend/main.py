@@ -5,8 +5,8 @@ from backend.config.database import engine, ensure_database_extensions
 from backend.config.settings import cors_allow_origins
 from backend.models import models as models_module
 from backend.routers import admin as admin_router
+from backend.routers import admin_divisions, autocomplete
 from backend.routers import auth as auth_router
-from backend.routers import autocomplete
 from backend.routers import collections as collections_router
 from backend.routers import institutions as institutions_router
 from backend.routers import occurrence as occurrence_router
@@ -41,6 +41,7 @@ app.include_router(collections_router.router, prefix="/api")
 app.include_router(upload_router.router, prefix="/api")
 app.include_router(taxon_router.router, prefix="/api")
 app.include_router(autocomplete.router, prefix="/api")
+app.include_router(admin_divisions.router, prefix="/api")
 
 
 @app.get("/", tags=["meta"])

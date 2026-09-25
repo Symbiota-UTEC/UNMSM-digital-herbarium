@@ -14,7 +14,9 @@ from __future__ import annotations
 from sqlalchemy import Index, func
 
 from backend.config.database import Base
+from backend.models.admin_division import AdminDivision
 from backend.models.collection import Collection, CollectionPermission
+from backend.models.country import Country
 from backend.models.identification import Identification, Identifier
 from backend.models.institution import Institution
 from backend.models.occurrence import Occurrence, OccurrenceImage
@@ -36,10 +38,23 @@ __all__ = [
     "Identifier",
     "User",
     "TaxonFloraImportJob",
+    "Country",
+    "AdminDivision",
 ]
 
 Index("ix_identification_occurrence_current", Identification.occurrenceId, Identification.isCurrent)
+
+# Una sola identificación vigente por ocurrencia: índice único parcial
+# (no puede ser DEFERRABLE, así que los servicios deben demotar antes de promover).
+Index(
+    "uq_identification_one_current_per_occurrence",
+    Identification.occurrenceId,
+    unique=True,
+    postgresql_where=Identification.isCurrent,
+)
+
 Index("ix_occurrence_latlon", Occurrence.decimalLatitude, Occurrence.decimalLongitude)
+Index("ix_admin_division_boundary", AdminDivision.boundary, postgresql_using="gist")
 Index("ix_occurrence_catalog", Occurrence.catalogNumber, Occurrence.collectionId)
 Index("ix_occurrence_event_date", Occurrence.year, Occurrence.month, Occurrence.day)
 Index(

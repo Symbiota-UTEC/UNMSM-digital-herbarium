@@ -333,15 +333,6 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
     },
     {
       entity: "Location",
-      term: "hydrographicContext",
-      value: "Location.hydrographicContext",
-      label: "dwc:Location:hydrographicContext",
-      inForm: true,
-      helpEs:
-        "Contexto hidrográfico: cuerpo de agua, archipiélago o isla específica (unifica waterBody, islandGroup, island).",
-    },
-    {
-      entity: "Location",
       term: "footprintWKT",
       value: "Location.footprintWKT",
       label: "dwc:Location:footprintWKT",
@@ -378,7 +369,7 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
   ],
 
   // ============================================================
-  // IDENTIFICATION (solo identifiedBy)
+  // IDENTIFICATION
   // ============================================================
   Identification: [
     {
@@ -389,6 +380,14 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       recommended: true,
       inForm: true,
       helpEs: "Persona(s) que identificaron taxonómicamente el espécimen.",
+    },
+    {
+      entity: "Identification",
+      term: "identificationVerificationStatus",
+      value: "Identification.identificationVerificationStatus",
+      label: "dwc:Identification:identificationVerificationStatus",
+      inForm: true,
+      helpEs: "Indicador categórico del grado en que la identificación ha sido verificada como correcta.",
     },
   ],
 };

@@ -170,7 +170,7 @@ OpenLayers code lives in `LocationPicker.tsx` (form: point/polygon picker + admi
 
 - A polygon is always **one simple `POLYGON`**: no holes, no self-crossing (`utils/polygonDraw.ts` refuses it while drawing). The backend is the source of truth and re-validates it.
 - For a polygon the client computes the representative point and sends it as lat/lon together with the WKT; the API never derives one.
-- The map shows two kinds of records: exact location (red) vs. approximate — uncertainty circle or polygon (blue).
+- `pages/MapPage.tsx` colors results by `fullyContained` (backend, see `backend/CLAUDE.md` > Geospatial queries), not by `locationType`: dark green when the searched area fully contains the record's shape, light green when it only touches it (uncertainty circle or polygon partly outside); with no area filter every record is dark green. The query point/area itself is navy, kept out of the green family on purpose so it's never confused with a result.
 - Darwin Core fields get an info tooltip through `<DwcTerm term="…" />`.
 
 ---

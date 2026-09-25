@@ -39,7 +39,10 @@ from backend.services.collection_permissions import (
     user_can_view_collection,
 )
 from backend.services.geometry import InvalidPolygon, check_simple_polygon
-from backend.services.occurrence_filters import apply_occurrence_filters
+from backend.services.occurrence_filters import (
+    apply_occurrence_filters,
+    build_full_containment_expr,
+)
 
 # =========================
 # Helpers
@@ -194,7 +197,7 @@ def create_occurrence(db: Session, payload: OccurrenceCreateIn, current_user: Us
             "collectionId",
             "dateIdentified",
             "typeStatus",
-            "isVerified",
+            "identificationVerificationStatus",
             "identifiers",
         },
         exclude_unset=True,
@@ -237,7 +240,7 @@ def create_occurrence(db: Session, payload: OccurrenceCreateIn, current_user: Us
             dateIdentified=payload.dateIdentified,
             typeStatus=payload.typeStatus,
             isCurrent=True,
-            isVerified=payload.isVerified or False,
+            identificationVerificationStatus=payload.identificationVerificationStatus,
         )
         db.add(ident)
         db.flush()
@@ -416,6 +419,7 @@ def list_occurrence_map_points(
     )
 
     code_expr = func.coalesce(Occurrence.catalogNumber, Occurrence.recordNumber)
+    fully_contained = build_full_containment_expr(filters)
 
     rows_select = _visible_occurrences_select(
         current_user,
@@ -428,6 +432,7 @@ def list_occurrence_map_points(
         lon.label("lon"),
         location_type.label("location_type"),
         Occurrence.coordinateUncertaintyInMeters.label("uncertainty"),
+        fully_contained.label("fully_contained"),
     ).where(lat.isnot(None), lon.isnot(None))
     count_select = _visible_occurrences_select(
         current_user, collection_id, filters, Occurrence.occurrenceId
@@ -446,6 +451,7 @@ def list_occurrence_map_points(
                 lon=r.lon,
                 locationType=r.location_type,
                 uncertaintyMeters=r.uncertainty,
+                fullyContained=r.fully_contained,
             )
             for r in rows
         ],
@@ -480,7 +486,7 @@ def update_occurrence(
         "scientificName",
         "dateIdentified",
         "typeStatus",
-        "isVerified",
+        "identificationVerificationStatus",
         "identifiers",
     }
 
@@ -498,13 +504,13 @@ def update_occurrence(
 
     # Actualizar identificación vigente si se envió algún campo de identificación
     ident_sent = any(
-        getattr(payload, f, None) is not None
+        f in payload.model_fields_set
         for f in (
             "taxonId",
             "scientificName",
             "dateIdentified",
             "typeStatus",
-            "isVerified",
+            "identificationVerificationStatus",
             "identifiers",
         )
     )
@@ -530,8 +536,10 @@ def update_occurrence(
                     current_ident.dateIdentified = payload.dateIdentified
                 if payload.typeStatus is not None:
                     current_ident.typeStatus = payload.typeStatus
-                if payload.isVerified is not None:
-                    current_ident.isVerified = payload.isVerified
+                if "identificationVerificationStatus" in payload.model_fields_set:
+                    current_ident.identificationVerificationStatus = (
+                        payload.identificationVerificationStatus
+                    )
 
                 if payload.identifiers is not None:
                     # Reemplazar identificadores: borrar los viejos y crear los nuevos
@@ -569,7 +577,7 @@ def update_occurrence(
                     dateIdentified=payload.dateIdentified,
                     typeStatus=payload.typeStatus,
                     isCurrent=True,
-                    isVerified=payload.isVerified or False,
+                    identificationVerificationStatus=payload.identificationVerificationStatus,
                 )
                 db.add(new_ident)
                 db.flush()
@@ -615,16 +623,16 @@ def add_identification(
         if not taxon_obj:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Taxon no encontrado")
 
-    # If setAsCurrent, mark all existing identifications as not current
-    if payload.setAsCurrent:
-        db.execute(select(Identification).where(Identification.occurrenceId == occurrence_id))
-        for ident in (
-            db.execute(select(Identification).where(Identification.occurrenceId == occurrence_id))
-            .scalars()
-            .all()
-        ):
+    # The partial unique index is checked on each statement, so demote and flush
+    # before inserting a replacement current identification.
+    make_current = payload.setAsCurrent or not occ.currentIdentificationId
+    if make_current:
+        for ident in db.scalars(
+            select(Identification).where(Identification.occurrenceId == occurrence_id)
+        ).all():
             ident.isCurrent = False
             db.add(ident)
+        db.flush()
 
     new_ident = Identification(
         occurrenceId=occurrence_id,
@@ -632,8 +640,8 @@ def add_identification(
         scientificName=payload.scientificName,
         dateIdentified=payload.dateIdentified,
         typeStatus=payload.typeStatus,
-        isCurrent=payload.setAsCurrent or not occ.currentIdentificationId,
-        isVerified=payload.isVerified or False,
+        isCurrent=make_current,
+        identificationVerificationStatus=payload.identificationVerificationStatus,
     )
     db.add(new_ident)
     db.flush()
@@ -708,24 +716,24 @@ def set_current_identification(
             detail="No tienes permisos para editar esta ocurrencia",
         )
 
-    target_ident = None
-    for ident in (
-        db.execute(select(Identification).where(Identification.occurrenceId == occurrence_id))
-        .scalars()
-        .all()
-    ):
-        if ident.identificationId == identification_id:
-            ident.isCurrent = True
-            target_ident = ident
-        else:
-            ident.isCurrent = False
+    idents = db.scalars(
+        select(Identification).where(Identification.occurrenceId == occurrence_id)
+    ).all()
+    for ident in idents:
+        ident.isCurrent = False
         db.add(ident)
+    db.flush()
 
+    target_ident = next(
+        (ident for ident in idents if ident.identificationId == identification_id), None
+    )
     if not target_ident:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Identification not found"
         )
 
+    target_ident.isCurrent = True
+    db.add(target_ident)
     occ.currentIdentificationId = identification_id
     db.add(occ)
     db.commit()

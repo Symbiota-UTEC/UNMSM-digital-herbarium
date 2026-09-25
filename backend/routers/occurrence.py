@@ -63,7 +63,9 @@ def list_occurrence_map_points(
     Mismos filtros que `GET /occurrences`, pero devuelve los puntos sin paginar
     (hasta `limit`; `truncated` indica si hubo más). Con un área (radio o polígono)
     trae toda muestra cuya ubicación —punto, círculo de incertidumbre o polígono— la
-    toque; sin área, todas las que tengan coordenadas.
+    toque; sin área, todas las que tengan coordenadas. Cada punto trae `fullyContained`
+    (None sin área) para distinguir lo que el área contiene por completo de lo que
+    solo toca.
     """
     return occurrences_service.list_occurrence_map_points(
         db, collection_id, filters, current_user, limit

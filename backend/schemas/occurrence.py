@@ -41,7 +41,7 @@ class OccurrenceIdentificationOut(ORMBaseModel):
     identificationId: UUID
     dateIdentified: Optional[str] = None
     isCurrent: bool
-    isVerified: bool
+    identificationVerificationStatus: Optional[str] = None
     typeStatus: Optional[str] = None
 
     taxon: Optional[OccurrenceTaxonOut] = None
@@ -115,7 +115,7 @@ class OccurrenceOut(ORMBaseModel):
     verbatimElevation: Optional[str] = None
 
     countryCode: Optional[str] = None
-    hydrographicContext: Optional[str] = None
+    locationId: Optional[str] = None
     footprintWKT: Optional[str] = None
 
     organismQuantity: Optional[str] = None
@@ -204,7 +204,6 @@ class OccurrenceCreateIn(StrictBaseModel):
     coordinateUncertaintyInMeters: Optional[float] = Field(default=None, gt=0)
     footprintWKT: Optional[str] = None
     verbatimElevation: Optional[str] = None
-    hydrographicContext: Optional[str] = None
 
     # Extra mapped directly (if exist in models)
     organismQuantity: Optional[str] = None
@@ -219,13 +218,14 @@ class OccurrenceCreateIn(StrictBaseModel):
     georeferenceVerificationStatus: Optional[str] = None
     locationRemarks: Optional[str] = None
     countryCode: Optional[str] = None
+    locationId: Optional[str] = None
 
     # Taxon / Identification
     taxonId: Optional[UUID] = None
     scientificName: Optional[str] = None
     dateIdentified: Optional[str] = None
     typeStatus: Optional[str] = None
-    isVerified: Optional[bool] = None
+    identificationVerificationStatus: Optional[str] = None
     identifiers: Optional[List[IdentifierIn]] = None
 
     # Dynamic properties dictionary mapped by frontend
@@ -258,7 +258,6 @@ class OccurrenceUpdateIn(StrictBaseModel):
     coordinateUncertaintyInMeters: Optional[float] = Field(default=None, gt=0)
     footprintWKT: Optional[str] = None
     verbatimElevation: Optional[str] = None
-    hydrographicContext: Optional[str] = None
 
     # Occurrence extra
     organismQuantity: Optional[str] = None
@@ -273,6 +272,7 @@ class OccurrenceUpdateIn(StrictBaseModel):
     georeferenceVerificationStatus: Optional[str] = None
     locationRemarks: Optional[str] = None
     countryCode: Optional[str] = None
+    locationId: Optional[str] = None
 
     dynamicProperties: Optional[Dict[str, Any]] = None
 
@@ -281,7 +281,7 @@ class OccurrenceUpdateIn(StrictBaseModel):
     scientificName: Optional[str] = None
     dateIdentified: Optional[str] = None
     typeStatus: Optional[str] = None
-    isVerified: Optional[bool] = None
+    identificationVerificationStatus: Optional[str] = None
     identifiers: Optional[List[IdentifierIn]] = None
 
 
@@ -290,7 +290,7 @@ class IdentificationCreateIn(StrictBaseModel):
     scientificName: Optional[str] = None
     dateIdentified: Optional[str] = None
     typeStatus: Optional[str] = None
-    isVerified: Optional[bool] = None
+    identificationVerificationStatus: Optional[str] = None
     identifiers: Optional[List[IdentifierIn]] = None
     setAsCurrent: Optional[bool] = False
 
@@ -321,7 +321,10 @@ class OccurrenceFilters(BaseModel):
 
 class OccurrenceMapPointOut(ORMBaseModel):
     """Punto del mapa. locationType indica cómo se registró la ubicación: point (exacta),
-    circle (punto con coordinateUncertaintyInMeters) o polygon (footprintWKT)."""
+    circle (punto con coordinateUncertaintyInMeters) o polygon (footprintWKT).
+    fullyContained es None sin área de búsqueda; con área (radio y/o polígono), True si
+    esta contiene por completo la ubicación real (su footprint o, si no tiene, su punto)
+    y False si solo la toca —por su incertidumbre podría quedar parcialmente fuera—."""
 
     occurrenceId: UUID
     code: Optional[str] = None
@@ -330,6 +333,7 @@ class OccurrenceMapPointOut(ORMBaseModel):
     lon: float
     locationType: Literal["point", "circle", "polygon"]
     uncertaintyMeters: Optional[float] = None
+    fullyContained: Optional[bool] = None
 
 
 class OccurrenceMapOut(ORMBaseModel):

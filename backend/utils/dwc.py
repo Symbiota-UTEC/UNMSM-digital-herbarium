@@ -55,8 +55,8 @@ ALLOWED_FIELDS: Dict[str, Set[str]] = {
         "decimalLongitude",
         "coordinateUncertaintyInMeters",
         "countryCode",
+        "locationID",
         "verbatimElevation",
-        "hydrographicContext",
         "footprintWKT",
     },
     # ------------------------------------------------------------------
@@ -75,7 +75,7 @@ ALLOWED_FIELDS: Dict[str, Set[str]] = {
         "identifiedBy",  # texto, lista separada por comas (OBLIGATORIO)
         "dateIdentified",
         "isCurrent",
-        "isVerified",
+        "identificationVerificationStatus",
         "typeStatus",
     },
 }

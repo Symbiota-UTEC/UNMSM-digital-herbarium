@@ -66,6 +66,9 @@ export interface OccurrenceMapPoint {
   lon: number;
   locationType: OccurrenceLocationType;
   uncertaintyMeters?: number | null;
+  // null sin área de búsqueda; con área, si esta contiene por completo la ubicación real
+  // (footprint o punto) o solo la toca (podría quedar parcialmente fuera por su incertidumbre).
+  fullyContained?: boolean | null;
 }
 
 export interface OccurrenceMapResponse {
@@ -95,6 +98,9 @@ export interface OccurrenceCreatePayload {
   day?: number | null;
   habitat?: string | null;
   eventRemarks?: string | null;
+  country?: string | null;
+  countryCode?: string | null;
+  locationId?: string | null;
   stateProvince?: string | null;
   county?: string | null;
   municipality?: string | null;
@@ -102,11 +108,16 @@ export interface OccurrenceCreatePayload {
   verbatimLocality?: string | null;
   decimalLatitude?: number | null;
   decimalLongitude?: number | null;
+  verbatimElevation?: string | null;
+  georeferenceVerificationStatus?: string | null;
+  locationRemarks?: string | null;
   coordinateUncertaintyInMeters?: number | null;
   footprintWKT?: string | null;
-  verbatimElevation?: string | null;
   taxonId?: string | null;
   scientificName?: string | null;
+  dateIdentified?: string | null;
+  typeStatus?: string | null;
+  identificationVerificationStatus?: string | null;
   identifiers?: { name: string; orcid?: string | null }[] | null;
   dynamicProperties?: Record<string, any> | null;
 }
@@ -174,7 +185,7 @@ export const occurrencesService = {
       scientificName?: string | null;
       dateIdentified?: string | null;
       typeStatus?: string | null;
-      isVerified?: boolean;
+      identificationVerificationStatus?: string | null;
       identifiers?: { name: string; orcid?: string | null }[];
       setAsCurrent?: boolean;
     },

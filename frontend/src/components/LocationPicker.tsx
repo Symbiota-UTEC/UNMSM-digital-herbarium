@@ -19,7 +19,7 @@ import { fromLonLat, toLonLat } from "ol/proj";
 
 import { enclosingRadiusMeters, polygonToWkt, representativePoint, wktToPolygon } from "@utils/geo";
 import { createSimplePolygonDraw } from "@utils/polygonDraw";
-import { reverseGeocodeAdminUnits, type AdminUnits } from "@services/geocoding.service";
+import type { AdminUnits } from "@services/geocoding.service";
 import { markerStyle, polygonStyle, uncertaintyStyle } from "@utils/mapStyles";
 import {
   MAP_MAX_ZOOM,
@@ -46,6 +46,8 @@ type Props = {
   lon: string;
   footprintWKT: string;
   uncertainty: string;
+  resolveAdminUnits: (lat: number, lon: number) => Promise<AdminUnits | null>;
+  cancelGeocodeKey: number;
   onLocationChange: (change: LocationChange) => void;
   // null: no se pudo deducir la unidad administrativa
   onAdminUnits: (admin: AdminUnits | null) => void;
@@ -68,7 +70,16 @@ const parseCoord = (v: string) => {
  * apenas el usuario los marca, y deduce la unidad administrativa (con debounce).
  * Punto y polígono son excluyentes: marcar uno reemplaza al otro.
  */
-export function LocationPicker({ lat, lon, footprintWKT, uncertainty, onLocationChange, onAdminUnits }: Props) {
+export function LocationPicker({
+  lat,
+  lon,
+  footprintWKT,
+  uncertainty,
+  resolveAdminUnits,
+  cancelGeocodeKey,
+  onLocationChange,
+  onAdminUnits,
+}: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<Map | null>(null);
   const markerRef = useRef<Feature<Point> | null>(null);
@@ -90,8 +101,8 @@ export function LocationPicker({ lat, lon, footprintWKT, uncertainty, onLocation
   const [basemap, setBasemap] = useBasemap();
 
   // Últimos valores para los handlers del mapa, que se registran una sola vez.
-  const callbacksRef = useRef({ onLocationChange, onAdminUnits });
-  callbacksRef.current = { onLocationChange, onAdminUnits };
+  const callbacksRef = useRef({ onLocationChange, onAdminUnits, resolveAdminUnits });
+  callbacksRef.current = { onLocationChange, onAdminUnits, resolveAdminUnits };
   const modeRef = useRef(mode);
   modeRef.current = mode;
 
@@ -101,12 +112,18 @@ export function LocationPicker({ lat, lon, footprintWKT, uncertainty, onLocation
     setGeocoding(false);
   };
 
+  useEffect(() => {
+    geocodeSeqRef.current++;
+    if (geocodeTimerRef.current) clearTimeout(geocodeTimerRef.current);
+    setGeocoding(false);
+  }, [cancelGeocodeKey]);
+
   const scheduleGeocode = (lonValue: number, latValue: number) => {
     if (geocodeTimerRef.current) clearTimeout(geocodeTimerRef.current);
     const seq = ++geocodeSeqRef.current;
     setGeocoding(true);
     geocodeTimerRef.current = setTimeout(async () => {
-      const admin = await reverseGeocodeAdminUnits(latValue, lonValue);
+      const admin = await callbacksRef.current.resolveAdminUnits(latValue, lonValue);
       if (seq !== geocodeSeqRef.current) return; // llegó otro punto, o se desmontó
       setGeocoding(false);
       callbacksRef.current.onAdminUnits(admin);

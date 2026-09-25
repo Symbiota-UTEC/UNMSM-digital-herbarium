@@ -26,9 +26,13 @@ import { cameraService } from "@services/camera.service";
 import { taxonService } from "@services/taxon.service";
 import { occurrencesService } from "@services/occurrences.service";
 import { uploadService } from "@services/upload.service";
+import { adminDivisionsService } from "@services/adminDivisions.service";
+import { GeographicHierarchy } from "../GeographicHierarchy";
+import type { CatalogCountry } from "@interfaces/adminDivision";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import type { OccurrenceIdentificationOut, OccurrenceImageOut } from "@interfaces/occurrence";
 import { LocationPicker } from "../LocationPicker";
+import { resolveAdminUnits } from "@services/geocoding.service";
 import { DwcTerm } from "../DwcTerm";
 import { formatVerbatimDate } from "@utils/dates";
 
@@ -159,7 +163,12 @@ export function NewOccurrencePage({
   const [fieldNotes, setFieldNotes] = useState("");
 
   /* ── LOCATION ── */
+  const [countries, setCountries] = useState<CatalogCountry[]>([]);
+  const [catalogUnavailable, setCatalogUnavailable] = useState(false);
+  const [countryNameFallback, setCountryNameFallback] = useState("");
   const [countryCode, setCountryCode] = useState("");
+  const [locationId, setLocationId] = useState("");
+  const [geoSelectionRevision, setGeoSelectionRevision] = useState(0);
   const [stateProvince, setStateProvince] = useState("");
   const [county, setCounty] = useState("");
   const [municipality, setMunicipality] = useState("");
@@ -170,7 +179,6 @@ export function NewOccurrencePage({
   const [coordinateUncertainty, setCoordinateUncertainty] = useState("");
   const [footprintWKT, setFootprintWKT] = useState("");
   const [verbatimElevation, setVerbatimElevation] = useState("");
-  const [hydrographicContext, setHydrographicContext] = useState("");
   const [georeferenceVerificationStatus, setGeoreferenceVerificationStatus] = useState("");
   const [locationRemarks, setLocationRemarks] = useState("");
 
@@ -181,7 +189,7 @@ export function NewOccurrencePage({
   const [taxonLoading, setTaxonLoading] = useState(false);
   const [dateIdentified, setDateIdentified] = useState("");
   const [typeStatus, setTypeStatus] = useState("");
-  const [isVerified, setIsVerified] = useState(false);
+  const [identificationVerificationStatus, setIdentificationVerificationStatus] = useState("");
   const [identifiers, setIdentifiers] = useState<{ name: string; orcid: string }[]>([]);
   const [identifierNameInput, setIdentifierNameInput] = useState("");
   const [identifierOrcidInput, setIdentifierOrcidInput] = useState("");
@@ -217,6 +225,35 @@ export function NewOccurrencePage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    adminDivisionsService
+      .countries(apiFetch)
+      .then(setCountries)
+      .catch(() => setCatalogUnavailable(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleCountryChange = (code: string) => {
+    if (code === countryCode) return;
+    setCountryCode(code);
+    setCountryNameFallback("");
+    setStateProvince("");
+    setCounty("");
+    setMunicipality("");
+    setLocationId("");
+    setGeoSelectionRevision((revision) => revision + 1);
+  };
+
+  const handleGeoValuesChange = (
+    patch: Partial<{ stateProvince: string; county: string; municipality: string; locationId: string }>,
+  ) => {
+    setGeoSelectionRevision((revision) => revision + 1);
+    if (patch.stateProvince !== undefined) setStateProvince(patch.stateProvince);
+    if (patch.county !== undefined) setCounty(patch.county);
+    if (patch.municipality !== undefined) setMunicipality(patch.municipality);
+    if (patch.locationId !== undefined) setLocationId(patch.locationId);
+  };
+
   /* ── Load edit mode from API ── */
   useEffect(() => {
     if (mode !== "edit" || !occurrenceId) return;
@@ -241,6 +278,8 @@ export function NewOccurrencePage({
         setHabitat(occ.habitat ?? "");
         setEventRemarks(occ.eventRemarks ?? "");
         setCountryCode(occ.countryCode ?? "");
+        setCountryNameFallback(occ.country ?? "");
+        setLocationId(occ.locationId ?? "");
         setStateProvince(occ.stateProvince ?? "");
         setCounty(occ.county ?? "");
         setMunicipality(occ.municipality ?? "");
@@ -253,7 +292,6 @@ export function NewOccurrencePage({
         );
         setFootprintWKT(occ.footprintWKT ?? "");
         setVerbatimElevation(occ.verbatimElevation ?? "");
-        setHydrographicContext(occ.hydrographicContext ?? "");
         setGeoreferenceVerificationStatus(occ.georeferenceVerificationStatus ?? "");
         setLocationRemarks(occ.locationRemarks ?? "");
         const dp = occ.dynamicProperties;
@@ -267,6 +305,7 @@ export function NewOccurrencePage({
         }
         setExistingImages(occ.images ?? []);
         setExistingIdentifications(occ.identifications ?? []);
+        setIdentificationVerificationStatus(occ.currentIdentification?.identificationVerificationStatus ?? "");
       })
       .catch(() => {
         toast.error("No se pudo cargar la ocurrencia");
@@ -452,8 +491,13 @@ export function NewOccurrencePage({
       verbatimEventDate: verbatimEventDate || null,
       habitat: habitat || null,
       eventRemarks: eventRemarks || null,
-      country: countryCode ? (COUNTRIES.find((c) => c.code === countryCode)?.name ?? null) : null,
+      country:
+        countries.find((country) => country.code === countryCode)?.name ||
+        COUNTRIES.find((country) => country.code === countryCode)?.name ||
+        countryNameFallback ||
+        null,
       countryCode: countryCode || null,
+      locationId: locationId || null,
       stateProvince: stateProvince || null,
       county: county || null,
       municipality: municipality || null,
@@ -464,7 +508,6 @@ export function NewOccurrencePage({
       coordinateUncertaintyInMeters: parseFloat(coordinateUncertainty) > 0 ? parseFloat(coordinateUncertainty) : null,
       footprintWKT: footprintWKT || null,
       verbatimElevation: verbatimElevation || null,
-      hydrographicContext: hydrographicContext || null,
       occurrenceRemarks: occurrenceRemarks || null,
       lifeStage: lifeStage || null,
       establishmentMeans: establishmentMeans || null,
@@ -474,6 +517,7 @@ export function NewOccurrencePage({
       organismQuantity: organismQuantity || null,
       organismQuantityType: organismQuantityType || null,
       georeferenceVerificationStatus: georeferenceVerificationStatus || null,
+      identificationVerificationStatus: identificationVerificationStatus || null,
       locationRemarks: locationRemarks || null,
       dynamicProperties: Object.keys(dynamicProperties).length > 0 ? dynamicProperties : null,
     };
@@ -515,7 +559,7 @@ export function NewOccurrencePage({
             scientificName: scientificNameInput || null,
             dateIdentified: dateIdentified || null,
             typeStatus: typeStatus || null,
-            isVerified,
+            identificationVerificationStatus: identificationVerificationStatus || null,
             identifiers:
               identifiers.length > 0 ? identifiers.map((i) => ({ name: i.name, orcid: i.orcid || null })) : undefined,
             setAsCurrent: existingIdentifications.length === 0,
@@ -546,7 +590,7 @@ export function NewOccurrencePage({
           scientificName: scientificNameInput || null,
           dateIdentified: dateIdentified || null,
           typeStatus: typeStatus || null,
-          isVerified,
+          identificationVerificationStatus: identificationVerificationStatus || null,
           identifiers:
             identifiers.length > 0 ? identifiers.map((i) => ({ name: i.name, orcid: i.orcid || null })) : null,
         };
@@ -891,26 +935,52 @@ export function NewOccurrencePage({
         lon={decimalLongitude}
         footprintWKT={footprintWKT}
         uncertainty={coordinateUncertainty}
+        resolveAdminUnits={(lat, lon) => resolveAdminUnits(apiFetch, lat, lon)}
+        cancelGeocodeKey={geoSelectionRevision}
         onLocationChange={({ lat, lon, footprintWKT: wkt, uncertaintyM }) => {
-          setDecimalLatitude(lat != null ? String(lat) : "");
-          setDecimalLongitude(lon != null ? String(lon) : "");
+          const nextLat = lat != null ? String(lat) : "";
+          const nextLon = lon != null ? String(lon) : "";
+          if (nextLat !== decimalLatitude || nextLon !== decimalLongitude) {
+            setCountryCode("");
+            setCountryNameFallback("");
+            setStateProvince("");
+            setCounty("");
+            setMunicipality("");
+            setLocationId("");
+          }
+          setDecimalLatitude(nextLat);
+          setDecimalLongitude(nextLon);
           setFootprintWKT(wkt ?? "");
           if (uncertaintyM !== undefined) setCoordinateUncertainty(uncertaintyM != null ? String(uncertaintyM) : "");
         }}
         onAdminUnits={(admin) => {
           // Se reemplaza siempre (también si no se pudo deducir) para que estos campos
           // correspondan al punto actual y no a uno anterior.
-          setCountryCode(admin && COUNTRIES.some((c) => c.code === admin.countryCode) ? admin.countryCode! : "");
+          setCountryCode(admin?.countryCode ?? "");
+          setCountryNameFallback(admin?.country ?? "");
           setStateProvince(admin?.stateProvince ?? "");
           setCounty(admin?.county ?? "");
           setMunicipality(admin?.municipality ?? "");
-          setLocality(admin?.locality ?? "");
+          setLocationId(admin?.locationId ?? "");
           if (!admin) {
             toast.warning("No se pudo deducir la unidad administrativa", {
-              description: "Completa país, departamento, provincia, distrito y localidad manualmente.",
+              description: "Completa país, departamento, provincia y distrito manualmente.",
             });
           }
         }}
+      />
+
+      <GeographicHierarchy
+        apiFetch={apiFetch}
+        countries={countries}
+        catalogUnavailable={catalogUnavailable}
+        countryCode={countryCode}
+        countryNameFallback={countryNameFallback}
+        values={{ stateProvince, county, municipality }}
+        locationId={locationId}
+        onCountryChange={handleCountryChange}
+        onCountryNameFallbackChange={setCountryNameFallback}
+        onValuesChange={handleGeoValuesChange}
       />
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem", alignItems: "flex-end" }}>
@@ -924,7 +994,17 @@ export function NewOccurrencePage({
             type="number"
             step="0.000001"
             value={decimalLatitude}
-            onChange={(e) => setDecimalLatitude(e.target.value)}
+            onChange={(e) => {
+              if (e.target.value !== decimalLatitude) {
+                setCountryCode("");
+                setCountryNameFallback("");
+                setStateProvince("");
+                setCounty("");
+                setMunicipality("");
+                setLocationId("");
+              }
+              setDecimalLatitude(e.target.value);
+            }}
             placeholder="-12.046373"
           />
         </div>
@@ -938,7 +1018,17 @@ export function NewOccurrencePage({
             type="number"
             step="0.000001"
             value={decimalLongitude}
-            onChange={(e) => setDecimalLongitude(e.target.value)}
+            onChange={(e) => {
+              if (e.target.value !== decimalLongitude) {
+                setCountryCode("");
+                setCountryNameFallback("");
+                setStateProvince("");
+                setCounty("");
+                setMunicipality("");
+                setLocationId("");
+              }
+              setDecimalLongitude(e.target.value);
+            }}
             placeholder="-77.042755"
           />
         </div>
@@ -947,46 +1037,31 @@ export function NewOccurrencePage({
             Incertidumbre (m)
             <DwcTerm term="coordinateUncertaintyInMeters" />
           </Label>
-          <Input
-            id="coordinateUncertaintyInMeters"
-            type="number"
-            min={0}
-            step="any"
-            value={coordinateUncertainty}
-            onChange={(e) => setCoordinateUncertainty(e.target.value)}
-            placeholder="Ej: 100"
-          />
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <Input
+              id="coordinateUncertaintyInMeters"
+              type="number"
+              min={0}
+              step="any"
+              value={coordinateUncertainty}
+              onChange={(e) => setCoordinateUncertainty(e.target.value)}
+              placeholder="Ej: 100"
+              className="flex-1"
+            />
+            <Select value="" onValueChange={(v) => setCoordinateUncertainty(v)}>
+              <SelectTrigger className="w-[6.5rem] shrink-0" aria-label="Valores rápidos de incertidumbre">
+                <SelectValue placeholder="Rápido" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="30">30 m</SelectItem>
+                <SelectItem value="100">100 m</SelectItem>
+                <SelectItem value="500">500 m</SelectItem>
+                <SelectItem value="1000">1 km</SelectItem>
+                <SelectItem value="5000">5 km</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
-      </div>
-
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
-        <span className="text-xs text-muted-foreground">Incertidumbre rápida:</span>
-        {[
-          { label: "30 m", value: 30 },
-          { label: "100 m", value: 100 },
-          { label: "500 m", value: 500 },
-          { label: "1 km", value: 1000 },
-          { label: "5 km", value: 5000 },
-        ].map((preset) => (
-          <button
-            key={preset.value}
-            type="button"
-            onClick={() => setCoordinateUncertainty(String(preset.value))}
-            style={{
-              border: "1px solid var(--border)",
-              borderRadius: 9999,
-              padding: "2px 10px",
-              fontSize: 12,
-              background: "transparent",
-              cursor: "pointer",
-            }}
-          >
-            {preset.label}
-          </button>
-        ))}
-        <span className="text-xs text-muted-foreground">
-          Radio del círculo, centrado en el punto, que contiene el lugar de colecta. Vacío si se desconoce.
-        </span>
       </div>
 
       {footprintWKT && (
@@ -995,61 +1070,6 @@ export function NewOccurrencePage({
           encierra
         </Badge>
       )}
-
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
-        <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
-          <Label htmlFor="countryCode" className="flex flex-wrap items-center gap-2">
-            País{" "}
-            <Badge variant="outline" className="text-xs">
-              Recomendado
-            </Badge>
-            <DwcTerm term="countryCode" />
-          </Label>
-          <Select value={countryCode} onValueChange={setCountryCode}>
-            <SelectTrigger id="countryCode">
-              <SelectValue placeholder="Selecciona" />
-            </SelectTrigger>
-            <SelectContent>
-              {COUNTRIES.map((c) => (
-                <SelectItem key={c.code} value={c.code}>
-                  {c.name} <span className="text-muted-foreground ml-1">({c.code})</span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
-          <Label htmlFor="stateProvince" className="flex flex-wrap items-center gap-2">
-            Departamento
-            <DwcTerm term="stateProvince" />
-          </Label>
-          <Input
-            id="stateProvince"
-            value={stateProvince}
-            onChange={(e) => setStateProvince(e.target.value)}
-            placeholder="Ej: Cusco"
-          />
-        </div>
-        <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
-          <Label htmlFor="county" className="flex flex-wrap items-center gap-2">
-            Provincia
-            <DwcTerm term="county" />
-          </Label>
-          <Input id="county" value={county} onChange={(e) => setCounty(e.target.value)} placeholder="Ej: Urubamba" />
-        </div>
-        <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
-          <Label htmlFor="municipality" className="flex flex-wrap items-center gap-2">
-            Distrito
-            <DwcTerm term="municipality" />
-          </Label>
-          <Input
-            id="municipality"
-            value={municipality}
-            onChange={(e) => setMunicipality(e.target.value)}
-            placeholder="Ej: Ollantaytambo"
-          />
-        </div>
-      </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
         <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
@@ -1082,31 +1102,6 @@ export function NewOccurrencePage({
       </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
-        <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
-          <Label htmlFor="hydrographicContext" className="flex items-center gap-2">
-            Contexto hidrográfico
-            <DwcTerm term="hydrographicContext" />
-          </Label>
-          <Select value={hydrographicContext} onValueChange={setHydrographicContext}>
-            <SelectTrigger id="hydrographicContext">
-              <SelectValue placeholder="Selecciona" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="No aplica">No aplica</SelectItem>
-              <SelectItem value="Río">Río</SelectItem>
-              <SelectItem value="Lago">Lago</SelectItem>
-              <SelectItem value="Laguna">Laguna</SelectItem>
-              <SelectItem value="Pantano">Pantano</SelectItem>
-              <SelectItem value="Quebrada">Quebrada</SelectItem>
-              <SelectItem value="Océano">Océano</SelectItem>
-              <SelectItem value="Mar">Mar</SelectItem>
-              <SelectItem value="Bahía">Bahía</SelectItem>
-              <SelectItem value="Estuario">Estuario</SelectItem>
-              <SelectItem value="Archipiélago">Archipiélago</SelectItem>
-              <SelectItem value="Isla">Isla</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
         <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
           <Label htmlFor="georeferenceVerificationStatus" className="flex flex-wrap items-center gap-2">
             Estado de Verificación
@@ -1175,9 +1170,9 @@ export function NewOccurrencePage({
                         Vigente
                       </Badge>
                     )}
-                    {ident.isVerified && (
+                    {ident.identificationVerificationStatus && (
                       <Badge variant="outline" className="text-xs">
-                        Verificada
+                        {ident.identificationVerificationStatus}
                       </Badge>
                     )}
                   </div>
@@ -1461,17 +1456,16 @@ export function NewOccurrencePage({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <input
-            id="isVerified"
-            type="checkbox"
-            checked={isVerified}
-            onChange={(e) => setIsVerified(e.target.checked)}
-            className="h-4 w-4 rounded border-input accent-[rgb(117,26,29)]"
-          />
-          <Label htmlFor="isVerified" className="cursor-pointer">
-            Identificación verificada por especialista
+        <div className="space-y-2">
+          <Label htmlFor="identificationVerificationStatus" className="flex items-center gap-2">
+            Estado de verificación <DwcTerm term="identificationVerificationStatus" />
           </Label>
+          <Input
+            id="identificationVerificationStatus"
+            value={identificationVerificationStatus}
+            onChange={(event) => setIdentificationVerificationStatus(event.target.value)}
+            placeholder="Ej: Verificada por especialista"
+          />
         </div>
       </div>
     </div>

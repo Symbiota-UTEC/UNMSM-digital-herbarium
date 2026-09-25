@@ -252,13 +252,11 @@ class Occurrence(Base):
         String(10),
         doc="DwC countryCode: código ISO 3166-1 alfa-2 (p.ej. 'PE') (opcional).",
     )
-    hydrographicContext: Mapped[Optional[str]] = mapped_column(
-        "hydrographic_context",
-        String(150),
-        doc=(
-            "Contexto hidrográfico asociado a la localidad: cuerpo de agua, "
-            "archipiélago o isla específica (campo unificado del DwC: waterBody, islandGroup, island)."
-        ),
+    locationId: Mapped[Optional[str]] = mapped_column(
+        "location_id",
+        String(255),
+        doc="DwC locationID: identificador del lugar en un gazetteer "
+        "(p.ej. URI de AdminDivision con ubigeo o GeoNames) (opcional).",
     )
     # WKT (Well-Known Text): geometría como texto, p. ej. POLYGON((lon lat, lon lat, ...)); orden lon lat.
     footprintWKT: Mapped[Optional[str]] = mapped_column(

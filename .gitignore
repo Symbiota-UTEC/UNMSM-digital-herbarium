@@ -6,3 +6,9 @@
 backend/.venv
 
 frontend/node_modules/
+
+# GeoNames dumps: se descargan solos al ejecutar el seed (make seed-admin)
+backend/data/geonames/
+
+# Polígonos oficiales INEI (29 MB): se descargan solos al sembrar
+backend/data/inei/

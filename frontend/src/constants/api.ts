@@ -48,6 +48,12 @@ export const API = {
     ADMIN: {
       METRICS: "/admin/metrics",
     },
+    ADMIN_DIVISIONS: {
+      BASE: "/admin-divisions",
+      COUNTRIES: "/admin-divisions/countries",
+      RESOLVE: "/admin-divisions/resolve",
+      CONFIG: "/admin-divisions/config",
+    },
     AUTOCOMPLETE: {
       SCIENTIFIC_NAME: "/autocomplete/scientific-name",
       ENDPOINT: (endpoint: string) => `/autocomplete/${endpoint}`,

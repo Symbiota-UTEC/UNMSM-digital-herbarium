@@ -35,7 +35,7 @@ export interface OccurrenceIdentificationOut {
   identificationId: string;
   dateIdentified: string | null;
   isCurrent: boolean;
-  isVerified: boolean;
+  identificationVerificationStatus: string | null;
   typeStatus: string | null;
 
   scientificName: string | null;
@@ -94,7 +94,7 @@ export interface OccurrenceItem {
   verbatimElevation: string | null;
 
   countryCode: string | null;
-  hydrographicContext: string | null;
+  locationId: string | null;
   footprintWKT: string | null;
 
   // Datos biológicos / occurrence extra

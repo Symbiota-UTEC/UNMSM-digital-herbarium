@@ -75,6 +75,20 @@ function formatSeconds(seconds: number | null): string {
   return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
 }
 
+function formatJobDuration(job: Pick<TaxonFloraImportJob, "status" | "startedAt" | "finishedAt">): string {
+  if (!job.startedAt) return job.status === "queued" ? "En cola" : "—";
+
+  const startedAt = new Date(job.startedAt).getTime();
+  const finishedAt = job.finishedAt
+    ? new Date(job.finishedAt).getTime()
+    : job.status === "running"
+      ? Date.now()
+      : Number.NaN;
+  if (Number.isNaN(startedAt) || Number.isNaN(finishedAt)) return "—";
+
+  return formatSeconds(Math.max(0, Math.floor((finishedAt - startedAt) / 1000)));
+}
+
 export function UploadsPage() {
   const { apiFetch, user } = useAuth();
   const isSuperuser = user?.role === Role.Admin;
@@ -229,6 +243,11 @@ export function UploadsPage() {
       cell: (job) => <span className="text-sm">{formatDateTime(job.createdAt)}</span>,
     },
     {
+      key: "duration",
+      header: "Duración",
+      cell: (job) => <span className="text-sm tabular-nums">{formatJobDuration(job)}</span>,
+    },
+    {
       key: "rows",
       header: "Filas",
       cell: (job) => <span className="text-sm tabular-nums">{job.rowsProcessed.toLocaleString("es-PE")}</span>,
@@ -377,7 +396,7 @@ export function UploadsPage() {
                 <Badge variant={badgeVariant(latestJob.status)}>{formatStatus(latestJob.status)}</Badge>
               </div>
 
-              <div className="grid gap-3 md:grid-cols-3">
+              <div className="grid gap-3 md:grid-cols-4">
                 <div className="rounded-md bg-muted/40 p-3">
                   <div className="text-xs text-muted-foreground">Progreso</div>
                   <div className="text-lg font-semibold">
@@ -390,6 +409,11 @@ export function UploadsPage() {
                 <div className="rounded-md bg-muted/40 p-3">
                   <div className="text-xs text-muted-foreground">ETA</div>
                   <div className="text-lg font-semibold">{formatSeconds(latestJob.estimatedSecondsRemaining)}</div>
+                  <div className="text-xs text-muted-foreground">Tiempo restante estimado</div>
+                </div>
+                <div className="rounded-md bg-muted/40 p-3">
+                  <div className="text-xs text-muted-foreground">Duración</div>
+                  <div className="text-lg font-semibold tabular-nums">{formatJobDuration(latestJob)}</div>
                   <div className="text-xs text-muted-foreground">
                     Inicio: {formatDateTime(latestJob.startedAt || latestJob.createdAt)}
                   </div>

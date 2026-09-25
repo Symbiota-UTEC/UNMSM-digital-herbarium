@@ -47,7 +47,7 @@ def ensure_database_extensions() -> None:
             CREATE OR REPLACE FUNCTION public.unaccent_immutable(text)
             RETURNS text LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE AS
             $$ BEGIN RETURN public.unaccent($1); END; $$
-        """)
+            """)
         )
 
 

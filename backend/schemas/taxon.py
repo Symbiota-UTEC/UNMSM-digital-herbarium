@@ -98,7 +98,7 @@ class TaxonIdentificationOut(BaseModel):
 
     dateIdentified: Optional[str] = None
     isCurrent: bool
-    isVerified: bool
+    identificationVerificationStatus: Optional[str] = None
     typeStatus: Optional[str] = None
 
     scientificName: Optional[str] = None

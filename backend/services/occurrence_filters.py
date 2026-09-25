@@ -5,7 +5,7 @@ from typing import Optional
 
 from fastapi import Depends, HTTPException, Query, status
 from geoalchemy2 import Geography, Geometry
-from sqlalchemy import Select, and_, cast, func, or_
+from sqlalchemy import Boolean, Select, and_, cast, func, null, or_
 from sqlalchemy.orm import Session
 
 from backend.config.database import get_db
@@ -128,6 +128,38 @@ def build_geo_condition(f: OccurrenceFilters):
         )
 
     return and_(*areas) if areas else None
+
+
+def build_full_containment_expr(f: OccurrenceFilters):
+    """True si el área de búsqueda (radio y/o polígono) contiene por completo la
+    ubicación real de la ocurrencia —su footprint (círculo de incertidumbre o
+    polígono) o, si no tiene, su punto—; NULL si no se pidió ningún área. Con
+    ambas áreas a la vez, deben contenerla las dos. Distingue lo que cae dentro
+    del área con certeza de lo que, por su incertidumbre, podría quedar fuera."""
+    shape = func.coalesce(
+        Occurrence.footprintGeom,
+        cast(Occurrence.location, Geometry(geometry_type="POINT", srid=4326)),
+    )
+    parts = []
+
+    if f.near_lat is not None and f.near_lon is not None and f.radius_km is not None:
+        origin = cast(
+            func.ST_SetSRID(func.ST_MakePoint(f.near_lon, f.near_lat), 4326),
+            Geography(geometry_type="POINT", srid=4326),
+        )
+        search_circle = cast(
+            func.ST_Buffer(origin, f.radius_km * 1000.0, "quad_segs=16"),
+            Geometry(srid=4326),
+        )
+        parts.append(func.ST_Contains(search_circle, shape))
+
+    if f.within_polygon:
+        polygon = func.ST_GeomFromText(f.within_polygon, 4326)
+        parts.append(func.ST_Contains(polygon, shape))
+
+    if not parts:
+        return cast(null(), Boolean)
+    return and_(*parts) if len(parts) > 1 else parts[0]
 
 
 def apply_occurrence_filters(stmt: Select, filters: OccurrenceFilters) -> Select:
