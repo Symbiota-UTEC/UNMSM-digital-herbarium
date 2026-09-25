@@ -1,4 +1,5 @@
 COMPOSE = docker compose
+EXEC_TTY_FLAG = $(if $(MAKE_TERMOUT),,-T)
 
 .PHONY: dev prd stop stop-all logs ps seed-admin seed-geo seed-all reset-db
 
@@ -41,12 +42,12 @@ SERVICE ?= backend-dev
 
 ## Crea el admin por defecto. Uso: make seed-admin [SERVICE=backend]
 seed-admin:
-	$(COMPOSE) exec -T $(SERVICE) python -m backend.scripts.create_admin
+	$(COMPOSE) exec $(EXEC_TTY_FLAG) $(SERVICE) python -m backend.scripts.create_admin
 
 ## Siembra países + divisiones administrativas (INEI + GeoNames).
 ## Uso: make seed-geo [ADM3="BR,MX"] [SERVICE=backend] — ADM3 añade nivel 3 de otros países
 seed-geo:
-	$(COMPOSE) exec -T $(SERVICE) python -m backend.scripts.seed_admin_divisions $(if $(ADM3),--adm3 $(ADM3),)
+	$(COMPOSE) exec $(EXEC_TTY_FLAG) $(SERVICE) python -m backend.scripts.seed_admin_divisions $(if $(ADM3),--adm3 $(ADM3),)
 
 ## Admin + divisiones administrativas, en ese orden. Uso: make seed-all [ADM3="BR,MX"] [SERVICE=backend]
 seed-all: seed-admin seed-geo

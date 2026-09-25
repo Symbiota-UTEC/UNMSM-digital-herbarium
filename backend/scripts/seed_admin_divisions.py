@@ -28,12 +28,15 @@ import sqlite3
 import ssl
 import subprocess
 import tempfile
+import time
 import unicodedata
 import urllib.request
 import zipfile
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
+from rich.console import Console
+from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeElapsedColumn
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
@@ -60,6 +63,134 @@ INEI_DISTRITO_URL = "https://ide.inei.gob.pe/files/Distrito.rar"
 # los demás toman sus divisiones de GeoNames (2 niveles por defecto,
 # nivel 3 opcional con --adm3).
 INEI_COUNTRY = "PE"
+
+_progress_ui = None
+
+
+def _progress_due(completed: int, total: int) -> bool:
+    """Report about twenty progress updates, plus the first and last item."""
+    interval = max(1, (total + 19) // 20)
+    return completed == 1 or completed == total or completed % interval == 0
+
+
+def _print_progress(label: str, completed: int, total: int, detail: str = "") -> None:
+    """Update the terminal bar, or emit occasional concise progress in redirected logs."""
+    if _progress_ui is not None:
+        _progress_ui.update(label, completed, total, detail)
+
+
+def _print_status(message: str) -> None:
+    """Keep status messages on the same console as Rich's live progress display."""
+    if _progress_ui is not None:
+        _progress_ui.console.print(f"[seed] {message}", markup=False)
+    else:
+        print(f"[seed] {message}", flush=True)
+
+
+class _SeedProgress:
+    """One reusable Rich progress bar; compact time-based updates when stdout is redirected."""
+
+    def __init__(self) -> None:
+        self.console = Console(stderr=True)
+        self.progress = Progress(
+            TextColumn("{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TimeElapsedColumn(),
+            console=self.console,
+            transient=True,
+        )
+        self.task_id = self.progress.add_task("Preparando", total=1)
+        self._started = False
+        self._label = ""
+        self._total = 1
+        self._last_log_at = 0.0
+
+    def __enter__(self) -> _SeedProgress:
+        if self.console.is_terminal:
+            self.progress.start()
+            self._started = True
+        return self
+
+    def __exit__(self, *_exc) -> None:
+        if self._started:
+            self.progress.stop()
+
+    def update(self, label: str, completed: int, total: int, detail: str = "") -> None:
+        description = f"{label} — {detail}" if detail else label
+        safe_total = max(total, 1)
+        safe_completed = min(max(completed, 0), safe_total)
+
+        if self.console.is_terminal:
+            if label != self._label or total != self._total or completed == 0:
+                self._label = label
+                self._total = total
+                self.progress.update(
+                    self.task_id,
+                    description=description,
+                    total=safe_total,
+                    completed=0,
+                )
+            self.progress.update(
+                self.task_id,
+                description=description,
+                completed=safe_completed,
+            )
+            return
+
+        now = time.monotonic()
+        if completed == total or now - self._last_log_at >= 10:
+            ratio = 1.0 if total == 0 else min(completed / total, 1.0)
+            self.console.print(
+                f"[seed] {description}: {completed}/{total} ({ratio:.0%})",
+                markup=False,
+            )
+            self._last_log_at = now
+
+
+def _download_file(
+    url: str,
+    dest: Path,
+    timeout: int,
+    label: str,
+    context: Optional[ssl.SSLContext] = None,
+) -> None:
+    """Stream a download to disk and report byte progress when available."""
+    partial = dest.with_name(f"{dest.name}.part")
+    _print_status(f"Descargando {label} ...")
+    try:
+        with urllib.request.urlopen(url, timeout=timeout, context=context) as response:
+            total = int(response.headers.get("Content-Length") or 0)
+            downloaded = 0
+            next_known_report = max(1, (total + 19) // 20) if total else 0
+            last_known_report = 0
+            next_unknown_report = 10 * 1024 * 1024
+            with partial.open("wb") as output:
+                while chunk := response.read(1024 * 1024):
+                    output.write(chunk)
+                    downloaded += len(chunk)
+                    if total and downloaded >= next_known_report:
+                        _print_progress(label, downloaded, total)
+                        last_known_report = downloaded
+                        next_known_report = downloaded + max(1, (total + 19) // 20)
+                    elif not total and downloaded >= next_unknown_report:
+                        _print_status(
+                            f"{label}: {downloaded / (1024 * 1024):.1f} MiB descargados."
+                        )
+                        next_unknown_report += 10 * 1024 * 1024
+
+            if total and downloaded != total:
+                raise RuntimeError(
+                    f"Descarga incompleta de {label}: {downloaded} de {total} bytes."
+                )
+            if total and downloaded != last_known_report:
+                _print_progress(label, downloaded, total)
+        partial.replace(dest)
+        size_mib = downloaded / (1024 * 1024)
+        _print_status(f"{label}: descarga completa ({size_mib:.1f} MiB).")
+    except Exception:
+        partial.unlink(missing_ok=True)
+        raise
 
 
 def normalize_name(name: str) -> str:
@@ -100,7 +231,9 @@ def load_countries(adm3_countries: Iterable[str]) -> List[Tuple[str, str, str, i
 
 
 def upsert_countries(db: Session, adm3_countries: Iterable[str]) -> None:
-    for code, name, source, admin_levels in load_countries(adm3_countries):
+    countries = load_countries(adm3_countries)
+    total = len(countries)
+    for index, (code, name, source, admin_levels) in enumerate(countries, start=1):
         row = db.get(Country, code)
         if row is None:
             row = Country(code=code)
@@ -108,6 +241,8 @@ def upsert_countries(db: Session, adm3_countries: Iterable[str]) -> None:
         row.name = name
         row.source = source
         row.adminLevels = admin_levels
+        if _progress_due(index, total):
+            _print_progress("Países", index, total, code)
     db.flush()
 
 
@@ -119,6 +254,11 @@ def upsert_divisions(
     source: str,
 ) -> None:
     """Upsert de un nivel; los parent_id se rellenan después de todos los niveles."""
+    total = len(rows)
+    show_row_progress = total >= 1000
+    if show_row_progress:
+        _print_progress(f"{country_code} nivel {level}", 0, total)
+
     existing = {
         d.code: d
         for d in db.scalars(
@@ -128,7 +268,7 @@ def upsert_divisions(
             )
         )
     }
-    for code, (name, source_id) in rows.items():
+    for index, (code, (name, source_id)) in enumerate(rows.items(), start=1):
         row = existing.get(code)
         if row is None:
             row = AdminDivision(countryCode=country_code, level=level, code=code, source=source)
@@ -138,7 +278,14 @@ def upsert_divisions(
         row.normalizedName = normalize_name(name)
         row.source = source
         row.sourceId = source_id
+        if show_row_progress and _progress_due(index, total):
+            _print_progress(f"{country_code} nivel {level}", index, total)
+
+    if show_row_progress:
+        _print_status(f"Guardando {total} divisiones de {country_code}, nivel {level} ...")
     db.flush()
+    if show_row_progress:
+        _print_status(f"{country_code}, nivel {level}: guardado.")
 
 
 def link_parents(
@@ -161,12 +308,24 @@ def link_parents(
             AdminDivision.countryCode == country_code,
             AdminDivision.level == level,
         )
-    )
-    for child in children:
+    ).all()
+    total = len(children)
+    show_row_progress = total >= 1000
+    if show_row_progress:
+        _print_progress(f"Enlazando {country_code} nivel {level}", 0, total)
+
+    for index, child in enumerate(children, start=1):
         parent_code = parent_of.get(child.code)
         if parent_code and parent_code in parent_ids:
             child.parentId = parent_ids[parent_code]
+        if show_row_progress and _progress_due(index, total):
+            _print_progress(f"Enlazando {country_code} nivel {level}", index, total)
+
+    if show_row_progress:
+        _print_status(f"Guardando parentescos de {country_code}, nivel {level} ...")
     db.flush()
+    if show_row_progress:
+        _print_status(f"Parentescos de {country_code}, nivel {level}: guardados.")
 
 
 # --------------------------------------------------------------------------
@@ -215,9 +374,7 @@ def _ensure_geonames_file(filename: str) -> Path:
     if path.exists():
         return path
     url = f"{GEONAMES_BASE_URL}/{filename}"
-    print(f"[seed] Descargando {url} ...")
-    with urllib.request.urlopen(url, timeout=120) as resp:
-        path.write_bytes(resp.read())
+    _download_file(url, path, timeout=120, label=filename)
     return path
 
 
@@ -239,8 +396,10 @@ def seed_geonames(db: Session, adm3_countries: List[str]) -> None:
     admin1_path = _ensure_geonames_file("admin1CodesASCII.txt")
     admin2_path = _ensure_geonames_file("admin2Codes.txt")
 
+    _print_status("Leyendo archivos GeoNames ...")
     admin1 = _parse_geonames_codes(admin1_path, None)
     admin2 = _parse_geonames_codes(admin2_path, None)
+    _print_status(f"GeoNames: {len(admin1)} ADM1 y {len(admin2)} ADM2 leídos.")
 
     # Agrupar por país para hacer un solo upsert (y un solo SELECT) por país/nivel.
     # El país INEI se excluye: sus divisiones provienen del catálogo oficial.
@@ -255,18 +414,29 @@ def seed_geonames(db: Session, adm3_countries: List[str]) -> None:
         if cc != INEI_COUNTRY:
             admin2_by_cc.setdefault(cc, {})[code] = (name, geonameid)
 
-    for cc, rows in admin1_by_cc.items():
+    total = len(admin1_by_cc)
+    for index, (cc, rows) in enumerate(admin1_by_cc.items(), start=1):
         upsert_divisions(db, cc, 1, rows, source="GEONAMES")
-    for cc, rows in admin2_by_cc.items():
+        if _progress_due(index, total):
+            _print_progress("GeoNames ADM1 por país", index, total, cc)
+    total = len(admin2_by_cc)
+    for index, (cc, rows) in enumerate(admin2_by_cc.items(), start=1):
         upsert_divisions(db, cc, 2, rows, source="GEONAMES")
+        if _progress_due(index, total):
+            _print_progress("GeoNames ADM2 por país", index, total, cc)
 
     # Los ADM1 son raíz; los ADM2 cuelgan de su ADM1 por prefijo "CC.XX.YY"
-    for cc in admin2_by_cc:
+    total = len(admin2_by_cc)
+    for index, cc in enumerate(admin2_by_cc, start=1):
         rows2 = _level_rows(db, cc, 2)
         link_parents(db, cc, 2, {code: code.rsplit(".", 1)[0] for code in rows2})
+        if _progress_due(index, total):
+            _print_progress("GeoNames: enlazando ADM2", index, total, cc)
 
-    for cc in adm3_countries:
+    total = len(adm3_countries)
+    for index, cc in enumerate(adm3_countries, start=1):
         seed_geonames_adm3(db, cc)
+        _print_progress("GeoNames ADM3", index, total, cc)
 
 
 def _level_rows(db: Session, country_code: str, level: int) -> Dict[str, Tuple[str, str]]:
@@ -281,6 +451,7 @@ def _level_rows(db: Session, country_code: str, level: int) -> Dict[str, Tuple[s
 
 def seed_geonames_adm3(db: Session, country_code: str) -> None:
     """Nivel 3 (p.ej. municipios) desde el dump por país {CC}.zip."""
+    _print_status(f"Leyendo GeoNames ADM3 para {country_code} ...")
     zip_path = _ensure_geonames_file(f"{country_code}.zip")
     adm3: Dict[str, Tuple[str, str]] = {}
     with zipfile.ZipFile(zip_path) as zf:
@@ -300,6 +471,7 @@ def seed_geonames_adm3(db: Session, country_code: str) -> None:
     upsert_divisions(db, country_code, 3, adm3, source="GEONAMES")
     parent_of = {code: code.rsplit(".", 1)[0] for code in adm3}
     link_parents(db, country_code, 3, parent_of)
+    _print_status(f"{country_code}: {len(adm3)} divisiones ADM3 procesadas.")
 
 
 def io_iter_lines(fh) -> Iterable[str]:
@@ -321,16 +493,19 @@ def _gpkg_wkb(blob: bytes) -> bytes:
 
 
 def _download_inei_rar(dest: Path) -> None:
-    print(f"[seed] Descargando {INEI_DISTRITO_URL} ...")
     try:
-        with urllib.request.urlopen(INEI_DISTRITO_URL, timeout=300) as resp:
-            dest.write_bytes(resp.read())
+        _download_file(INEI_DISTRITO_URL, dest, timeout=300, label="polígonos INEI")
     except ssl.SSLError:
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
-        with urllib.request.urlopen(INEI_DISTRITO_URL, timeout=300, context=ctx) as resp:
-            dest.write_bytes(resp.read())
+        _download_file(
+            INEI_DISTRITO_URL,
+            dest,
+            timeout=300,
+            label="polígonos INEI",
+            context=ctx,
+        )
 
 
 def _ensure_inei_gpkg() -> Path:
@@ -380,7 +555,9 @@ def seed_inei_boundaries(db: Session) -> int:
     admin_division (parent = prefijo de 4 dígitos del ubigeo).
     Devuelve el número de distritos con geometría.
     """
+    _print_status("INEI: preparando polígonos distritales ...")
     gpkg = _ensure_inei_gpkg()
+    _print_status(f"INEI: leyendo {gpkg.name} ...")
     con = sqlite3.connect(gpkg)
     rows = con.execute(
         "SELECT ubigeo, nombdist, geom FROM DISTRITO WHERE geom IS NOT NULL"
@@ -400,39 +577,60 @@ def seed_inei_boundaries(db: Session) -> int:
     if nuevos:
         upsert_divisions(db, "PE", 3, nuevos, source="INEI")
         link_parents(db, "PE", 3, {code: code[:4] for code in nuevos})
-        print(f"[seed] PE: {len(nuevos)} distritos nuevos añadidos al catálogo")
+        _print_status(f"PE: {len(nuevos)} distritos nuevos añadidos al catálogo")
 
     update = text(
         "UPDATE admin_division "
         "SET boundary = ST_Multi(ST_MakeValid(ST_GeomFromWKB(:wkb, 4326))) "
         "WHERE country_code = 'PE' AND level = 3 AND code = :ubigeo"
     )
-    for ubigeo, _name, geom in rows:
+    total = len(rows)
+    for index, (ubigeo, _name, geom) in enumerate(rows, start=1):
         db.execute(update, {"wkb": _gpkg_wkb(geom), "ubigeo": ubigeo})
+        if _progress_due(index, total):
+            _print_progress("Polígonos INEI de Perú", index, total, ubigeo)
 
     # Provincia y departamento: unión de sus distritos
-    db.execute(
-        text(
-            "UPDATE admin_division p SET boundary = u.g FROM ("
-            "  SELECT substr(code, 1, 4) AS pref, "
-            "         ST_Multi(ST_UnaryUnion(ST_Collect(boundary))) AS g"
-            "  FROM admin_division"
-            "  WHERE country_code = 'PE' AND level = 3 AND boundary IS NOT NULL"
-            "  GROUP BY substr(code, 1, 4)"
-            ") u WHERE p.country_code = 'PE' AND p.level = 2 AND p.code = u.pref"
+    _print_status("INEI: uniendo geometrías de provincias y departamentos ...")
+    for source_level, target_level, prefix_length, label in (
+        (3, 2, 4, "Uniendo provincias INEI"),
+        (2, 1, 2, "Uniendo departamentos INEI"),
+    ):
+        prefix = func.substr(AdminDivision.code, 1, prefix_length)
+        prefixes = db.scalars(
+            select(prefix)
+            .where(
+                AdminDivision.countryCode == "PE",
+                AdminDivision.level == source_level,
+                AdminDivision.boundary.isnot(None),
+            )
+            .group_by(prefix)
+            .order_by(prefix)
+        ).all()
+        total_prefixes = len(prefixes)
+        _print_progress(label, 0, total_prefixes)
+
+        update_unioned_boundary = text(
+            "UPDATE admin_division target SET boundary = unioned.boundary "
+            "FROM (SELECT ST_Multi(ST_UnaryUnion(ST_Collect(boundary))) AS boundary "
+            "      FROM admin_division "
+            "      WHERE country_code = 'PE' AND level = :source_level "
+            "        AND boundary IS NOT NULL "
+            "        AND substr(code, 1, :prefix_length) = :prefix) unioned "
+            "WHERE target.country_code = 'PE' AND target.level = :target_level "
+            "  AND target.code = :prefix"
         )
-    )
-    db.execute(
-        text(
-            "UPDATE admin_division d SET boundary = u.g FROM ("
-            "  SELECT substr(code, 1, 2) AS pref, "
-            "         ST_Multi(ST_UnaryUnion(ST_Collect(boundary))) AS g"
-            "  FROM admin_division"
-            "  WHERE country_code = 'PE' AND level = 2 AND boundary IS NOT NULL"
-            "  GROUP BY substr(code, 1, 2)"
-            ") u WHERE d.country_code = 'PE' AND d.level = 1 AND d.code = u.pref"
-        )
-    )
+        for index, area_prefix in enumerate(prefixes, start=1):
+            db.execute(
+                update_unioned_boundary,
+                {
+                    "source_level": source_level,
+                    "target_level": target_level,
+                    "prefix_length": prefix_length,
+                    "prefix": area_prefix,
+                },
+            )
+            _print_progress(label, index, total_prefixes, area_prefix)
 
     n3 = db.scalar(
         select(func.count())
@@ -443,7 +641,7 @@ def seed_inei_boundaries(db: Session) -> int:
             AdminDivision.boundary.isnot(None),
         )
     )
-    print(f"[seed] PE: {n3} distritos con polígono oficial INEI")
+    _print_status(f"PE: {n3} distritos con polígono oficial INEI")
     return n3
 
 
@@ -453,6 +651,8 @@ def seed_inei_boundaries(db: Session) -> int:
 
 
 def main() -> None:
+    global _progress_ui
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--adm3",
@@ -462,50 +662,63 @@ def main() -> None:
     args = parser.parse_args()
     adm3_countries = [c.strip().upper() for c in args.adm3.split(",") if c.strip()]
 
-    ensure_database_extensions()
-    Base.metadata.create_all(bind=engine)
-
-    db = SessionLocal()
+    progress_ui = _SeedProgress()
+    _progress_ui = progress_ui
     try:
-        upsert_countries(db, adm3_countries)
-        seed_peru(db)
-        seed_geonames(db, adm3_countries)
-        db.commit()
+        with progress_ui:
+            _print_status("Preparando extensiones de base de datos ...")
+            ensure_database_extensions()
+            _print_status("Preparando tablas ...")
+            Base.metadata.create_all(bind=engine)
 
-        try:
-            seed_inei_boundaries(db)
-        except Exception as exc:  # sin red/extractor: el catálogo textual queda sembrado
-            db.rollback()
-            print(f"[seed] AVISO: sin polígonos INEI ({exc})")
-        else:
-            db.commit()
+            db = SessionLocal()
+            try:
+                _print_status("Cargando países ...")
+                upsert_countries(db, adm3_countries)
+                _print_status("Cargando divisiones de Perú ...")
+                seed_peru(db)
+                _print_status("Cargando divisiones de GeoNames ...")
+                seed_geonames(db, adm3_countries)
+                _print_status("Confirmando catálogo ...")
+                db.commit()
 
-        countries = db.scalar(select(func.count()).select_from(Country))
-        divs = db.scalar(select(func.count()).select_from(AdminDivision))
-        print(f"[seed] OK — {countries} países, {divs} divisiones administrativas.")
-        rows = db.execute(
-            select(AdminDivision.level, func.count())
-            .where(AdminDivision.countryCode == "PE")
-            .group_by(AdminDivision.level)
-        ).all()
-        print("[seed] PE: " + ", ".join(f"nivel {lv}: {n}" for lv, n in sorted(rows)))
-        geonames_count = db.scalar(
-            select(func.count())
-            .select_from(AdminDivision)
-            .where(AdminDivision.source == "GEONAMES")
-        )
-        print(f"[seed] GeoNames (todos los países): {geonames_count} divisiones.")
-        boundaries = db.scalar(
-            select(func.count())
-            .select_from(AdminDivision)
-            .where(AdminDivision.boundary.isnot(None))
-        )
-        print(f"[seed] Polígonos INEI cargados: {boundaries}.")
-    except Exception:
-        db.rollback()
-        raise
+                try:
+                    _print_status("Cargando polígonos INEI ...")
+                    seed_inei_boundaries(db)
+                except Exception as exc:  # sin red/extractor: el catálogo textual queda sembrado
+                    db.rollback()
+                    _print_status(f"AVISO: sin polígonos INEI ({exc})")
+                else:
+                    db.commit()
+
+                countries = db.scalar(select(func.count()).select_from(Country))
+                divs = db.scalar(select(func.count()).select_from(AdminDivision))
+                _print_status(f"OK — {countries} países, {divs} divisiones administrativas.")
+                rows = db.execute(
+                    select(AdminDivision.level, func.count())
+                    .where(AdminDivision.countryCode == "PE")
+                    .group_by(AdminDivision.level)
+                ).all()
+                _print_status("PE: " + ", ".join(f"nivel {lv}: {n}" for lv, n in sorted(rows)))
+                geonames_count = db.scalar(
+                    select(func.count())
+                    .select_from(AdminDivision)
+                    .where(AdminDivision.source == "GEONAMES")
+                )
+                _print_status(f"GeoNames (todos los países): {geonames_count} divisiones.")
+                boundaries = db.scalar(
+                    select(func.count())
+                    .select_from(AdminDivision)
+                    .where(AdminDivision.boundary.isnot(None))
+                )
+                _print_status(f"Polígonos INEI cargados: {boundaries}.")
+            except Exception:
+                db.rollback()
+                raise
+            finally:
+                db.close()
     finally:
-        db.close()
+        _progress_ui = None
 
 
 if __name__ == "__main__":
