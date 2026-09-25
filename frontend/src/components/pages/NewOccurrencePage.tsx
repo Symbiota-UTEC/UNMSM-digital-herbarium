@@ -32,6 +32,7 @@ import { collectionsService } from "@services/collections.service";
 import { taxonService } from "@services/taxon.service";
 import type { TaxonDetailOut } from "@interfaces/taxon";
 import { occurrencesService } from "@services/occurrences.service";
+import { ApiError } from "@services/api.error";
 import { uploadService } from "@services/upload.service";
 import { adminDivisionsService } from "@services/adminDivisions.service";
 import { GeographicHierarchy } from "../GeographicHierarchy";
@@ -496,7 +497,7 @@ export function NewOccurrencePage({
     });
 
     return {
-      catalogNumber,
+      catalogNumber: catalogNumber.trim(),
       occurrenceStatus: occurrenceStatus || null,
       recordNumber: recordNumber || null,
       recordedBy: recordedBy || null,
@@ -547,13 +548,14 @@ export function NewOccurrencePage({
       return;
     }
 
-    const canSave = mode === "edit" ? !!catalogNumber : !!catalogNumber && !!selectedTaxonID;
+    const validCatalog = /^[0-9]{1,100}$/.test(catalogNumber.trim());
+    const canSave = mode === "edit" ? validCatalog : validCatalog && !!selectedTaxonID;
     if (!canSave) {
-      toast.error("Faltan campos obligatorios", {
+      toast.error("Revisa el número de catálogo", {
         description:
-          mode === "create"
-            ? "Por favor, completa el número de catálogo y asocia un taxón antes de guardar."
-            : "Por favor, completa el número de catálogo antes de guardar.",
+          !validCatalog
+            ? "Debe contener entre 1 y 100 dígitos, sin el código de institución."
+            : "Asocia un taxón antes de guardar.",
       });
       return;
     }
@@ -596,6 +598,10 @@ export function NewOccurrencePage({
         handleCancel();
       } else {
         // Create mode
+        if (!collectionId) {
+          toast.error("Selecciona una colección antes de guardar la ocurrencia.");
+          return;
+        }
         const payload = {
           collectionId,
           ...buildBasicPayload(),
@@ -622,7 +628,16 @@ export function NewOccurrencePage({
         handleCancel();
       }
     } catch (err: any) {
-      toast.error("Error al guardar ocurrencia", { description: err.message });
+      let detail = err?.message || "Error desconocido";
+      if (err instanceof ApiError && err.detail) {
+        try {
+          const parsed = JSON.parse(err.detail);
+          detail = typeof parsed.detail === "string" ? parsed.detail : err.detail;
+        } catch {
+          detail = err.detail;
+        }
+      }
+      toast.error("Error al guardar ocurrencia", { description: detail });
     } finally {
       setIsSubmitting(false);
     }
@@ -648,7 +663,8 @@ export function NewOccurrencePage({
                 id="catalogNumber"
                 value={catalogNumber}
                 onChange={(e) => setCatalogNumber(e.target.value)}
-                placeholder="BOT-2024-001"
+                placeholder="Ej: 00123"
+                inputMode="numeric"
                 required
               />
             </div>
@@ -1565,7 +1581,8 @@ export function NewOccurrencePage({
   /* ══════════════════════════════════════════════════
      RENDER PRINCIPAL
   ══════════════════════════════════════════════════ */
-  const canSubmit = mode === "edit" ? !!catalogNumber : !!catalogNumber && !!selectedTaxonID;
+  const validCatalog = /^[0-9]{1,100}$/.test(catalogNumber.trim());
+  const canSubmit = mode === "edit" ? validCatalog : validCatalog && !!selectedTaxonID;
 
   // Refleja exactamente los badges "Obligatorio"/"Recomendado" que ya se ven en cada pestaña.
   const TAB_STATUSES: Record<TabKey, TabCompletionStatus> = {

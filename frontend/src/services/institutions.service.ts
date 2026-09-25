@@ -10,6 +10,7 @@ export interface InstitutionListParams {
 }
 
 export interface InstitutionUpdatePayload {
+  institutionCode?: string;
   institutionName?: string;
   country?: string;
   city?: string;

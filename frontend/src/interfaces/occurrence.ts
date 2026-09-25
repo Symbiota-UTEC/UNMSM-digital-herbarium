@@ -12,6 +12,7 @@ export interface CollectionSummary {
   collectionId: string;
   collectionName: string | null;
   institutionId: string | null;
+  institution?: { institutionCode: string } | null;
   /** Permisos del usuario actual sobre esta colección (los calcula el backend). */
   myRole?: string | null;
   canEdit?: boolean;
@@ -74,7 +75,7 @@ export interface OccurrenceItem {
   // Occurrence core
   recordNumber: string | null;
   recordedBy: string | null;
-  catalogNumber: string | null;
+  catalogNumber: string;
 
   // Evento
   verbatimEventDate: string | null;

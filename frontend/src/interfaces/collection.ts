@@ -2,6 +2,7 @@ import type { CollectionRole, EffectiveRole } from "@constants/enums";
 
 export interface InstitutionOut {
   institutionId: string;
+  institutionCode: string;
   institutionName?: string | null;
 }
 

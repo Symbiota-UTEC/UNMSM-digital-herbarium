@@ -29,7 +29,7 @@ export const DWC_FIELDS: Record<string, DwCFieldOption[]> = {
       required: true,
       recommended: true,
       inForm: true,
-      helpEs: "Número o código de catálogo asignado al ejemplar o registro (número de pliego, etc.).",
+      helpEs: "Dígitos del número de catálogo, sin el código de institución. Se conservan los ceros iniciales.",
     },
     {
       entity: "Occurrence",
