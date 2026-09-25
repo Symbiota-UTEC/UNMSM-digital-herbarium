@@ -37,14 +37,7 @@ def upload_dwc_csv(
       vinculados directamente a la Identification, **solo si vienen nombres/IDs**.
     - Marca la Identification creada como isCurrent = True y la asigna como
       currentIdentification de la Occurrence.
-    - A NIVEL DE CABECERA (no por fila) se exigen las columnas:
-        * dwc:Occurrence:recordNumber
-        * dwc:Occurrence:catalogNumber
-        * dwc:Occurrence:recordedBy
-        * dwc:Taxon:scientificName
-        * dwc:Taxon:scientificNameAuthorship
-        * dwc:Identification:identifiedBy
-      A NIVEL DE FILA:
-        - Ningún valor es obligatorio. Si viene vacío, se deja el atributo como None.
+    - Se exige dwc:Occurrence:catalogNumber como cabecera y un valor numérico por fila.
+      El valor se recorta, conserva ceros iniciales y debe ser único en la institución.
     """
     return dwc_import_service.import_dwc_csv(db, collection_id, file, current_user)

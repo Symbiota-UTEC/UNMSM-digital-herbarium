@@ -453,7 +453,8 @@ on every call). Unifying picked the formula the majority of endpoints already fo
 - Accepts a `.csv` file with headers in the format `dwc:Entity:field` (e.g., `dwc:Occurrence:catalogNumber`).
 - Validation logic lives in `utils/dwc.py` — `ALLOWED_FIELDS` maps Entity → allowed field names.
 - Invalid headers return a structured error listing the rejected columns.
-- Rows are processed and inserted/updated in batch.
+- `dwc:Occurrence:catalogNumber` is the only required column. Every row needs 1–100 digits after trimming; leading zeros are preserved. Duplicate numbers within an institution reject the whole import.
+- Rows are streamed in one transaction and inserted atomically.
 
 ---
 

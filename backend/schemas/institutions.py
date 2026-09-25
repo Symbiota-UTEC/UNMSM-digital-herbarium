@@ -2,9 +2,10 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import EmailStr
+from pydantic import EmailStr, field_validator
 
 from backend.schemas.common.base import ORMBaseModel, StrictBaseModel
+from backend.utils.catalog import normalize_institution_code
 
 
 class AdminUserOut(ORMBaseModel):
@@ -16,6 +17,7 @@ class AdminUserOut(ORMBaseModel):
 
 class InstitutionOut(ORMBaseModel):
     institutionId: UUID
+    institutionCode: str
     institutionName: Optional[str] = None
     country: Optional[str] = None
     city: Optional[str] = None
@@ -42,10 +44,16 @@ class InstitutionBase(StrictBaseModel):
     webSite: Optional[str] = None
     institutionAdminUserId: Optional[UUID] = None
 
+    @field_validator("institutionCode", check_fields=False)
+    @classmethod
+    def validate_institution_code(cls, value: str) -> str:
+        return normalize_institution_code(value)
+
 
 class InstitutionCreate(InstitutionBase):
     institutionName: str
+    institutionCode: str
 
 
 class InstitutionUpdate(InstitutionBase):
-    pass
+    institutionCode: Optional[str] = None

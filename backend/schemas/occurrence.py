@@ -5,20 +5,26 @@ from datetime import date, datetime
 from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from backend.models.enums import EffectiveRole
 from backend.schemas.common.base import ORMBaseModel, StrictBaseModel
+from backend.utils.catalog import normalize_catalog_number
 
 # -----------------------------
 # Resumenes / submodelos
 # -----------------------------
 
 
+class OccurrenceInstitutionSummaryOut(ORMBaseModel):
+    institutionCode: str
+
+
 class OccurrenceCollectionSummaryOut(ORMBaseModel):
     collectionId: UUID
     collectionName: Optional[str] = None
-    institutionId: Optional[UUID] = None
+    institutionId: UUID
+    institution: Optional[OccurrenceInstitutionSummaryOut] = None
     # Permisos del usuario actual sobre la colección de esta ocurrencia
     myRole: Optional[EffectiveRole] = None
     canEdit: bool = False
@@ -91,14 +97,14 @@ class OccurrenceOut(ORMBaseModel):
     occurrenceId: UUID
 
     # Enlaces
-    collectionId: Optional[UUID] = None
+    collectionId: UUID
     collection: Optional[OccurrenceCollectionSummaryOut] = None
     digitizerUserId: Optional[UUID] = None
 
     # Occurrence + Event + Location (aplanado)
     recordNumber: Optional[str] = None
     recordedBy: Optional[str] = None
-    catalogNumber: Optional[str] = None
+    catalogNumber: str
 
     verbatimEventDate: Optional[str] = None
     eventDate: Optional[str] = None
@@ -190,6 +196,11 @@ class OccurrenceCreateIn(StrictBaseModel):
     recordNumber: Optional[str] = None
     recordedBy: Optional[str] = None
 
+    @field_validator("catalogNumber")
+    @classmethod
+    def validate_catalog_number(cls, value: str) -> str:
+        return normalize_catalog_number(value)
+
     # Event
     eventDate: Optional[str] = None
     verbatimEventDate: Optional[str] = None
@@ -243,6 +254,11 @@ class OccurrenceUpdateIn(StrictBaseModel):
     catalogNumber: Optional[str] = None
     recordNumber: Optional[str] = None
     recordedBy: Optional[str] = None
+
+    @field_validator("catalogNumber")
+    @classmethod
+    def validate_catalog_number(cls, value: str | None) -> str:
+        return normalize_catalog_number(value)
 
     # Event
     eventDate: Optional[str] = None

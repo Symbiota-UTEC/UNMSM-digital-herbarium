@@ -6,7 +6,9 @@ import uuid
 from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, Uuid
+from sqlalchemy import (
+    CheckConstraint, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, Uuid,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.config.database import Base
@@ -14,11 +16,19 @@ from backend.config.database import Base
 
 class Institution(Base):
     __tablename__ = "institution"
+    __table_args__ = (
+        UniqueConstraint("institution_code", name="uq_institution_code"),
+        CheckConstraint(
+            "length(institution_code) > 0 AND institution_code = btrim(institution_code)",
+            name="ck_institution_code_trimmed",
+        ),
+    )
 
     institutionId: Mapped[uuid.UUID] = mapped_column(
         "institution_id", Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     institutionName: Mapped[Optional[str]] = mapped_column("institution_name", String(255))
+    institutionCode: Mapped[str] = mapped_column("institution_code", Text(), nullable=False)
     country: Mapped[Optional[str]] = mapped_column("country", String(100))
     city: Mapped[Optional[str]] = mapped_column("city", String(100))
     address: Mapped[Optional[str]] = mapped_column("address", Text())

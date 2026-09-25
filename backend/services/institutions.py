@@ -4,11 +4,33 @@ from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_, func, literal, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.models.models import Institution, User
 from backend.schemas.common.pages import Page
 from backend.schemas.institutions import InstitutionCreate, InstitutionOut, InstitutionUpdate
+
+
+def _ensure_code_available(db: Session, code: str, institution_id: Optional[UUID] = None) -> None:
+    stmt = select(Institution.institutionId).where(Institution.institutionCode == code)
+    if institution_id is not None:
+        stmt = stmt.where(Institution.institutionId != institution_id)
+    if db.scalar(stmt.limit(1)) is not None:
+        raise HTTPException(status_code=409, detail="El código de institución ya existe")
+
+
+def _commit_institution(db: Session) -> None:
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        constraint_name = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
+        if constraint_name == "uq_institution_code":
+            raise HTTPException(
+                status_code=409, detail="El código de institución ya existe"
+            ) from exc
+        raise
 
 
 def list_institutions(
@@ -78,7 +100,9 @@ def create_institution(
             detail="Only the global administrator can create a new institution",
         )
 
+    _ensure_code_available(db, institution.institutionCode)
     new_institution = Institution(
+        institutionCode=institution.institutionCode,
         institutionName=institution.institutionName,
         country=institution.country,
         city=institution.city,
@@ -90,7 +114,7 @@ def create_institution(
     )
 
     db.add(new_institution)
-    db.commit()
+    _commit_institution(db)
     db.refresh(new_institution)
     return new_institution
 
@@ -132,6 +156,10 @@ def update_institution(
 
     # 3) Datos enviados (solo campos presentes en el payload)
     update_data = institution.model_dump(exclude_unset=True)
+
+    if "institutionCode" in update_data:
+        _ensure_code_available(db, update_data["institutionCode"], institution_id)
+        institution_db.institutionCode = update_data["institutionCode"]
 
     # ---- Campos simples
     if "institutionName" in update_data:
@@ -203,7 +231,7 @@ def update_institution(
                 # c) Si se envía None -> quitar admin
                 institution_db.institutionAdminUserId = None
 
-    db.commit()
+    _commit_institution(db)
     db.refresh(institution_db)
 
     return institution_db

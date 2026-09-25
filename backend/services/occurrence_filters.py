@@ -277,14 +277,14 @@ def apply_occurrence_filters(stmt: Select, filters: OccurrenceFilters) -> Select
     f = filters
 
     # mismas expresiones que usas en el endpoint
-    code_expr = func.coalesce(Occurrence.catalogNumber, Occurrence.recordNumber)
+    code_expr = func.concat(Institution.institutionCode, " ", Occurrence.catalogNumber)
     location_expr = _location_expr()
 
-    # Código exacto (normalmente sin tildes, lo dejamos simple)
+    # Acepta el número puro o el identificador visible (código + número).
     if f.code:
         term = f.code.strip()
         if term:
-            stmt = stmt.where(code_expr == term)
+            stmt = stmt.where(or_(Occurrence.catalogNumber == term, code_expr == term))
 
     # Nombre científico (prefijo, acento-insensible) -> Taxon.scientificName
     if f.scientific_name:
