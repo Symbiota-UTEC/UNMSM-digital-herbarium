@@ -20,13 +20,16 @@ from backend.utils.security import hash_password, verify_password
 
 def list_registration_requests(
     db: Session,
-    limit: int,
-    offset: int,
+    page: int,
+    page_size: int,
     status_filter: Optional[RegistrationStatus],
     institution_id: Optional[UUID],
     full_name_prefix: Optional[str],
     current_user: User,
 ) -> Page[RegistrationRequestItem]:
+    limit = page_size
+    offset = (page - 1) * page_size
+
     # --- Permisos ---
     if current_user.isSuperuser:
         where_clauses = []

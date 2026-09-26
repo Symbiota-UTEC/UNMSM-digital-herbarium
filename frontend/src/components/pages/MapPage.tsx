@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { toast } from "sonner";
+import { PAGE_SIZE } from "@constants/api";
 import {
   Circle as CircleIcon,
   Eraser,
@@ -138,7 +139,7 @@ const LIMA: [number, number] = [-77.0428, -12.0464]; // [lon, lat]
 const SEARCH_STORAGE_KEY = "herbarium.mapSearch";
 
 // La tabla usa el listado paginado normal (GET /occurrences, sin el tope de puntos del mapa).
-const TABLE_PAGE_SIZE = 20;
+const TABLE_PAGE_SIZE = PAGE_SIZE.MAP_TABLE;
 
 // "" = sin orden particular (createdAt desc en el backend). Un solo criterio a la vez;
 // se elige haciendo clic en el encabezado de la columna correspondiente de la tabla.

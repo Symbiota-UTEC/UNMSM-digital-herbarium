@@ -111,10 +111,13 @@ def get_user_by_id(db: Session, user_id: UUID, current_user: User) -> UserOut:
 def get_users(
     db: Session,
     institution_id: Optional[UUID],
-    limit: int,
-    offset: int,
+    page: int,
+    page_size: int,
     current_user: User,
 ) -> Page[UserOut]:
+    limit = page_size
+    offset = (page - 1) * page_size
+
     # Iniciar la consulta de usuarios (tanto activos como inactivos)
     base_stmt = select(User)
     count_stmt = select(func.count()).select_from(User)

@@ -26,15 +26,15 @@ router = APIRouter(prefix="/institutions", tags=["Institutions"])
 )
 def list_institutions(
     db: Session = Depends(get_db),
-    limit: int = Query(100, ge=1, le=500),
-    offset: int = Query(0, ge=0),
+    page: int = Query(1, ge=1, description="Número de página (1-based)"),
+    page_size: int = Query(100, ge=1, le=500, alias="pageSize", description="Tamaño de página"),
     name_prefix: Optional[str] = Query(
         None,
         alias="namePrefix",  # <-- para que ?namePrefix=... funcione
         description="Filtro por nombre de institución (contiene, case/accent-insensitive)",
     ),
 ):
-    return institutions_service.list_institutions(db, limit, offset, name_prefix)
+    return institutions_service.list_institutions(db, page, page_size, name_prefix)
 
 
 @router.get(

@@ -392,6 +392,19 @@ Keep it that way: don't add a third copy of the permission logic.
 - All output schemas extend `ORMBaseModel` (enables `from_attributes=True` for ORM serialization).
 - All input schemas extend `StrictBaseModel` (`extra="forbid"` — unknown fields raise 422).
 - Paginated responses use the generic `Page[T]` (fields: `items`, `total`, `limit`, `offset`, `currentPage`, `totalPages`, `remainingPages`).
+- **Every paginated endpoint's query params are `page` (1-based) + `pageSize`** — never
+  `limit`/`offset` on the wire, even though `Page[T]` and `Page.of()` are limit/offset
+  internally (see below). The router passes `page`/`page_size` straight through, unconverted
+  — the `offset = (page - 1) * page_size` conversion happens at the top of the *service*
+  function, right before it's needed, not in the router (that was inconsistent for a while:
+  `occurrence.py`/`taxon.py` always converted in the service, the rest briefly converted in
+  the router when they were first migrated to `page`/`pageSize` — now unified on the service
+  doing it, so a router is never more than a thin adapter over `Depends`/`Query`). `page_size`
+  always carries `alias="pageSize"` (same camelCase rule as every other query param); `page`
+  needs none, being a single word already. `GET /occurrences/map` is the
+  one exception: it's deliberately unpaginated (`limit` + `truncated`, no `Page[T]`, no
+  `page`), since capping how many map points render isn't the same thing as paging through
+  a list.
 
 ### Building a `Page[T]`
 

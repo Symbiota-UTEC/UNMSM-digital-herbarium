@@ -101,7 +101,7 @@ export function UploadsPage() {
   const [isLoadingJobs, setIsLoadingJobs] = useState(false);
   const [jobHistory, setJobHistory] = useState<TaxonFloraImportJob[]>([]);
   const [activeJob, setActiveJob] = useState<TaxonFloraImportJob | null>(null);
-  const [jobHistoryOffset, setJobHistoryOffset] = useState(0);
+  const [jobHistoryPage, setJobHistoryPage] = useState(1);
   const [jobHistoryTotal, setJobHistoryTotal] = useState(0);
 
   const syncActiveJobFromHistory = (jobs: TaxonFloraImportJob[], preferredJobId?: string | null) => {
@@ -115,15 +115,15 @@ export function UploadsPage() {
     setActiveJob(preferred ?? running ?? jobs[0]);
   };
 
-  const fetchJobHistory = async (preferredJobId?: string | null, showError = false, offset = 0, silent = false) => {
+  const fetchJobHistory = async (preferredJobId?: string | null, showError = false, page = 1, silent = false) => {
     if (!isSuperuser) return;
     try {
       if (!silent) setIsLoadingJobs(true);
-      const data = await uploadService.getTaxonFloraCsvJobs(apiFetch, PAGE_SIZE.TAXON_FLORA_JOBS, offset);
+      const data = await uploadService.getTaxonFloraCsvJobs(apiFetch, PAGE_SIZE.TAXON_FLORA_JOBS, page);
       const jobs = data.items ?? [];
       setJobHistory(jobs);
       setJobHistoryTotal(data.total);
-      if (offset === 0) syncActiveJobFromHistory(jobs, preferredJobId ?? activeJob?.jobId ?? null);
+      if (page === 1) syncActiveJobFromHistory(jobs, preferredJobId ?? activeJob?.jobId ?? null);
     } catch (error: any) {
       console.error(error);
       if (showError) toast.error(error?.message || "Error al cargar el historial de importaciones.");
@@ -177,9 +177,9 @@ export function UploadsPage() {
       setOpen(false);
       setCsvFile(null);
       completedJobSyncRef.current = null;
-      setJobHistoryOffset(0);
+      setJobHistoryPage(1);
       await fetchJob(payload.jobId, true);
-      await fetchJobHistory(payload.jobId, true, 0);
+      await fetchJobHistory(payload.jobId, true, 1);
     } catch (err: any) {
       console.error(err);
       toast.error(err?.message || "Error al subir el CSV de taxones");
@@ -205,7 +205,7 @@ export function UploadsPage() {
 
     const intervalId = window.setInterval(() => {
       fetchJob(activeJob.jobId, false);
-      fetchJobHistory(activeJob.jobId, false, 0, true); // silent: el polling no debe parpadear
+      fetchJobHistory(activeJob.jobId, false, 1, true); // silent: el polling no debe parpadear
     }, POLL_MS);
 
     return () => window.clearInterval(intervalId);
@@ -213,18 +213,18 @@ export function UploadsPage() {
   }, [isSuperuser, activeJob?.jobId, activeJob?.status]);
 
   const latestJob = activeJob ?? jobHistory[0] ?? null;
-  const jobCurrentPage = Math.floor(jobHistoryOffset / PAGE_SIZE.TAXON_FLORA_JOBS) + 1;
+  const jobCurrentPage = jobHistoryPage;
   const jobTotalPages = Math.ceil(jobHistoryTotal / PAGE_SIZE.TAXON_FLORA_JOBS) || 1;
 
   const handleHistorialPrev = () => {
-    const prev = Math.max(0, jobHistoryOffset - PAGE_SIZE.TAXON_FLORA_JOBS);
-    setJobHistoryOffset(prev);
+    const prev = Math.max(1, jobHistoryPage - 1);
+    setJobHistoryPage(prev);
     fetchJobHistory(activeJob?.jobId, false, prev);
   };
 
   const handleHistorialNext = () => {
-    const next = jobHistoryOffset + PAGE_SIZE.TAXON_FLORA_JOBS;
-    setJobHistoryOffset(next);
+    const next = jobHistoryPage + 1;
+    setJobHistoryPage(next);
     fetchJobHistory(activeJob?.jobId, false, next);
   };
 

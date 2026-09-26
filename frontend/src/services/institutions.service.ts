@@ -23,8 +23,7 @@ export interface InstitutionUpdatePayload {
 export const institutionsService = {
   async list(apiFetch: ApiFetch, params: InstitutionListParams): Promise<PaginatedResponse<Institution>> {
     const { page = 1, limit = 10, namePrefix } = params;
-    const offset = (page - 1) * limit;
-    const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    const query = new URLSearchParams({ page: String(page), pageSize: String(limit) });
     if (namePrefix?.trim()) query.set("namePrefix", namePrefix.trim());
 
     const res = await apiFetch(`${API.BASE_URL}${API.PATHS.INSTITUTIONS.BASE}?${query.toString()}`);
@@ -62,7 +61,7 @@ export const institutionsService = {
 
   /** Búsqueda por prefijo de nombre — para autocompletado */
   async search(apiFetch: ApiFetch, namePrefix: string, limit: number): Promise<PaginatedResponse<Institution>> {
-    const query = new URLSearchParams({ namePrefix, limit: String(limit) });
+    const query = new URLSearchParams({ namePrefix, pageSize: String(limit) });
     const res = await apiFetch(`${API.BASE_URL}${API.PATHS.INSTITUTIONS.BASE}?${query.toString()}`);
     await throwIfError(res);
     return res.json();

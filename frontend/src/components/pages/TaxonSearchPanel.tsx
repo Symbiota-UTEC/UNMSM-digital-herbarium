@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Info, Loader2 } from "lucide-react";
+import { PAGE_SIZE } from "@constants/api";
 import { taxonService, type TaxonSearchItem } from "@services/taxon.service";
 import { useAuth } from "@contexts/AuthContext";
 import { useDebounce } from "@utils/useDebounce";
@@ -8,8 +9,6 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-
-const SEARCH_PAGE_SIZE = 20;
 
 interface TaxonSearchPanelProps {
   onNavigate?: (page: string, params?: Record<string, any>) => void;
@@ -40,7 +39,7 @@ export function TaxonSearchPanel({ onNavigate }: TaxonSearchPanelProps) {
       const data = await taxonService.search(apiFetch, {
         q: trimmedQuery,
         page,
-        size: SEARCH_PAGE_SIZE,
+        size: PAGE_SIZE.TAXON_SEARCH,
       });
 
       if (requestId !== searchRequestIdRef.current) return;

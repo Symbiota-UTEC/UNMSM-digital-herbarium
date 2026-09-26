@@ -75,12 +75,12 @@ export const uploadService = {
 
   async getTaxonFloraCsvJobs(
     apiFetch: ApiFetch,
-    limit: number = PAGE_SIZE.TAXON_FLORA_JOBS,
-    offset: number = 0,
+    pageSize: number = PAGE_SIZE.TAXON_FLORA_JOBS,
+    page: number = 1,
   ): Promise<PaginatedResponse<TaxonFloraImportJob>> {
     const params = new URLSearchParams({
-      limit: limit.toString(),
-      offset: offset.toString(),
+      page: page.toString(),
+      pageSize: pageSize.toString(),
     });
     const res = await apiFetch(`${API.BASE_URL}${API.PATHS.UPLOAD.TAXON_FLORA_CSV_JOBS}?${params}`);
     await throwIfError(res);

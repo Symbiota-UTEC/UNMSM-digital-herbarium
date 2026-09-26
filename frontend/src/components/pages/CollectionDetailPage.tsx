@@ -39,6 +39,7 @@ import { usersService } from "@services/users.service";
 import { ApiError } from "@services/api.error";
 import { Role } from "@constants/roles";
 import { CollectionRole } from "@constants/enums";
+import { PAGE_SIZE } from "@constants/api";
 import type { OccurrenceBriefItem } from "@interfaces/occurrence";
 import type { PaginatedResponse } from "@interfaces/utils/pagination";
 import type { CollectionOut, CollectionUserAccessItem } from "@interfaces/collection";
@@ -92,14 +93,14 @@ export function CollectionDetailPage({ collectionId, onNavigate }: CollectionDet
 
   // ================== Estado: usuarios ==================
   const [usersResp, setUsersResp] = useState<PaginatedResponse<CollectionUserAccessItem> | null>(null);
-  const [usersLimit] = useState(3);
-  const [usersOffset, setUsersOffset] = useState(0);
+  const [usersLimit] = useState(PAGE_SIZE.COLLECTION_ACCESS_USERS);
+  const [usersPage, setUsersPage] = useState(1);
 
   // ================== Estado: ocurrencias ==================
   const [occResp, setOccResp] = useState<PaginatedResponse<OccurrenceBriefItem> | null>(null);
   const [occLoading, setOccLoading] = useState(true);
-  const [occLimit] = useState(5);
-  const [occOffset, setOccOffset] = useState(0);
+  const [occLimit] = useState(PAGE_SIZE.COLLECTION_OCCURRENCES);
+  const [occPage, setOccPage] = useState(1);
 
   // ================== Estado: Add user dialog ==================
   const [showAddUserDialog, setShowAddUserDialog] = useState(false);
@@ -137,26 +138,26 @@ export function CollectionDetailPage({ collectionId, onNavigate }: CollectionDet
 
   // ================== Cargas ==================
   const fetchUsers = useCallback(
-    async (opts?: { limit?: number; offset?: number }) => {
+    async (opts?: { limit?: number; page?: number }) => {
       if (!token) return;
       try {
         const limit = opts?.limit ?? usersLimit;
-        const offset = opts?.offset ?? usersOffset;
-        const data = await collectionsService.getAccessUsers(apiFetch, collectionId, offset, limit);
+        const page = opts?.page ?? usersPage;
+        const data = await collectionsService.getAccessUsers(apiFetch, collectionId, page, limit);
         setUsersResp(data);
       } catch (err) {
         console.error("fetch access-users error:", err);
         toast.error("No se pudieron cargar los usuarios con acceso");
       }
     },
-    [apiFetch, collectionId, usersLimit, usersOffset, token],
+    [apiFetch, collectionId, usersLimit, usersPage, token],
   );
 
   const fetchOccurrences = useCallback(async () => {
     if (!token) return;
     try {
       setOccLoading(true);
-      const data = await collectionsService.getOccurrencesBrief(apiFetch, collectionId, occOffset, occLimit);
+      const data = await collectionsService.getOccurrencesBrief(apiFetch, collectionId, occPage, occLimit);
       setOccResp(data);
     } catch (err) {
       console.error("fetch occurrences error:", err);
@@ -164,7 +165,7 @@ export function CollectionDetailPage({ collectionId, onNavigate }: CollectionDet
     } finally {
       setOccLoading(false);
     }
-  }, [apiFetch, collectionId, occLimit, occOffset, token]);
+  }, [apiFetch, collectionId, occLimit, occPage, token]);
 
   useEffect(() => {
     if (!token) return;
@@ -267,8 +268,8 @@ export function CollectionDetailPage({ collectionId, onNavigate }: CollectionDet
         setEmailInput("");
         setEmailStatus("idle");
         setEmailHelp("");
-        setUsersOffset(0);
-        await fetchUsers({ offset: 0, limit: usersLimit });
+        setUsersPage(1);
+        await fetchUsers({ page: 1, limit: usersLimit });
       } catch (err) {
         if (err instanceof ApiError) {
           if (err.status === 409) toast.warning(err.detail || "El usuario ya tiene algún rol en esta colección");
@@ -287,22 +288,20 @@ export function CollectionDetailPage({ collectionId, onNavigate }: CollectionDet
   // Usuarios
   const usersTotal = usersResp?.total ?? 0;
   const usersTotalPages = usersTotal === 0 ? 1 : Math.ceil(usersTotal / usersLimit);
-  const usersCurrentPage = Math.min(usersTotalPages, Math.floor(usersOffset / usersLimit) + 1);
-  const usersHasPrev = usersOffset > 0;
-  const usersHasNext = usersOffset + usersLimit < usersTotal;
+  const usersCurrentPage = Math.min(usersTotalPages, usersPage);
+  const usersHasPrev = usersCurrentPage > 1;
+  const usersHasNext = usersCurrentPage < usersTotalPages;
 
   const gotoUsersPage = (page: number) => {
-    const clamped = Math.max(1, Math.min(usersTotalPages, page));
-    setUsersOffset((clamped - 1) * usersLimit);
+    setUsersPage(Math.max(1, Math.min(usersTotalPages, page)));
   };
 
   // Ocurrencias
   const occTotal = occResp?.total ?? 0;
   const occTotalPages = occTotal === 0 ? 1 : Math.ceil(occTotal / occLimit);
-  const occCurrentPage = Math.min(occTotalPages, Math.floor(occOffset / occLimit) + 1);
+  const occCurrentPage = Math.min(occTotalPages, occPage);
   const gotoOccPage = (page: number) => {
-    const clamped = Math.max(1, Math.min(occTotalPages, page));
-    setOccOffset((clamped - 1) * occLimit);
+    setOccPage(Math.max(1, Math.min(occTotalPages, page)));
   };
 
   // ================== Helpers UI ==================

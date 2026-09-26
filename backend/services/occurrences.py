@@ -359,6 +359,9 @@ def list_occurrences_basic(
     filters: OccurrenceFilters,
     current_user: User,
 ) -> Page[OccurrenceBriefItem]:
+    limit = page_size
+    offset = (page - 1) * page_size
+
     code_expr = func.coalesce(Occurrence.catalogNumber, Occurrence.recordNumber)
     location_expr = func.coalesce(
         Occurrence.locality,
@@ -386,9 +389,6 @@ def list_occurrences_basic(
     count_select = _visible_occurrences_select(
         current_user, collection_id, filters, Occurrence.occurrenceId
     )
-
-    limit = page_size
-    offset = (page - 1) * page_size
 
     total = db.scalar(select(func.count()).select_from(count_select.subquery())) or 0
 

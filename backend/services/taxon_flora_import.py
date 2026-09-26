@@ -599,8 +599,11 @@ def process_taxon_flora_csv_background(
 
 
 def list_taxon_flora_import_jobs(
-    db: Session, limit: int, offset: int
+    db: Session, page: int, page_size: int
 ) -> Page[TaxonFloraImportJobOut]:
+    limit = page_size
+    offset = (page - 1) * page_size
+
     base_q = select(TaxonFloraImportJob).order_by(TaxonFloraImportJob.createdAt.desc())
     total = db.scalar(select(func.count()).select_from(base_q.subquery()))
     jobs = db.scalars(base_q.limit(limit).offset(offset)).all()

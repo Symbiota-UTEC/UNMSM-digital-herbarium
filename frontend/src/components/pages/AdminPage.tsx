@@ -169,8 +169,8 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
               : undefined;
 
         const data = await authService.getRegistrationRequests(apiFetch, {
-          limit: requestsPerPage,
-          offset: (page - 1) * requestsPerPage,
+          page,
+          pageSize: requestsPerPage,
           statusFilter: RegistrationStatus.Pending,
           institutionId: scopedInstitutionId,
           fullNamePrefix: requestNameFilter,

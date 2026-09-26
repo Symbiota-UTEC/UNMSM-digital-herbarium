@@ -22,13 +22,13 @@ router = APIRouter(tags=["Files"])
     summary="Lista los trabajos de importación del backbone Taxon (paginado).",
 )
 def list_taxon_flora_import_jobs(
-    limit: int = Query(10, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    page: int = Query(1, ge=1, description="Número de página (1-based)"),
+    page_size: int = Query(10, ge=1, le=100, alias="pageSize", description="Tamaño de página"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_superuser),
 ):
     del current_user
-    return taxon_flora_service.list_taxon_flora_import_jobs(db, limit, offset)
+    return taxon_flora_service.list_taxon_flora_import_jobs(db, page, page_size)
 
 
 @router.get(

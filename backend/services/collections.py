@@ -146,11 +146,11 @@ def _build_collections_page(
 def get_collections(
     db: Session,
     access: CollectionAccess,
-    limit: int,
-    offset: int,
+    page: int,
+    page_size: int,
     current_user: User,
 ) -> Page[CollectionOut]:
-    limit, offset = _bounds(limit, offset)
+    limit, offset = _bounds(page_size, (page - 1) * page_size)
 
     if access == CollectionAccess.OWNER:
         ids_q = select(Collection.collectionId).where(
@@ -252,10 +252,13 @@ def list_collection_access_users(
     collection_id: UUID,
     q: Optional[str],
     role: Optional[CollectionRole],
-    limit: int,
-    offset: int,
+    page: int,
+    page_size: int,
     current_user: User,
 ) -> Page[CollectionAccessUser]:
+    limit = page_size
+    offset = (page - 1) * page_size
+
     # 1) Validar colección
     collection = db.execute(
         select(Collection).where(Collection.collectionId == collection_id)
@@ -332,10 +335,13 @@ def list_occurrences_brief_by_collection_id(
     db: Session,
     collection_id: UUID,
     q: Optional[str],
-    limit: int,
-    offset: int,
+    page: int,
+    page_size: int,
     current_user: User,
 ) -> Page[OccurrenceBriefItem]:
+    limit = page_size
+    offset = (page - 1) * page_size
+
     # 1) Colección
     collection = db.execute(
         select(Collection).where(Collection.collectionId == collection_id)

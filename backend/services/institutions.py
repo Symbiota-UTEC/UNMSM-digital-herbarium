@@ -12,8 +12,11 @@ from backend.schemas.institutions import InstitutionCreate, InstitutionOut, Inst
 
 
 def list_institutions(
-    db: Session, limit: int, offset: int, name_prefix: Optional[str]
+    db: Session, page: int, page_size: int, name_prefix: Optional[str]
 ) -> Page[InstitutionOut]:
+    limit = page_size
+    offset = (page - 1) * page_size
+
     where_clauses = []
 
     norm_name = func.unaccent(func.lower(func.coalesce(Institution.institutionName, "")))

@@ -6,8 +6,8 @@ import type { ApiUserOut } from "@interfaces/auth";
 import { ApiError, throwIfError, type ApiFetch } from "./api.error";
 
 export interface RegistrationRequestsParams {
-  limit: number;
-  offset: number;
+  page: number;
+  pageSize: number;
   statusFilter?: string;
   institutionId?: string | number;
   fullNamePrefix?: string;
@@ -39,8 +39,8 @@ export const authService = {
     params: RegistrationRequestsParams,
   ): Promise<PaginatedResponse<RegistrationRequest>> {
     const query = new URLSearchParams({
-      limit: String(params.limit),
-      offset: String(params.offset),
+      page: String(params.page),
+      pageSize: String(params.pageSize),
     });
     if (params.statusFilter) query.set("statusFilter", params.statusFilter);
     if (params.institutionId != null) query.set("institutionId", String(params.institutionId));

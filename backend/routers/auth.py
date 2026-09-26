@@ -23,8 +23,8 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
     response_model=Page[RegistrationRequestItem],
 )
 def list_registration_requests(
-    limit: int = Query(10, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    page: int = Query(1, ge=1, description="Número de página (1-based)"),
+    page_size: int = Query(10, ge=1, le=100, alias="pageSize", description="Tamaño de página"),
     statusFilter: Optional[RegistrationStatus] = Query(None),
     institutionId: Optional[UUID] = Query(
         None,
@@ -38,7 +38,7 @@ def list_registration_requests(
     current_user: User = Depends(get_current_user),
 ):
     return auth_service.list_registration_requests(
-        db, limit, offset, statusFilter, institutionId, fullNamePrefix, current_user
+        db, page, page_size, statusFilter, institutionId, fullNamePrefix, current_user
     )
 
 

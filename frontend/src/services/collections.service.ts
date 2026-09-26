@@ -10,11 +10,10 @@ export const collectionsService = {
     apiFetch: ApiFetch,
     access: CollectionAccess,
     page: number,
-    limit: number,
+    pageSize: number,
   ): Promise<PaginatedResponse<CollectionOut>> {
-    const offset = (page - 1) * limit;
     const res = await apiFetch(
-      `${API.BASE_URL}${API.PATHS.COLLECTIONS.BASE}?access=${access}&limit=${limit}&offset=${offset}`,
+      `${API.BASE_URL}${API.PATHS.COLLECTIONS.BASE}?access=${access}&page=${page}&pageSize=${pageSize}`,
     );
     await throwIfError(res);
     return res.json();
@@ -39,11 +38,11 @@ export const collectionsService = {
   async getAccessUsers(
     apiFetch: ApiFetch,
     collectionId: string,
-    offset: number,
-    limit: number,
+    page: number,
+    pageSize: number,
   ): Promise<PaginatedResponse<CollectionUserAccessItem>> {
     const res = await apiFetch(
-      `${API.BASE_URL}${API.PATHS.COLLECTIONS.ACCESS_USERS(collectionId)}?limit=${limit}&offset=${offset}`,
+      `${API.BASE_URL}${API.PATHS.COLLECTIONS.ACCESS_USERS(collectionId)}?page=${page}&pageSize=${pageSize}`,
     );
     await throwIfError(res);
     return res.json();
@@ -52,11 +51,11 @@ export const collectionsService = {
   async getOccurrencesBrief(
     apiFetch: ApiFetch,
     collectionId: string,
-    offset: number,
-    limit: number,
+    page: number,
+    pageSize: number,
   ): Promise<PaginatedResponse<OccurrenceBriefItem>> {
     const res = await apiFetch(
-      `${API.BASE_URL}${API.PATHS.COLLECTIONS.OCCURRENCES_BRIEF(collectionId)}?limit=${limit}&offset=${offset}`,
+      `${API.BASE_URL}${API.PATHS.COLLECTIONS.OCCURRENCES_BRIEF(collectionId)}?page=${page}&pageSize=${pageSize}`,
     );
     await throwIfError(res);
     return res.json();

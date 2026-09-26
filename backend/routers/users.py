@@ -44,9 +44,9 @@ def get_user_by_id(
 )
 def get_users(
     institution_id: Optional[UUID] = Query(None),
-    limit: int = Query(100, ge=1, le=500),
-    offset: int = Query(0, ge=0),
+    page: int = Query(1, ge=1, description="Número de página (1-based)"),
+    page_size: int = Query(100, ge=1, le=500, alias="pageSize", description="Tamaño de página"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return users_service.get_users(db, institution_id, limit, offset, current_user)
+    return users_service.get_users(db, institution_id, page, page_size, current_user)

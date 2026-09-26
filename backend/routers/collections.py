@@ -38,12 +38,12 @@ def get_collections(
             "usuario normal: permisos explícitos)."
         ),
     ),
-    limit: int = Query(20, ge=1, le=200, description="Límite de ítems por página"),
-    offset: int = Query(0, ge=0, description="Desplazamiento (items a saltar)"),
+    page: int = Query(1, ge=1, description="Número de página (1-based)"),
+    page_size: int = Query(20, ge=1, le=200, alias="pageSize", description="Tamaño de página"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return collections_service.get_collections(db, access, limit, offset, current_user)
+    return collections_service.get_collections(db, access, page, page_size, current_user)
 
 
 @router.post(
@@ -82,13 +82,13 @@ def list_collection_access_users(
     collection_id: UUID,
     q: Optional[str] = Query(None, description="Texto a buscar en nombre o correo"),
     role: Optional[CollectionRole] = Query(None, description="Filtrar por rol exacto"),
-    limit: int = Query(50, ge=1, le=500),
-    offset: int = Query(0, ge=0),
+    page: int = Query(1, ge=1, description="Número de página (1-based)"),
+    page_size: int = Query(50, ge=1, le=500, alias="pageSize", description="Tamaño de página"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     return collections_service.list_collection_access_users(
-        db, collection_id, q, role, limit, offset, current_user
+        db, collection_id, q, role, page, page_size, current_user
     )
 
 
@@ -103,13 +103,13 @@ def list_occurrences_brief_by_collection_id(
         None,
         description=("Buscar en código, nombre científico, familia, ubicación o recolector"),
     ),
-    limit: int = Query(50, ge=1, le=500),
-    offset: int = Query(0, ge=0),
+    page: int = Query(1, ge=1, description="Número de página (1-based)"),
+    page_size: int = Query(50, ge=1, le=500, alias="pageSize", description="Tamaño de página"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     return collections_service.list_occurrences_brief_by_collection_id(
-        db, collection_id, q, limit, offset, current_user
+        db, collection_id, q, page, page_size, current_user
     )
 
 

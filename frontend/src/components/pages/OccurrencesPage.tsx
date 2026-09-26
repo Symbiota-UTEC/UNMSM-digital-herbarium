@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { MapPin, Calendar, Leaf, Eye, University } from "lucide-react";
+import { PAGE_SIZE } from "@constants/api";
 import { useAuth } from "@contexts/AuthContext";
 import { occurrencesService } from "@services/occurrences.service";
 import type { OccurrenceListItem, OccurrenceSort, OccurrenceOrder } from "@services/occurrences.service";
@@ -19,7 +20,7 @@ interface OccurrencesPageProps {
   onNavigate: (page: string, params?: Record<string, any>) => void;
 }
 
-const PAGE_SIZE_DEFAULT = 20;
+const PAGE_SIZE_DEFAULT = PAGE_SIZE.OCCURRENCES_TABLE;
 
 // Sin búsqueda geoespacial en esta página: "distance" no aplica. "" = sin orden particular.
 type SortChoice = Exclude<OccurrenceSort, "distance"> | "";
