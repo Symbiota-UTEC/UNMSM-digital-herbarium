@@ -5,12 +5,12 @@ from typing import Optional
 
 from fastapi import Depends, HTTPException, Query, status
 from geoalchemy2 import Geography, Geometry
-from sqlalchemy import Boolean, Select, and_, cast, func, null, or_
+from sqlalchemy import Boolean, Float, Select, and_, cast, func, null, or_
 from sqlalchemy.orm import Session
 
 from backend.config.database import get_db
 from backend.models.models import Institution, Occurrence, Taxon
-from backend.schemas.occurrence import OccurrenceFilters
+from backend.schemas.occurrence import OccurrenceFilters, OccurrenceOrder, OccurrenceSort
 from backend.services.geometry import InvalidPolygon, check_simple_polygon
 
 
@@ -29,15 +29,43 @@ def get_occurrence_filters(
     near_lon: Optional[float] = Query(None, alias="nearLon", ge=-180, le=180),
     radius_km: Optional[float] = Query(None, alias="radiusKm", gt=0),
     within_polygon: Optional[str] = Query(None, alias="withinPolygon"),
+    sort: Optional[OccurrenceSort] = Query(
+        None,
+        description=(
+            "Un solo criterio: 'distance' (más cerca de nearLat/nearLon primero, requiere "
+            "ambos), 'date', 'scientificName', 'family', 'collector', 'location' o 'institution'."
+        ),
+    ),
+    order: Optional[OccurrenceOrder] = Query(
+        None,
+        description="'asc' o 'desc'; requiere sort. Sin él, cada sort usa su dirección por defecto.",
+    ),
     db: Session = Depends(get_db),
 ) -> OccurrenceFilters:
-    radius_search_fields = (near_lat, near_lon, radius_km)
-    if any(v is not None for v in radius_search_fields) and not all(
-        v is not None for v in radius_search_fields
-    ):
+    # nearLat/nearLon van siempre juntos. radiusKm además exige ambos (para el área); sin
+    # radiusKm, nearLat/nearLon igual son válidos solos: sirven de origen para sort=distance
+    # (radio, o el punto representativo de un withinPolygon) sin restringir el área.
+    if (near_lat is None) != (near_lon is None):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="nearLat y nearLon deben enviarse juntos.",
+        )
+    if radius_km is not None and (near_lat is None or near_lon is None):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Para buscar por radio debes enviar nearLat, nearLon y radiusKm juntos.",
+        )
+
+    if sort == "distance" and (near_lat is None or near_lon is None):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="sort=distance requiere nearLat y nearLon.",
+        )
+
+    if order is not None and sort is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="order requiere sort.",
         )
 
     if within_polygon:
@@ -63,6 +91,8 @@ def get_occurrence_filters(
         near_lon=near_lon,
         radius_km=radius_km,
         within_polygon=within_polygon,
+        sort=sort,
+        order=order,
     )
 
 
@@ -162,17 +192,93 @@ def build_full_containment_expr(f: OccurrenceFilters):
     return and_(*parts) if len(parts) > 1 else parts[0]
 
 
-def apply_occurrence_filters(stmt: Select, filters: OccurrenceFilters) -> Select:
-    f = filters
+def _origin_geography(f: OccurrenceFilters):
+    """Punto de referencia (nearLat/nearLon) como geography, o None si no se envió."""
+    if f.near_lat is None or f.near_lon is None:
+        return None
+    return cast(
+        func.ST_SetSRID(func.ST_MakePoint(f.near_lon, f.near_lat), 4326),
+        Geography(geometry_type="POINT", srid=4326),
+    )
 
-    # mismas expresiones que usas en el endpoint
-    code_expr = func.coalesce(Occurrence.catalogNumber, Occurrence.recordNumber)
-    location_expr = func.coalesce(
+
+def _location_expr():
+    """coalesce usado tanto para filtrar `location` como para mostrarlo y para ordenarlo
+    (calza con el índice funcional ix_occurrence_location_unaccent)."""
+    return func.coalesce(
         Occurrence.locality,
         Occurrence.municipality,
         Occurrence.stateProvince,
         Occurrence.country,
     )
+
+
+def _unaccent_lower(expr):
+    """Misma expresión que los índices ix_*_unaccent: unaccent_immutable(lower(expr))."""
+    return func.unaccent_immutable(func.lower(expr))
+
+
+def _direction(expr, asc: bool):
+    return (expr.asc() if asc else expr.desc()).nulls_last()
+
+
+def build_order_by(f: OccurrenceFilters):
+    """Orden explícito pedido por el cliente (lista de cláusulas ORDER BY), o [] para el
+    orden por defecto del llamador. Un solo criterio a la vez, en cualquiera de las dos
+    direcciones (`order`; por defecto "asc", salvo "date" que por defecto es "desc" — más
+    reciente primero). Cada uno tiene un índice dedicado (ver models/models.py) para que el
+    orden no implique un scan completo:
+
+    - distance: requiere nearLat/nearLon. Usa el operador KNN `<->` (no ST_Distance) para
+      que el GiST de `location` (ix_occurrence_location_gist) lo resuelva sin escanear todo.
+    - date: por evento (year, month, day) -> ix_occurrence_event_date.
+    - scientificName/family/collector/location/institution: alfabético, acento-insensible,
+      con la misma expresión unaccent+lower de su índice ix_*_unaccent (si no, Postgres no
+      puede usarlo).
+
+    Sin valor en el campo, siempre al final (nulls_last), sea cual sea la dirección.
+    """
+    if f.sort is None:
+        return []
+
+    default_order = "desc" if f.sort == "date" else "asc"
+    asc = (f.order or default_order) == "asc"
+
+    if f.sort == "distance":
+        origin = _origin_geography(f)
+        if origin is None:
+            return []
+        return [_direction(Occurrence.location.op("<->")(origin), asc)]
+
+    if f.sort == "date":
+        return [_direction(c, asc) for c in (Occurrence.year, Occurrence.month, Occurrence.day)]
+
+    field_by_sort = {
+        "scientificName": Taxon.scientificName,
+        "family": Taxon.family,
+        "collector": Occurrence.recordedBy,
+        "location": _location_expr(),
+        "institution": Institution.institutionName,
+    }
+    return [_direction(_unaccent_lower(field_by_sort[f.sort]), asc)]
+
+
+def build_distance_expr(f: OccurrenceFilters):
+    """Distancia en metros de cada registro a nearLat/nearLon (radio, o el punto
+    representativo de un withinPolygon, calculado por el cliente); NULL sin punto de
+    referencia. Independiente de `sort`: se puede mostrar sin ordenar por ella."""
+    origin = _origin_geography(f)
+    if origin is None:
+        return cast(null(), Float)
+    return func.ST_Distance(Occurrence.location, origin)
+
+
+def apply_occurrence_filters(stmt: Select, filters: OccurrenceFilters) -> Select:
+    f = filters
+
+    # mismas expresiones que usas en el endpoint
+    code_expr = func.coalesce(Occurrence.catalogNumber, Occurrence.recordNumber)
+    location_expr = _location_expr()
 
     # Código exacto (normalmente sin tildes, lo dejamos simple)
     if f.code:

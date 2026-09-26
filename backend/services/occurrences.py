@@ -46,7 +46,9 @@ from backend.services.collection_permissions import (
 from backend.services.geometry import InvalidPolygon, check_simple_polygon
 from backend.services.occurrence_filters import (
     apply_occurrence_filters,
+    build_distance_expr,
     build_full_containment_expr,
+    build_order_by,
 )
 
 # =========================
@@ -379,6 +381,7 @@ def list_occurrences_basic(
         Collection.collectionId.label("collection_id"),
         Collection.institutionId.label("collection_institution_id"),
         Institution.institutionName.label("institution_name"),
+        build_distance_expr(filters).label("distance"),
     )
     count_select = _visible_occurrences_select(
         current_user, collection_id, filters, Occurrence.occurrenceId
@@ -389,9 +392,10 @@ def list_occurrences_basic(
 
     total = db.scalar(select(func.count()).select_from(count_select.subquery())) or 0
 
-    rows = db.execute(
-        base_select.order_by(Occurrence.occurrenceId.desc()).offset(offset).limit(limit)
-    ).all()
+    # Sin sort explícito: createdAt desc (no occurrenceId, que es un uuid4 aleatorio,
+    # no ordenable en el tiempo pese a "verse" como el más reciente al ordenar desc).
+    order_by = build_order_by(filters) or [Occurrence.createdAt.desc()]
+    rows = db.execute(base_select.order_by(*order_by).offset(offset).limit(limit)).all()
 
     items: List[OccurrenceBriefItem] = []
     for row in rows:
@@ -405,6 +409,7 @@ def list_occurrences_basic(
                 collector=row.collector,
                 date=_fmt_dt(row.date),
                 institutionName=row.institution_name,
+                distanceMeters=row.distance,
             )
         )
 
@@ -456,7 +461,10 @@ def list_occurrence_map_points(
     ).where(lat.isnot(None), lon.isnot(None))
 
     total = db.scalar(select(func.count()).select_from(count_select.subquery())) or 0
-    rows = db.execute(rows_select.order_by(Occurrence.occurrenceId.desc()).limit(limit)).all()
+    # Con un sort explícito, además ayuda a que el truncado por `limit` deje los mejores
+    # (los más cercanos con distance, etc.) en vez de un subconjunto arbitrario.
+    order_by = build_order_by(filters) or [Occurrence.createdAt.desc()]
+    rows = db.execute(rows_select.order_by(*order_by).limit(limit)).all()
 
     return OccurrenceMapOut(
         items=[

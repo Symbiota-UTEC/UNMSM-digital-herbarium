@@ -13,7 +13,17 @@ export interface OccurrenceListItem {
   location?: string | null;
   collector?: string | null;
   date?: string | null;
+  // Metros a nearLat/nearLon (radio, o el punto representativo del polígono buscado); null sin ninguno de los dos.
+  distanceMeters?: number | null;
 }
+
+// Un solo criterio a la vez: "distance" (de más cerca a más lejos de nearLat/nearLon,
+// requiere ambos) o alfabético/cronológico sobre el resto — funcionan con o sin área.
+export type OccurrenceSort =
+  "distance" | "date" | "scientificName" | "family" | "collector" | "location" | "institution";
+
+// Requiere sort; sin él, cada sort usa su propia dirección por defecto (ver backend).
+export type OccurrenceOrder = "asc" | "desc";
 
 export interface OccurrenceFilters {
   page?: number;
@@ -27,6 +37,13 @@ export interface OccurrenceFilters {
   dateFrom?: string;
   dateTo?: string;
   collectionId?: string;
+  // Búsqueda geoespacial (radio o polígono), compartida con el mapa.
+  nearLat?: number;
+  nearLon?: number;
+  radiusKm?: number;
+  withinPolygon?: string;
+  sort?: OccurrenceSort;
+  order?: OccurrenceOrder;
 }
 
 type CategoricalFilters = Pick<
@@ -82,6 +99,8 @@ export interface OccurrenceMapFilters extends CategoricalFilters {
   nearLon?: number;
   radiusKm?: number;
   withinPolygon?: string;
+  sort?: OccurrenceSort;
+  order?: OccurrenceOrder;
   limit?: number;
 }
 
@@ -126,9 +145,15 @@ export const occurrencesService = {
   async list(apiFetch: ApiFetch, filters: OccurrenceFilters): Promise<PaginatedResponse<OccurrenceListItem>> {
     const params = new URLSearchParams({
       page: String(filters.page ?? 1),
-      page_size: String(filters.pageSize ?? 20),
+      pageSize: String(filters.pageSize ?? 20),
     });
     appendCategoricalParams(params, filters);
+    if (filters.nearLat != null) params.set("nearLat", String(filters.nearLat));
+    if (filters.nearLon != null) params.set("nearLon", String(filters.nearLon));
+    if (filters.radiusKm != null) params.set("radiusKm", String(filters.radiusKm));
+    if (filters.withinPolygon) params.set("withinPolygon", filters.withinPolygon);
+    if (filters.sort) params.set("sort", filters.sort);
+    if (filters.order) params.set("order", filters.order);
 
     const res = await apiFetch(`${API.BASE_URL}${API.PATHS.OCCURRENCES.BASE}?${params.toString()}`);
     await throwIfError(res);
@@ -142,6 +167,8 @@ export const occurrencesService = {
     if (filters.nearLon != null) params.set("nearLon", String(filters.nearLon));
     if (filters.radiusKm != null) params.set("radiusKm", String(filters.radiusKm));
     if (filters.withinPolygon) params.set("withinPolygon", filters.withinPolygon);
+    if (filters.sort) params.set("sort", filters.sort);
+    if (filters.order) params.set("order", filters.order);
     if (filters.limit) params.set("limit", String(filters.limit));
 
     const res = await apiFetch(`${API.BASE_URL}${API.PATHS.OCCURRENCES.MAP}?${params.toString()}`);

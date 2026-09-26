@@ -280,15 +280,54 @@ source of truth for other clients and for CSV rows.
 
 **Search filters** (`OccurrenceFilters` / `get_occurrence_filters` /
 `build_geo_condition` in `services/occurrence_filters.py`), accepted by both
-`GET /api/occurrences` and `GET /api/occurrences/map`:
+`GET /api/occurrences` and `GET /api/occurrences/map`. Every query param here
+is camelCase on the wire (`nearLat`, `dateFrom`, `pageSize`, …), same as
+response fields — the Python parameter names are snake_case (FastAPI
+convention) but always carry an explicit `alias=` for the camelCase one
+actually sent/received; a param with no alias is a bug, not an exception:
 
-- **Radius**: `nearLat` + `nearLon` + `radiusKm` (all three or none — a
-  partial combination is a `400`). `ST_DWithin` on `geography`, so distance is
+- **Radius**: `nearLat` + `nearLon` + `radiusKm`. `nearLat`/`nearLon` always go
+  together (a `400` if only one is sent); `radiusKm` additionally requires
+  both (a `400` otherwise) — but `nearLat`/`nearLon` alone, with no
+  `radiusKm`, is valid too: no area restriction, just an origin point for
+  `sort=distance` (see below). `ST_DWithin` on `geography`, so distance is
   true great-circle meters.
 - **Polygon**: `withinPolygon` (one simple WKT `POLYGON(...)`,
   WGS84). `ST_Contains` on `location` cast to `geometry` — a planar
   point-in-polygon check in degree-space, accurate enough at herbarium scale
   (no antimeridian or polar regions). An invalid polygon is a `400`.
+- **Sort**: `sort` + `order` (`build_order_by` in
+  `services/occurrence_filters.py`) — one field at a time, no combining.
+  `order` is `asc`/`desc` and requires `sort` (else `400`); omitted, every
+  field defaults to `asc` except `date`, which defaults to `desc` (most
+  recent first) — that's the one hardcoded exception in `build_order_by`,
+  not a lookup table, since it's the only field that doesn't want `asc`.
+  Each field has a dedicated index (all in `models/models.py`) so ordering
+  doesn't mean a full scan:
+  - `distance` — via the PostGIS KNN operator `<->` (not `ST_Distance`, which
+    can't use an index for ordering) on `location`, backed by
+    `ix_occurrence_location_gist`. Requires `nearLat`/`nearLon`, else `400`.
+    For a polygon search, the frontend sends the polygon's own representative
+    point (`representativePoint()` in `utils/geo.ts`, the same one used when
+    saving an occurrence drawn as a polygon) as `nearLat`/`nearLon` with no
+    `radiusKm`, so this works for `withinPolygon` too without an added radius
+    restriction. `GET /api/occurrences` also returns `distanceMeters` per row
+    (`build_distance_expr`, plain `ST_Distance`) whenever `nearLat`/`nearLon`
+    are present — `None` otherwise — independently of `sort`.
+  - `date` — by event date (`year, month, day`, not the `eventDate` string).
+  - `scientificName`, `family`, `collector`, `location`, `institution` —
+    alphabetical, via `func.unaccent_immutable(func.lower(...))` on the same
+    expression as that field's `ix_*_unaccent` index (sorting the raw column
+    instead would silently skip the index).
+  - No `sort` at all: `createdAt desc` (not `occurrenceId desc` — it's a
+    random `uuid4`, not time-ordered, despite looking like a reasonable
+    "newest first" proxy). `Occurrence.createdAt` has `ix_occurrence_created_at`.
+  - Nulls always sort last regardless of direction (`.nulls_last()`), so
+    records missing a field don't dominate the top of an ascending sort or the
+    bottom disappear in a descending one.
+  - Same `sort`/`order` on `GET /api/occurrences/map`: with `limit`, it also
+    decides which records survive truncation (closest/most-recent/etc.
+    instead of an arbitrary subset).
 
 There is **one matching rule, with no options**: a record matches an area if
 its location — the point, the uncertainty circle or the polygon
@@ -303,7 +342,8 @@ Each point carries a `locationType` (`point` exact, `circle` = point with
 `uncertaintyMeters`, which the UI uses to describe how a record was located
 (exact point vs. circle vs. polygon). With no area it returns every record
 that has coordinates. A polygon-only record with no lat/lon is drawn at
-`ST_PointOnSurface` of its polygon — display only, nothing stored.
+`ST_PointOnSurface` of its polygon — display only, nothing stored. With
+`sort=distance`, closer records are also the ones kept when `limit` truncates.
 
 Each point also carries `fullyContained` (`build_full_containment_expr` in
 `services/occurrence_filters.py`): `None` with no area; with an area (radius

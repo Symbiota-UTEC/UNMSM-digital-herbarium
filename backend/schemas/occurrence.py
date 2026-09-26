@@ -168,6 +168,8 @@ class OccurrenceBriefItem(ORMBaseModel):
     # eventDate en Occurrence es String (ISO8601 / etiqueta)
     date: Optional[str] = None
     institutionName: Optional[str] = None
+    # Metros a nearLat/nearLon (radio, o el punto representativo del polígono buscado); None sin ninguno.
+    distanceMeters: Optional[float] = None
 
 
 # -----------------------------
@@ -304,6 +306,19 @@ class DynamicPropsIn(StrictBaseModel):
     dynamicProperties: Optional[Dict[str, Any] | str] = None
 
 
+# Un solo criterio a la vez (no una lista): "distance" requiere near_lat/near_lon; el resto
+# funciona con o sin punto/área. Cada uno tiene un índice dedicado (ver models/models.py) —
+# date -> ix_occurrence_event_date; scientificName -> ix_taxon_name_auth_rank; family/
+# collector/location/institution -> sus índices *_unaccent (mismo unaccent+lower al ordenar).
+OccurrenceSort = Literal[
+    "distance", "date", "scientificName", "family", "collector", "location", "institution"
+]
+
+# Si no se envía, cada `sort` usa su propia dirección por defecto (ver build_order_by en
+# services/occurrence_filters.py: "desc" solo para "date", "asc" para todo lo demás).
+OccurrenceOrder = Literal["asc", "desc"]
+
+
 class OccurrenceFilters(BaseModel):
     code: Optional[str] = None
     scientific_name: Optional[str] = None
@@ -322,6 +337,10 @@ class OccurrenceFilters(BaseModel):
     near_lon: Optional[float] = None
     radius_km: Optional[float] = None
     within_polygon: Optional[str] = None
+
+    # Orden explícito; ver OccurrenceSort. order requiere sort.
+    sort: Optional[OccurrenceSort] = None
+    order: Optional[OccurrenceOrder] = None
 
 
 class OccurrenceMapPointOut(ORMBaseModel):

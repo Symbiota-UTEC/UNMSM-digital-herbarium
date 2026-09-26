@@ -5,7 +5,7 @@ import { Badge } from "../ui/badge";
 import { MapPin, Calendar, Leaf, Eye, University } from "lucide-react";
 import { useAuth } from "@contexts/AuthContext";
 import { occurrencesService } from "@services/occurrences.service";
-import type { OccurrenceListItem } from "@services/occurrences.service";
+import type { OccurrenceListItem, OccurrenceSort, OccurrenceOrder } from "@services/occurrences.service";
 import { FiltersCard } from "../ui/filters";
 import {
   OccurrenceFilterFields,
@@ -21,6 +21,10 @@ interface OccurrencesPageProps {
 
 const PAGE_SIZE_DEFAULT = 20;
 
+// Sin búsqueda geoespacial en esta página: "distance" no aplica. "" = sin orden particular.
+type SortChoice = Exclude<OccurrenceSort, "distance"> | "";
+type SortDirChoice = OccurrenceOrder | null;
+
 type FiltersSnapshot = OccurrenceFilterValues;
 
 export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
@@ -32,6 +36,8 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
   const [pageSize] = useState(PAGE_SIZE_DEFAULT);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [sortBy, setSortBy] = useState<SortChoice>((searchParams.get("sort") as SortChoice) || "");
+  const [sortDir, setSortDir] = useState<SortDirChoice>((searchParams.get("order") as OccurrenceOrder) || null);
 
   const [filters, setFilters] = useState<OccurrenceFilterValues>(() => ({
     code: searchParams.get("code") ?? "",
@@ -48,7 +54,7 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
 
   const filtersActive = hasActiveOccurrenceFilters(filters);
 
-  const syncURL = (filters: FiltersSnapshot, pageNum: number) => {
+  const syncURL = (filters: FiltersSnapshot, pageNum: number, sort: SortChoice, dir: SortDirChoice) => {
     const p = new URLSearchParams();
     if (filters.code) p.set("code", filters.code);
     if (filters.scientificName) p.set("name", filters.scientificName);
@@ -58,11 +64,23 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
     if (filters.collector) p.set("collector", filters.collector);
     if (filters.dateFrom) p.set("from", filters.dateFrom);
     if (filters.dateTo) p.set("to", filters.dateTo);
+    if (sort) p.set("sort", sort);
+    if (sort && dir) p.set("order", dir);
     if (pageNum > 1) p.set("page", String(pageNum));
     setSearchParams(p, { replace: true });
   };
 
-  const fetchOccurrences = async ({ page: targetPage, filters }: { page: number; filters: FiltersSnapshot }) => {
+  const fetchOccurrences = async ({
+    page: targetPage,
+    filters,
+    sort,
+    dir,
+  }: {
+    page: number;
+    filters: FiltersSnapshot;
+    sort: SortChoice;
+    dir: SortDirChoice;
+  }) => {
     setLoading(true);
     try {
       const data = await occurrencesService.list(apiFetch, {
@@ -76,6 +94,8 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
         collector: filters.collector,
         dateFrom: filters.dateFrom,
         dateTo: filters.dateTo,
+        sort: sort || undefined,
+        order: (sort && dir) || undefined,
       });
       setItems(data.items ?? []);
       setTotal(data.total ?? 0);
@@ -88,29 +108,29 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
 
   useEffect(() => {
     if (!user) return;
-    fetchOccurrences({ page, filters: filters });
+    fetchOccurrences({ page, filters, sort: sortBy, dir: sortDir });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.userId]);
 
-  const formatDate = (iso?: string | null) => {
-    if (!iso) return "—";
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return "—";
-    return d.toLocaleDateString("es-PE", { dateStyle: "medium" });
-  };
+  // El backend ya normaliza `date` a "dd/mm/aaaa" (services/occurrences.py::_fmt_dt); no es
+  // ISO, así que no se re-parsea (un `new Date("18/09/2026")` da Invalid Date o lee mal el
+  // día como mes en formatos como "11/09/2026").
+  const formatDate = (date?: string | null) => date || "—";
 
   const handleClearFilters = () => {
     setFilters(EMPTY_OCCURRENCE_FILTERS);
     setPage(1);
-    syncURL(EMPTY_OCCURRENCE_FILTERS, 1);
-    fetchOccurrences({ page: 1, filters: EMPTY_OCCURRENCE_FILTERS });
+    setSortBy("");
+    setSortDir(null);
+    syncURL(EMPTY_OCCURRENCE_FILTERS, 1, "", null);
+    fetchOccurrences({ page: 1, filters: EMPTY_OCCURRENCE_FILTERS, sort: "", dir: null });
   };
 
   const handleApplyFilters = () => {
     const snapshot = filters;
     setPage(1);
-    syncURL(snapshot, 1);
-    fetchOccurrences({ page: 1, filters: snapshot });
+    syncURL(snapshot, 1, sortBy, sortDir);
+    fetchOccurrences({ page: 1, filters: snapshot, sort: sortBy, dir: sortDir });
   };
 
   const handlePrevPage = () => {
@@ -118,8 +138,8 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
     const newPage = page - 1;
     const snapshot = filters;
     setPage(newPage);
-    syncURL(snapshot, newPage);
-    fetchOccurrences({ page: newPage, filters: snapshot });
+    syncURL(snapshot, newPage, sortBy, sortDir);
+    fetchOccurrences({ page: newPage, filters: snapshot, sort: sortBy, dir: sortDir });
   };
 
   const handleNextPage = () => {
@@ -127,8 +147,19 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
     const newPage = page + 1;
     const snapshot = filters;
     setPage(newPage);
-    syncURL(snapshot, newPage);
-    fetchOccurrences({ page: newPage, filters: snapshot });
+    syncURL(snapshot, newPage, sortBy, sortDir);
+    fetchOccurrences({ page: newPage, filters: snapshot, sort: sortBy, dir: sortDir });
+  };
+
+  // Clic en un encabezado ordenable: re-ejecuta la búsqueda al toque con el resto de
+  // filtros intactos, sin esperar a que se pulse Aplicar.
+  const handleSortChange = (key: string | null, dir: SortDirChoice) => {
+    const nextSort = (key ?? "") as SortChoice;
+    setSortBy(nextSort);
+    setSortDir(dir);
+    setPage(1);
+    syncURL(filters, 1, nextSort, dir);
+    fetchOccurrences({ page: 1, filters, sort: nextSort, dir });
   };
 
   const columns: ColumnDef<OccurrenceListItem>[] = [
@@ -144,6 +175,8 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
     {
       key: "scientific-name",
       header: "Nombre científico",
+      sortKey: "scientificName",
+      sortDir: "asc",
       cell: (occ) => (
         <div className="flex items-center gap-2">
           <Leaf className="h-4 w-4 text-primary" />
@@ -154,11 +187,15 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
     {
       key: "family",
       header: "Familia",
+      sortKey: "family",
+      sortDir: "asc",
       cell: (occ) => <span className="text-sm">{occ.family ?? "—"}</span>,
     },
     {
       key: "institution",
       header: "Institución",
+      sortKey: "institution",
+      sortDir: "asc",
       cell: (occ) => (
         <div className="flex items-center gap-1 text-sm">
           <University className="h-3 w-3 text-muted-foreground" />
@@ -169,6 +206,8 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
     {
       key: "location",
       header: "Localidad",
+      sortKey: "location",
+      sortDir: "asc",
       cell: (occ) => (
         <div className="flex items-center gap-1 text-sm">
           <MapPin className="h-3 w-3 text-muted-foreground" />
@@ -179,11 +218,15 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
     {
       key: "collector",
       header: "Colector",
+      sortKey: "collector",
+      sortDir: "asc",
       cell: (occ) => <span className="text-sm">{occ.collector ?? "—"}</span>,
     },
     {
       key: "date",
       header: "Fecha",
+      sortKey: "date",
+      sortDir: "desc",
       cell: (occ) => (
         <div className="flex items-center gap-1 text-sm">
           <Calendar className="h-3 w-3 text-muted-foreground" />
@@ -241,6 +284,9 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
         totalPages={totalPages}
         onPrevPage={handlePrevPage}
         onNextPage={handleNextPage}
+        sortBy={sortBy || null}
+        sortDir={sortDir}
+        onSortChange={handleSortChange}
       />
     </div>
   );

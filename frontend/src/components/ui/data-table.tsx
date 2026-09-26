@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table";
 import { Button } from "./button";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, ChevronUp } from "lucide-react";
 import { LoadingOverlay, SkeletonBar, useSettled } from "./loading-overlay";
 
 // ---------------------------------------------------------------------------
@@ -13,6 +13,11 @@ export interface ColumnDef<T> {
   header: string;
   className?: string;
   cell: (row: T) => ReactNode;
+  // Clave que se envía al ordenar por esta columna (p.ej. al backend); sin ella, no es
+  // clicable. sortDir es la dirección del primer clic; un segundo clic en la misma
+  // columna invierte la dirección, y un tercero la desactiva (ver DataTable).
+  sortKey?: string;
+  sortDir?: "asc" | "desc";
 }
 
 // ---------------------------------------------------------------------------
@@ -62,6 +67,12 @@ export interface DataTableProps<T> {
   onNextPage: () => void;
   toolbar?: ReactNode;
   onRowClick?: (row: T) => void;
+  // Orden por columnas (ColumnDef.sortKey/sortDir): sortBy/sortDir son la clave y dirección
+  // activas (o null si ninguna). DataTable decide el ciclo de 3 clics (activar en su
+  // dirección por defecto -> invertirla -> desactivar) y llama a onSortChange ya resuelto.
+  sortBy?: string | null;
+  sortDir?: "asc" | "desc" | null;
+  onSortChange?: (key: string | null, dir: "asc" | "desc" | null) => void;
 }
 
 export function DataTable<T>({
@@ -79,7 +90,21 @@ export function DataTable<T>({
   onNextPage,
   toolbar,
   onRowClick,
+  sortBy,
+  sortDir,
+  onSortChange,
 }: DataTableProps<T>) {
+  const handleHeaderClick = (col: ColumnDef<T>) => {
+    if (!col.sortKey || !onSortChange) return;
+    const defaultDir = col.sortDir ?? "asc";
+    if (sortBy !== col.sortKey) {
+      onSortChange(col.sortKey, defaultDir);
+    } else if (sortDir === defaultDir) {
+      onSortChange(col.sortKey, defaultDir === "asc" ? "desc" : "asc");
+    } else {
+      onSortChange(null, null);
+    }
+  };
   const lastColIdx = columns.length - 1;
   const hasHeader = !!(title || description);
   // Primera carga: skeleton. Refresco: se conservan las filas y solo se atenúan (sin saltos de altura).
@@ -109,7 +134,26 @@ export function DataTable<T>({
                         .join(" ")}
                       style={i === lastColIdx ? { width: "1px", textAlign: "right" } : undefined}
                     >
-                      {col.header}
+                      {col.sortKey ? (
+                        <button
+                          type="button"
+                          onClick={() => handleHeaderClick(col)}
+                          className="group inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
+                        >
+                          <span className={sortBy === col.sortKey ? "text-foreground" : ""}>{col.header}</span>
+                          {sortBy === col.sortKey ? (
+                            sortDir === "desc" ? (
+                              <ChevronDown className="h-3.5 w-3.5 text-primary" />
+                            ) : (
+                              <ChevronUp className="h-3.5 w-3.5 text-primary" />
+                            )
+                          ) : (
+                            <ChevronsUpDown className="h-3.5 w-3.5 text-muted-foreground/40 group-hover:text-muted-foreground" />
+                          )}
+                        </button>
+                      ) : (
+                        col.header
+                      )}
                     </TableHead>
                   ))}
                 </TableRow>

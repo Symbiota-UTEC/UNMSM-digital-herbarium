@@ -1,7 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { toast } from "sonner";
-import { Circle as CircleIcon, Eraser, Hexagon, MapPin } from "lucide-react";
+import {
+  Circle as CircleIcon,
+  Eraser,
+  Hexagon,
+  MapPin,
+  Map as MapGlyphIcon,
+  Table as TableGlyphIcon,
+  Calendar,
+  Leaf,
+  University,
+  Eye,
+  Ruler,
+} from "lucide-react";
 
 import Map from "ol/Map";
 import View from "ol/View";
@@ -20,6 +32,8 @@ import { Style, Fill, Stroke, Circle as CircleStyle } from "ol/style";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "../ui/tabs";
+import { DataTable, type ColumnDef } from "../ui/data-table";
 import { FiltersCard, filterInputClass, filterLabelClass } from "../ui/filters";
 import {
   OccurrenceFilterFields,
@@ -33,8 +47,11 @@ import {
   type OccurrenceMapFilters,
   type OccurrenceMapPoint,
   type OccurrenceMapResponse,
+  type OccurrenceFilters as OccurrenceListFilters,
+  type OccurrenceListItem,
+  type OccurrenceSort,
 } from "@services/occurrences.service";
-import { formatMeters, polygonToWkt, wktToPolygon } from "@utils/geo";
+import { formatMeters, polygonToWkt, representativePoint, wktToPolygon } from "@utils/geo";
 import { createSimplePolygonDraw } from "@utils/polygonDraw";
 import {
   MAP_MAX_ZOOM,
@@ -120,12 +137,23 @@ const LIMA: [number, number] = [-77.0428, -12.0464]; // [lon, lat]
 // Última búsqueda aplicada: se guarda en la sesión para restaurarla al volver desde el detalle de una ocurrencia.
 const SEARCH_STORAGE_KEY = "herbarium.mapSearch";
 
+// La tabla usa el listado paginado normal (GET /occurrences, sin el tope de puntos del mapa).
+const TABLE_PAGE_SIZE = 20;
+
+// "" = sin orden particular (createdAt desc en el backend). Un solo criterio a la vez;
+// se elige haciendo clic en el encabezado de la columna correspondiente de la tabla.
+type SortChoice = OccurrenceSort | "";
+
+type SortDirChoice = "asc" | "desc" | null;
+
 type SearchInput = {
   filters: OccurrenceFilterValues;
   areaMode: AreaMode;
   radiusM: string;
   center: [number, number] | null;
   polygonWkt: string | null;
+  sortBy: SortChoice;
+  sortDir: SortDirChoice;
 };
 type SavedSearch = SearchInput & { selectedId: string | null };
 
@@ -148,7 +176,15 @@ const storeSearch = (search: SavedSearch | null) => {
 };
 
 // Filtros de la API a partir de los criterios; null (con aviso) si falta algo del área.
-const buildQuery = ({ filters, areaMode, radiusM, center, polygonWkt }: SearchInput): OccurrenceMapFilters | null => {
+const buildQuery = ({
+  filters,
+  areaMode,
+  radiusM,
+  center,
+  polygonWkt,
+  sortBy,
+  sortDir,
+}: SearchInput): OccurrenceMapFilters | null => {
   const query: OccurrenceMapFilters = { ...filters };
   if (areaMode === "radius") {
     const meters = parseFloat(radiusM);
@@ -169,9 +205,39 @@ const buildQuery = ({ filters, areaMode, radiusM, center, polygonWkt }: SearchIn
       return null;
     }
     query.withinPolygon = polygonWkt;
+    if (sortBy === "distance") {
+      // Mismo punto representativo que se calcula al guardar una ocurrencia con polígono
+      // (utils/geo.ts::representativePoint, getInteriorPoint()): sirve de origen para la
+      // distancia sin restringir el área — nearLat/nearLon van sin radiusKm.
+      const point = representativePoint(wktToPolygon(polygonWkt));
+      if (point) {
+        query.nearLat = point[1];
+        query.nearLon = point[0];
+      }
+    }
+  }
+  // "distance" solo tiene sentido con un origen ya fijado arriba (radio siempre lo pone;
+  // polígono, solo si se pudo calcular el punto representativo); si no, se ignora en vez de
+  // mandar un sort=distance sin nearLat/nearLon (sería un 400).
+  if (sortBy && (sortBy !== "distance" || query.nearLat != null)) {
+    query.sort = sortBy;
+    if (sortDir) query.order = sortDir;
   }
   return query;
 };
+
+// Mismos filtros (atributos + área) que la búsqueda del mapa, para pedir una página de la tabla.
+const buildListFilters = (input: SearchInput, query: OccurrenceMapFilters, page: number): OccurrenceListFilters => ({
+  ...input.filters,
+  nearLat: query.nearLat,
+  nearLon: query.nearLon,
+  radiusKm: query.radiusKm,
+  withinPolygon: query.withinPolygon,
+  sort: query.sort,
+  order: query.order,
+  page,
+  pageSize: TABLE_PAGE_SIZE,
+});
 
 const errorMessage = (err: any): string => {
   try {
@@ -190,6 +256,23 @@ export function MapPage({ onNavigate }: MapPageProps) {
   const [filters, setFilters] = useState<OccurrenceFilterValues>(EMPTY_OCCURRENCE_FILTERS);
   const [areaMode, setAreaMode] = useState<AreaMode>("none");
   const [radiusM, setRadiusM] = useState("1000");
+  const [sortBy, setSortBy] = useState<SortChoice>("");
+  const [sortDir, setSortDir] = useState<SortDirChoice>(null);
+
+  // Al entrar a radio/polígono sin orden elegido, por defecto ordena por distancia; al salir
+  // del área con "distance" activo, ese criterio deja de ser válido (no hay origen) y se limpia.
+  useEffect(() => {
+    if (areaMode === "none") {
+      if (sortBy === "distance") {
+        setSortBy("");
+        setSortDir(null);
+      }
+    } else if (sortBy === "") {
+      setSortBy("distance");
+      setSortDir("asc");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [areaMode]);
   const [center, setCenter] = useState<[number, number] | null>(null); // [lon, lat]
   const [polygonCount, setPolygonCount] = useState(0);
 
@@ -197,6 +280,14 @@ export function MapPage({ onNavigate }: MapPageProps) {
   const [selected, setSelected] = useState<OccurrenceMapPoint | null>(null);
   const [loading, setLoading] = useState(false);
   const [basemap, setBasemap] = useBasemap();
+
+  // Vista de resultados: mapa o tabla paginada (mismos filtros y área, sin el tope de puntos del mapa).
+  const [view, setView] = useState<"map" | "table">("map");
+  const [tableItems, setTableItems] = useState<OccurrenceListItem[]>([]);
+  const [tableTotal, setTableTotal] = useState(0);
+  const [tablePage, setTablePage] = useState(1);
+  const [tableLoading, setTableLoading] = useState(false);
+  const [activeSearch, setActiveSearch] = useState<{ input: SearchInput; query: OccurrenceMapFilters } | null>(null);
 
   const hostRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<Map | null>(null);
@@ -283,6 +374,12 @@ export function MapPage({ onNavigate }: MapPageProps) {
     layer.setSource(createBasemapSource(basemap));
     layer.set("basemapId", basemap);
   }, [basemap]);
+
+  // El mapa nunca se desmonta al cambiar a la vista de tabla (se oculta con display:none para
+  // conservar el estado de OpenLayers); al volver a mostrarse, recalcula el tamaño del canvas.
+  useEffect(() => {
+    if (view === "map") mapRef.current?.updateSize();
+  }, [view]);
 
   // Herramienta activa según el modo de área.
   useEffect(() => {
@@ -416,6 +513,21 @@ export function MapPage({ onNavigate }: MapPageProps) {
     }
   };
 
+  // Página de la tabla con los mismos filtros y área de `input`; independiente del /map (sin su tope de puntos).
+  const fetchTable = async (input: SearchInput, query: OccurrenceMapFilters, page: number) => {
+    setTableLoading(true);
+    try {
+      const data = await occurrencesService.list(apiFetch, buildListFilters(input, query, page));
+      setTableItems(data.items);
+      setTableTotal(data.total);
+      setTablePage(page);
+    } catch (err: any) {
+      toast.error("No se pudo cargar la tabla de resultados", { description: errorMessage(err) });
+    } finally {
+      setTableLoading(false);
+    }
+  };
+
   const handleSearch = async () => {
     const input: SearchInput = {
       filters,
@@ -423,9 +535,16 @@ export function MapPage({ onNavigate }: MapPageProps) {
       radiusM,
       center,
       polygonWkt: areaMode === "polygon" ? polygonToWkt(drawnPolygon() ?? null) : null,
+      sortBy,
+      sortDir,
     };
     const query = buildQuery(input);
-    if (query && (await runSearch(query, areaMode, null))) storeSearch({ ...input, selectedId: null });
+    if (!query) return;
+    if (await runSearch(query, areaMode, null)) {
+      storeSearch({ ...input, selectedId: null });
+      setActiveSearch({ input, query });
+      fetchTable(input, query, 1);
+    }
   };
 
   // Al volver desde el detalle de una ocurrencia se recupera la última búsqueda con su selección.
@@ -436,11 +555,17 @@ export function MapPage({ onNavigate }: MapPageProps) {
     setFilters(saved.filters);
     setAreaMode(saved.areaMode);
     setRadiusM(saved.radiusM);
+    setSortBy(saved.sortBy ?? "");
+    setSortDir(saved.sortDir ?? null);
     setCenter(saved.center);
     const polygon = wktToPolygon(saved.polygonWkt);
     if (polygon) polygonSourceRef.current.addFeature(new Feature(polygon));
     const query = buildQuery(saved);
-    if (query) runSearch(query, saved.areaMode, saved.selectedId);
+    if (query) {
+      runSearch(query, saved.areaMode, saved.selectedId);
+      setActiveSearch({ input: saved, query });
+      fetchTable(saved, query, 1);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -453,17 +578,156 @@ export function MapPage({ onNavigate }: MapPageProps) {
     storeSearch(null);
     setFilters(EMPTY_OCCURRENCE_FILTERS);
     setAreaMode("none");
+    setSortBy("");
+    setSortDir(null);
     setCenter(null);
     polygonSourceRef.current.clear();
     pointsSourceRef.current.clear();
     setResult(null);
     setSelected(null);
+    setActiveSearch(null);
+    setTableItems([]);
+    setTableTotal(0);
+    setTablePage(1);
+    setView("map");
   };
 
   const countByCertainty = (certainty: Certainty) =>
     result?.items.filter((p) => certaintyOf(p) === certainty).length ?? 0;
   // Sin área de búsqueda, fullyContained viene null en todos los puntos: no hay nada que distinguir.
   const hasAreaSearch = result?.items.some((p) => p.fullyContained != null) ?? false;
+
+  const tableTotalPages = Math.max(Math.ceil(tableTotal / TABLE_PAGE_SIZE), 1);
+  const handleTablePrevPage = () => {
+    if (!activeSearch || tablePage <= 1 || tableLoading) return;
+    fetchTable(activeSearch.input, activeSearch.query, tablePage - 1);
+  };
+  const handleTableNextPage = () => {
+    if (!activeSearch || tablePage >= tableTotalPages || tableLoading) return;
+    fetchTable(activeSearch.input, activeSearch.query, tablePage + 1);
+  };
+
+  // Clic en un encabezado ordenable de la tabla: re-ejecuta mapa + tabla al toque, con el
+  // mismo resto de criterios de la última búsqueda (no hace falta volver a pulsar Aplicar).
+  const handleSortChange = (key: string | null, dir: SortDirChoice) => {
+    const nextSort = (key ?? "") as SortChoice;
+    setSortBy(nextSort);
+    setSortDir(dir);
+    if (!activeSearch) return;
+    const input: SearchInput = { ...activeSearch.input, sortBy: nextSort, sortDir: dir };
+    const query = buildQuery(input);
+    if (!query) return;
+    runSearch(query, input.areaMode, selected?.occurrenceId ?? null);
+    setActiveSearch({ input, query });
+    fetchTable(input, query, 1);
+    storeSearch({ ...input, selectedId: selected?.occurrenceId ?? null });
+  };
+
+  // El backend ya normaliza `date` a "dd/mm/aaaa" (services/occurrences.py::_fmt_dt); no es ISO,
+  // así que no se re-parsea aquí (a diferencia de OccurrencesPage.tsx, que sí intenta `new
+  // Date(iso)` sobre este mismo campo — con este formato eso da fechas inválidas o mal leídas).
+  const formatOccurrenceDate = (date?: string | null) => date || "—";
+
+  const tableColumns: ColumnDef<OccurrenceListItem>[] = [
+    {
+      key: "code",
+      header: "Código",
+      cell: (occ) => (
+        <Badge variant="outline" className="text-xs font-mono px-2 py-0.5 rounded-full">
+          {occ.code ?? "—"}
+        </Badge>
+      ),
+    },
+    {
+      key: "scientific-name",
+      header: "Nombre científico",
+      sortKey: "scientificName",
+      sortDir: "asc",
+      cell: (occ) => (
+        <div className="flex items-center gap-2">
+          <Leaf className="h-4 w-4 text-primary" />
+          <span className="italic text-sm">{occ.scientificName ?? "—"}</span>
+        </div>
+      ),
+    },
+    {
+      key: "family",
+      header: "Familia",
+      sortKey: "family",
+      sortDir: "asc",
+      cell: (occ) => <span className="text-sm">{occ.family ?? "—"}</span>,
+    },
+    {
+      key: "institution",
+      header: "Institución",
+      sortKey: "institution",
+      sortDir: "asc",
+      cell: (occ) => (
+        <div className="flex items-center gap-1 text-sm">
+          <University className="h-3 w-3 text-muted-foreground" />
+          <span>{occ.institutionName ?? "—"}</span>
+        </div>
+      ),
+    },
+    {
+      key: "location",
+      header: "Localidad",
+      sortKey: "location",
+      sortDir: "asc",
+      cell: (occ) => (
+        <div className="flex items-center gap-1 text-sm">
+          <MapPin className="h-3 w-3 text-muted-foreground" />
+          <span>{occ.location ?? "—"}</span>
+        </div>
+      ),
+    },
+    {
+      key: "collector",
+      header: "Colector",
+      sortKey: "collector",
+      sortDir: "asc",
+      cell: (occ) => <span className="text-sm">{occ.collector ?? "—"}</span>,
+    },
+    {
+      key: "date",
+      header: "Fecha",
+      sortKey: "date",
+      sortDir: "desc",
+      cell: (occ) => (
+        <div className="flex items-center gap-1 text-sm">
+          <Calendar className="h-3 w-3 text-muted-foreground" />
+          <span>{formatOccurrenceDate(occ.date)}</span>
+        </div>
+      ),
+    },
+    {
+      key: "distance",
+      header: "Distancia",
+      // Solo tiene sentido con un origen (radio o polígono); sin área, ni siquiera es clicable.
+      sortKey: areaMode !== "none" ? "distance" : undefined,
+      sortDir: "asc",
+      cell: (occ) => (
+        <div className="flex items-center gap-1 text-sm">
+          <Ruler className="h-3 w-3 text-muted-foreground" />
+          <span>{occ.distanceMeters != null ? formatMeters(occ.distanceMeters) : "—"}</span>
+        </div>
+      ),
+    },
+    {
+      key: "actions",
+      header: "Acciones",
+      cell: (occ) => (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onNavigate("occurrence-detail", { occurrenceId: occ.occurrenceId, returnTo: "map" })}
+          title="Ver detalles de la ocurrencia"
+        >
+          <Eye className="h-4 w-4" />
+        </Button>
+      ),
+    },
+  ];
 
   const filtersActive = hasActiveOccurrenceFilters(filters) || areaMode !== "none";
 
@@ -561,98 +825,145 @@ export function MapPage({ onNavigate }: MapPageProps) {
         </div>
       </FiltersCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Distribución Geográfica</CardTitle>
-          <CardDescription>Haz clic en un punto para ver sus detalles</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="relative">
-            <div ref={hostRef} style={{ height: "600px", width: "100%", borderRadius: "0.5rem" }} className="border" />
-            <BasemapSwitcher value={basemap} onChange={setBasemap} />
-          </div>
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold tracking-tight">Resultados</h2>
+          <Tabs value={view} onValueChange={(v) => setView(v as "map" | "table")}>
+            <TabsList>
+              <TabsTrigger value="map" className="gap-1.5">
+                <MapGlyphIcon className="h-4 w-4" />
+                Mapa
+              </TabsTrigger>
+              <TabsTrigger value="table" className="gap-1.5">
+                <TableGlyphIcon className="h-4 w-4" />
+                Tabla
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
-              <MapPin className="h-4 w-4" />
-              {result ? (
-                <>
-                  <strong className="text-foreground">{result.total}</strong>{" "}
-                  {result.total === 1 ? "ocurrencia" : "ocurrencias"}
-                </>
-              ) : (
-                "Sin búsqueda realizada"
-              )}
-            </span>
-            {(hasAreaSearch ? (Object.keys(CERTAINTY_STYLE) as Certainty[]) : (["confirmed"] as Certainty[])).map(
-              (certainty) => (
-                <Badge
-                  key={certainty}
-                  variant="outline"
-                  className="gap-1.5 py-1 font-normal text-foreground"
-                  style={{
-                    backgroundColor: `${CERTAINTY_STYLE[certainty].color}1a`,
-                    borderColor: `${CERTAINTY_STYLE[certainty].color}4d`,
-                  }}
-                >
-                  <span
-                    className="inline-block h-2 w-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: CERTAINTY_STYLE[certainty].color }}
-                  />
-                  {hasAreaSearch ? CERTAINTY_STYLE[certainty].label : "Ocurrencias"}
-                  {hasAreaSearch && result && <strong>{countByCertainty(certainty)}</strong>}
-                </Badge>
-              ),
-            )}
-          </div>
-          {result?.truncated && (
-            <p className="text-xs text-amber-600">
-              Se muestran solo {result.items.length} de {result.total}. Acota la búsqueda para ver el resto.
-            </p>
-          )}
+        {/* El mapa se oculta con display en vez de dejar de renderizarse: cambiar de pestaña no
+            debe destruir la instancia de OpenLayers (perdería el zoom/centro y sería más lento). */}
+        <div style={{ display: view === "map" ? "block" : "none" }}>
+          <Card>
+            <CardHeader>
+              <CardTitle>Distribución Geográfica</CardTitle>
+              <CardDescription>Haz clic en un punto para ver sus detalles</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="relative">
+                <div
+                  ref={hostRef}
+                  style={{ height: "600px", width: "100%", borderRadius: "0.5rem" }}
+                  className="border"
+                />
+                <BasemapSwitcher value={basemap} onChange={setBasemap} />
+              </div>
 
-          {selected && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3">
-              <div className="space-y-0.5 text-sm">
-                <div className="flex items-center gap-2">
-                  <span
-                    className="inline-block h-3 w-3 rounded-full"
-                    style={{ backgroundColor: CERTAINTY_STYLE[certaintyOf(selected)].color }}
-                  />
-                  <span className="font-medium">{selected.code ?? "Sin código"}</span>
-                  {selected.scientificName && (
-                    <span className="italic text-muted-foreground">{selected.scientificName}</span>
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <MapPin className="h-4 w-4" />
+                  {result ? (
+                    <>
+                      <strong className="text-foreground">{result.total}</strong>{" "}
+                      {result.total === 1 ? "ocurrencia" : "ocurrencias"}
+                    </>
+                  ) : (
+                    "Sin búsqueda realizada"
                   )}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {locationText(selected)} · {selected.lat.toFixed(5)}, {selected.lon.toFixed(5)}
+                </span>
+                {(hasAreaSearch ? (Object.keys(CERTAINTY_STYLE) as Certainty[]) : (["confirmed"] as Certainty[])).map(
+                  (certainty) => (
+                    <Badge
+                      key={certainty}
+                      variant="outline"
+                      className="gap-1.5 py-1 font-normal text-foreground"
+                      style={{
+                        backgroundColor: `${CERTAINTY_STYLE[certainty].color}1a`,
+                        borderColor: `${CERTAINTY_STYLE[certainty].color}4d`,
+                      }}
+                    >
+                      <span
+                        className="inline-block h-2 w-2 shrink-0 rounded-full"
+                        style={{ backgroundColor: CERTAINTY_STYLE[certainty].color }}
+                      />
+                      {hasAreaSearch ? CERTAINTY_STYLE[certainty].label : "Ocurrencias"}
+                      {hasAreaSearch && result && <strong>{countByCertainty(certainty)}</strong>}
+                    </Badge>
+                  ),
+                )}
+              </div>
+              {result?.truncated && (
+                <p className="text-xs text-amber-600">
+                  Se muestran solo {result.items.length} de {result.total}. Acota la búsqueda para ver el resto.
                 </p>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setAreaMode("radius");
-                    setCenter([selected.lon, selected.lat]);
-                  }}
-                >
-                  Buscar alrededor
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() =>
-                    onNavigate("occurrence-detail", { occurrenceId: selected.occurrenceId, returnTo: "map" })
-                  }
-                >
-                  Ver detalle
-                </Button>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              )}
+
+              {selected && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3">
+                  <div className="space-y-0.5 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="inline-block h-3 w-3 rounded-full"
+                        style={{ backgroundColor: CERTAINTY_STYLE[certaintyOf(selected)].color }}
+                      />
+                      <span className="font-medium">{selected.code ?? "Sin código"}</span>
+                      {selected.scientificName && (
+                        <span className="italic text-muted-foreground">{selected.scientificName}</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {locationText(selected)} · {selected.lat.toFixed(5)}, {selected.lon.toFixed(5)}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setAreaMode("radius");
+                        setCenter([selected.lon, selected.lat]);
+                      }}
+                    >
+                      Buscar alrededor
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        onNavigate("occurrence-detail", { occurrenceId: selected.occurrenceId, returnTo: "map" })
+                      }
+                    >
+                      Ver detalle
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {view === "table" && (
+          <DataTable<OccurrenceListItem>
+            title="Ocurrencias encontradas"
+            description="Mismos filtros y área que la búsqueda del mapa, sin el tope de puntos del mapa."
+            columns={tableColumns}
+            data={tableItems}
+            keyExtractor={(row) => row.occurrenceId}
+            loading={tableLoading}
+            emptyMessage={
+              activeSearch ? "No se encontraron ocurrencias." : "Aplica un filtro o dibuja un área para ver resultados."
+            }
+            page={tablePage}
+            totalPages={tableTotalPages}
+            onPrevPage={handleTablePrevPage}
+            onNextPage={handleTableNextPage}
+            sortBy={sortBy || null}
+            sortDir={sortDir}
+            onSortChange={handleSortChange}
+          />
+        )}
+      </div>
     </div>
   );
 }

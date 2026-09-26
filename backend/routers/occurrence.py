@@ -66,6 +66,10 @@ def list_occurrence_map_points(
     toque; sin área, todas las que tengan coordenadas. Cada punto trae `fullyContained`
     (None sin área) para distinguir lo que el área contiene por completo de lo que
     solo toca.
+
+    Mismos `sort`/`order` que `GET /occurrences` (un solo valor: `distance`, `date`,
+    `scientificName`, `family`, `collector`, `location` o `institution`); con `limit`,
+    además determina cuáles quedan si hay más muestras que ese tope.
     """
     return occurrences_service.list_occurrence_map_points(
         db, collection_id, filters, current_user, limit
@@ -100,7 +104,7 @@ def get_occurrence_by_id(
 )
 def list_occurrences_basic(
     page: int = Query(1, ge=1, description="Número de página (1-based)"),
-    page_size: int = Query(50, ge=1, le=200, description="Tamaño de página"),
+    page_size: int = Query(50, ge=1, le=200, alias="pageSize", description="Tamaño de página"),
     collection_id: Optional[UUID] = Query(
         None, description="Filtrar por ID de colección específico"
     ),
@@ -115,6 +119,11 @@ def list_occurrences_basic(
     - location: coalesce(locality, municipality, stateProvince, country).
     - collector: recordedBy.
     - date: eventDate (normalizada a dd/mm/aaaa cuando se puede parsear).
+    - distanceMeters: a `nearLat`/`nearLon` si se enviaron (con o sin `radiusKm`); si no, `None`.
+
+    `sort` (un solo valor): `distance` (requiere `nearLat`/`nearLon`), `date`, `scientificName`,
+    `family`, `collector`, `location` o `institution`. Sin él, más recientemente creado primero.
+    `order` (`asc`/`desc`, requiere `sort`) invierte la dirección por defecto de ese campo.
     """
     return occurrences_service.list_occurrences_basic(
         db, page, page_size, collection_id, filters, current_user

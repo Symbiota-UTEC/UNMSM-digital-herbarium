@@ -96,3 +96,13 @@ Index(
         )
     ),
 )
+
+# `createdAt` no tenía índice propio: el orden por defecto (sin sort) usaba occurrenceId
+# desc como proxy de "más reciente", pero es un uuid4 aleatorio, no ordenable en el tiempo.
+Index("ix_occurrence_created_at", Occurrence.createdAt)
+
+# GiST para las consultas espaciales (ST_DWithin/ST_Contains/ST_Distance) sobre `location` y
+# `footprintGeom`, hasta ahora sin índice — necesario para que la búsqueda por radio/polígono
+# y, sobre todo, sort=distance (usa el operador KNN `<->`, que requiere GiST) rindan bien.
+Index("ix_occurrence_location_gist", Occurrence.location, postgresql_using="gist")
+Index("ix_occurrence_footprint_geom_gist", Occurrence.footprintGeom, postgresql_using="gist")
