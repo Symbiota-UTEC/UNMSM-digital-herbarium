@@ -77,12 +77,12 @@ function formatSeconds(seconds: number | null): string {
 }
 
 function formatJobDuration(job: Pick<TaxonFloraImportJob, "status" | "startedAt" | "finishedAt">): string {
-  if (!job.startedAt) return job.status === "queued" ? "En cola" : "—";
+  if (!job.startedAt) return job.status === ImportJobStatus.Queued ? "En cola" : "—";
 
   const startedAt = new Date(job.startedAt).getTime();
   const finishedAt = job.finishedAt
     ? new Date(job.finishedAt).getTime()
-    : job.status === "running"
+    : job.status === ImportJobStatus.Running
       ? Date.now()
       : Number.NaN;
   if (Number.isNaN(startedAt) || Number.isNaN(finishedAt)) return "—";

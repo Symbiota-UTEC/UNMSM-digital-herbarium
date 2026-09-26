@@ -26,12 +26,10 @@ import {
   RefreshCw,
   ChevronDown,
   ChevronUp,
-  ChevronRight,
-  ChevronLeft,
   Upload,
   Info,
 } from "lucide-react";
-import { DataTable, type ColumnDef } from "../ui/data-table";
+import { DataTable, TablePagination, type ColumnDef } from "../ui/data-table";
 import { toast } from "sonner";
 import { useAuth } from "@contexts/AuthContext";
 import { collectionsService } from "@services/collections.service";
@@ -289,8 +287,6 @@ export function CollectionDetailPage({ collectionId, onNavigate }: CollectionDet
   const usersTotal = usersResp?.total ?? 0;
   const usersTotalPages = usersTotal === 0 ? 1 : Math.ceil(usersTotal / usersLimit);
   const usersCurrentPage = Math.min(usersTotalPages, usersPage);
-  const usersHasPrev = usersCurrentPage > 1;
-  const usersHasNext = usersCurrentPage < usersTotalPages;
 
   const gotoUsersPage = (page: number) => {
     setUsersPage(Math.max(1, Math.min(usersTotalPages, page)));
@@ -553,7 +549,7 @@ export function CollectionDetailPage({ collectionId, onNavigate }: CollectionDet
             </CardHeader>
 
             {isUsersExpanded && (
-              <CardContent className="pt-4">
+              <CardContent>
                 {!usersResp ? (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
                     <RefreshCw className="h-4 w-4 animate-spin" /> Cargando usuarios…
@@ -648,30 +644,12 @@ export function CollectionDetailPage({ collectionId, onNavigate }: CollectionDet
                       </TableBody>
                     </Table>
 
-                    {/* Paginación debajo de la tabla */}
-                    <div className="flex items-center justify-between mt-4 pt-4 border-t">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => gotoUsersPage(usersCurrentPage - 1)}
-                        disabled={!usersHasPrev}
-                      >
-                        <ChevronLeft className="h-4 w-4 mr-1" />
-                        Anterior
-                      </Button>
-                      <span className="text-sm text-muted-foreground">
-                        Página {usersCurrentPage} de {usersTotalPages}
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => gotoUsersPage(usersCurrentPage + 1)}
-                        disabled={!usersHasNext}
-                      >
-                        Siguiente
-                        <ChevronRight className="h-4 w-4 ml-1" />
-                      </Button>
-                    </div>
+                    <TablePagination
+                      page={usersCurrentPage}
+                      totalPages={usersTotalPages}
+                      onPrevPage={() => gotoUsersPage(usersCurrentPage - 1)}
+                      onNextPage={() => gotoUsersPage(usersCurrentPage + 1)}
+                    />
                   </>
                 )}
               </CardContent>

@@ -32,6 +32,10 @@ const TABS: { key: TabKey; label: string }[] = [
 
 const show = (v: unknown) => (v === null || v === undefined || v === "" ? "—" : String(v));
 
+// w-1.5/h-1.5/ml-1.5 y bg-green-400 no están compiladas en index.css (ver frontend/CLAUDE.md
+// > CSS / Theming): sin esto el punto queda invisible (0x0, sin color).
+const TAB_DOT_STYLE = { marginLeft: "0.375rem", width: "0.375rem", height: "0.375rem", backgroundColor: "#22c55e" };
+
 /* Fila etiqueta/valor. A nivel de módulo: dentro del componente se remontaría en cada render. */
 const Field = ({
   label,
@@ -519,10 +523,10 @@ export function OccurrenceDetailPage({
             >
               {tab.label}
               {tab.key === "taxon" && sortedIdentifications.length > 0 && (
-                <span className="ml-1.5 inline-flex w-1.5 h-1.5 rounded-full bg-green-400" />
+                <span className="inline-flex rounded-full" style={TAB_DOT_STYLE} />
               )}
               {tab.key === "images" && data.images && data.images.length > 0 && (
-                <span className="ml-1.5 inline-flex w-1.5 h-1.5 rounded-full bg-green-400" />
+                <span className="inline-flex rounded-full" style={TAB_DOT_STYLE} />
               )}
             </button>
           ))}

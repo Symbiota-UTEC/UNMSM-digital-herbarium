@@ -24,7 +24,7 @@ import { AutocompleteDropdown, useSuggestions } from "../ui/autocomplete";
 import { ImageManager, type PendingImage } from "../ImageManager";
 import { cameraService } from "@services/camera.service";
 import { collectionsService } from "@services/collections.service";
-import { taxonService } from "@services/taxon.service";
+import { taxonService, type TaxonDetailOut } from "@services/taxon.service";
 import { occurrencesService } from "@services/occurrences.service";
 import { uploadService } from "@services/upload.service";
 import { adminDivisionsService } from "@services/adminDivisions.service";
@@ -45,22 +45,6 @@ interface NewOccurrencePageProps {
   /** Crear: colección destino (viene en la URL). Editar: solo para volver a la colección de origen. */
   collectionId?: string;
   taxonId?: string;
-}
-
-/* ─── Types ─────────────────────── */
-interface TaxonDetail {
-  taxonId: string | null;
-  scientificName?: string | null;
-  scientificNameAuthorship?: string | null;
-  family?: string | null;
-  genus?: string | null;
-  specificEpithet?: string | null;
-  infraspecificEpithet?: string | null;
-  taxonRank?: string | null;
-  acceptedNameUsageID?: string | null;
-  taxonomicStatus?: string | null;
-  majorGroup?: string | null;
-  namePublishedIn?: string | null;
 }
 
 /* ─── Country list ──────────────── */
@@ -120,6 +104,10 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "taxon", label: "Taxonomía" },
   { key: "images", label: "Imágenes" },
 ];
+
+// w-1.5/h-1.5/ml-1.5 y bg-green-400 no están compiladas en index.css (ver frontend/CLAUDE.md
+// > CSS / Theming): sin esto el punto queda invisible (0x0, sin color).
+const TAB_DOT_STYLE = { marginLeft: "0.375rem", width: "0.375rem", height: "0.375rem", backgroundColor: "#22c55e" };
 
 /* ────────────────────────────────────────────────────────────────── */
 export function NewOccurrencePage({
@@ -186,7 +174,7 @@ export function NewOccurrencePage({
   /* ── TAXON / NEW IDENTIFICATION ── */
   const [scientificNameInput, setScientificNameInput] = useState("");
   const [selectedTaxonID, setSelectedTaxonID] = useState<string | null>(null);
-  const [taxonDetail, setTaxonDetail] = useState<TaxonDetail | null>(null);
+  const [taxonDetail, setTaxonDetail] = useState<TaxonDetailOut | null>(null);
   const [taxonLoading, setTaxonLoading] = useState(false);
   const [dateIdentified, setDateIdentified] = useState("");
   const [typeStatus, setTypeStatus] = useState("");
@@ -366,7 +354,7 @@ export function NewOccurrencePage({
     setTaxonLoading(true);
     try {
       const detail = await taxonService.getById(apiFetch, suggestion.taxonId);
-      setTaxonDetail(detail as unknown as TaxonDetail);
+      setTaxonDetail(detail);
     } catch {
       toast.error("No se pudo cargar el detalle del taxón");
       setTaxonDetail(null);
@@ -1600,10 +1588,10 @@ export function NewOccurrencePage({
               >
                 {tab.label}
                 {tab.key === "taxon" && selectedTaxonID && (
-                  <span className="ml-1.5 inline-flex w-1.5 h-1.5 rounded-full bg-green-400" />
+                  <span className="inline-flex rounded-full" style={TAB_DOT_STYLE} />
                 )}
                 {tab.key === "images" && (newImages.length > 0 || existingImages.length > 0) && (
-                  <span className="ml-1.5 inline-flex w-1.5 h-1.5 rounded-full bg-green-400" />
+                  <span className="inline-flex rounded-full" style={TAB_DOT_STYLE} />
                 )}
               </button>
             ))}
