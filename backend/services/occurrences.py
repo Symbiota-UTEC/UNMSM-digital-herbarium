@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime
+from datetime import date
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -49,41 +49,11 @@ from backend.services.occurrence_filters import (
     build_full_containment_expr,
     build_order_by,
 )
+from backend.utils.dates import format_display_date
 
 # =========================
 # Helpers
 # =========================
-
-
-def _fmt_dt(v: Optional[datetime | date | str]) -> Optional[str]:
-    """
-    Normaliza fechas a 'dd/mm/aaaa'.
-    - datetime/date => se formatea
-    - str => intenta parsear ISO u otros formatos comunes; si no puede, devuelve la misma string
-    - None => None
-    """
-    if v is None:
-        return None
-    if isinstance(v, (datetime, date)):
-        return v.strftime("%d/%m/%Y")
-    if isinstance(v, str):
-        s = v.strip()
-        if not s:
-            return None
-        s2 = s.replace("Z", "+00:00")
-        try:
-            dt = datetime.fromisoformat(s2)
-            return dt.strftime("%d/%m/%Y")
-        except Exception:
-            pass
-        for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%Y/%m/%d", "%d-%m-%Y"):
-            try:
-                dt = datetime.strptime(s, fmt)
-                return dt.strftime("%d/%m/%Y")
-            except Exception:
-                continue
-        return s
-    return None
 
 
 def _load_occurrence_full(db: Session, occurrence_id: UUID) -> Optional[Occurrence]:
@@ -397,7 +367,7 @@ def list_occurrences_basic(
                 family=row.family,
                 location=row.location,
                 collector=row.collector,
-                date=_fmt_dt(row.date),
+                date=format_display_date(row.date),
                 institutionName=row.institution_name,
                 distanceMeters=row.distance,
             )

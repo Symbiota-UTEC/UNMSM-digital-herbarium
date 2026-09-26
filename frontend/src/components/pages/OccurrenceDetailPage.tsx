@@ -9,6 +9,12 @@ import { uploadService } from "@services/upload.service";
 import type { OccurrenceItem } from "@interfaces/occurrence";
 import { OccurrenceLocationMap } from "../OccurrenceLocationMap";
 import { ImageLightbox } from "../ImageLightbox";
+import {
+  OCCURRENCE_TABS as TABS,
+  OCCURRENCE_TAB_DOT_STYLE as TAB_DOT_STYLE,
+  type OccurrenceTabKey as TabKey,
+} from "@constants/occurrenceTabs";
+import { formatDateTime } from "@utils/dates";
 import "../image-manager.css";
 
 interface OccurrenceDetailPageProps {
@@ -20,21 +26,7 @@ interface OccurrenceDetailPageProps {
   taxonId?: string;
 }
 
-type TabKey = "occurrence" | "event" | "location" | "taxon" | "images";
-
-const TABS: { key: TabKey; label: string }[] = [
-  { key: "occurrence", label: "Ocurrencia" },
-  { key: "event", label: "Evento" },
-  { key: "location", label: "Localización" },
-  { key: "taxon", label: "Taxonomía" },
-  { key: "images", label: "Imágenes" },
-];
-
 const show = (v: unknown) => (v === null || v === undefined || v === "" ? "—" : String(v));
-
-// w-1.5/h-1.5/ml-1.5 y bg-green-400 no están compiladas en index.css (ver frontend/CLAUDE.md
-// > CSS / Theming): sin esto el punto queda invisible (0x0, sin color).
-const TAB_DOT_STYLE = { marginLeft: "0.375rem", width: "0.375rem", height: "0.375rem", backgroundColor: "#22c55e" };
 
 /* Fila etiqueta/valor. A nivel de módulo: dentro del componente se remontaría en cada render. */
 const Field = ({
@@ -69,13 +61,6 @@ export function OccurrenceDetailPage({
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const collectionId = collectionIdProp ?? data?.collection?.collectionId;
   const canEdit = data?.collection?.canEdit ?? false;
-
-  const formatDateTime = (iso?: string | null) => {
-    if (!iso) return "—";
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return iso;
-    return d.toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short" });
-  };
 
   useEffect(() => {
     let isMounted = true;

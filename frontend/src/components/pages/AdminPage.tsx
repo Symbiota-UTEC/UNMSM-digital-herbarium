@@ -51,12 +51,14 @@ import { authService } from "@services/auth.service";
 import { institutionsService } from "@services/institutions.service";
 import { usersService } from "@services/users.service";
 import { useDebounce } from "@utils/useDebounce";
+import { totalPagesFor, clampPage } from "@utils/pagination";
+import { formatDateTime } from "@utils/dates";
 import { AutocompleteInstitution } from "../AutocompleteInstitution";
 
 // ========================
 // Types
 // ========================
-type OnNavigate = (page: string, params?: any) => void;
+type OnNavigate = (page: string, params?: Record<string, any>) => void;
 
 // ========================
 // Component
@@ -336,8 +338,8 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     setRegistrationRequests((prev) => prev.filter((r) => r.registrationRequestId !== requestId));
 
     const totalAfter = Math.max(0, requestsTotal - 1);
-    const pagesAfter = Math.max(1, Math.ceil(totalAfter / requestsPerPage));
-    const targetPage = Math.min(requestsPage, pagesAfter);
+    const pagesAfter = totalPagesFor(totalAfter, requestsPerPage);
+    const targetPage = clampPage(requestsPage, pagesAfter);
     setRequestsTotal(totalAfter);
     setTotalPages(pagesAfter);
     setRequestsPage(targetPage);
@@ -353,10 +355,10 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       if (request) bumpInstitutionUsers(request.institutionId, -1);
 
       const totalRollback = requestsTotal;
-      const pagesRollback = Math.max(1, Math.ceil(totalRollback / requestsPerPage));
+      const pagesRollback = totalPagesFor(totalRollback, requestsPerPage);
       setRequestsTotal(totalRollback);
       setTotalPages(pagesRollback);
-      setRequestsPage(Math.min(requestsPage, pagesRollback));
+      setRequestsPage(clampPage(requestsPage, pagesRollback));
 
       console.error(err);
       toast.error("No se pudo aprobar la solicitud");
@@ -371,8 +373,8 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     setRegistrationRequests((prev) => prev.filter((r) => r.registrationRequestId !== requestId));
 
     const totalAfter = Math.max(0, requestsTotal - 1);
-    const pagesAfter = Math.max(1, Math.ceil(totalAfter / requestsPerPage));
-    const targetPage = Math.min(requestsPage, pagesAfter);
+    const pagesAfter = totalPagesFor(totalAfter, requestsPerPage);
+    const targetPage = clampPage(requestsPage, pagesAfter);
     setRequestsTotal(totalAfter);
     setTotalPages(pagesAfter);
     setRequestsPage(targetPage);
@@ -387,10 +389,10 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       setRegistrationRequests(prevRequests);
 
       const totalRollback = requestsTotal;
-      const pagesRollback = Math.max(1, Math.ceil(totalRollback / requestsPerPage));
+      const pagesRollback = totalPagesFor(totalRollback, requestsPerPage);
       setRequestsTotal(totalRollback);
       setTotalPages(pagesRollback);
-      setRequestsPage(Math.min(requestsPage, pagesRollback));
+      setRequestsPage(clampPage(requestsPage, pagesRollback));
 
       console.error(err);
       toast.error("No se pudo rechazar la solicitud");
@@ -405,7 +407,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       return;
     }
 
-    const institution: Institution = {
+    const institution: Partial<Institution> = {
       institutionName: newInstitutionName,
       country: newInstitutionCountry,
       city: newInstitutionCity,
@@ -1172,6 +1174,14 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
                 <div>
                   <Label className="text-sm text-muted-foreground">Total de Usuarios</Label>
                   <p className="text-sm">{viewInstitutionDetails.usersCount ?? 0}</p>
+                </div>
+                <div>
+                  <Label className="text-sm text-muted-foreground">Registrada el</Label>
+                  <p className="text-sm">{formatDateTime(viewInstitutionDetails.createdAt)}</p>
+                </div>
+                <div>
+                  <Label className="text-sm text-muted-foreground">Última actualización</Label>
+                  <p className="text-sm">{formatDateTime(viewInstitutionDetails.updatedAt)}</p>
                 </div>
               </div>
             </div>

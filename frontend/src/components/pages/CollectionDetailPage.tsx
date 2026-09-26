@@ -43,18 +43,12 @@ import type { PaginatedResponse } from "@interfaces/utils/pagination";
 import type { CollectionOut, CollectionUserAccessItem } from "@interfaces/collection";
 import { SkeletonBar } from "../ui/loading-overlay";
 import { ApiUserLookupResponse, mapApiLookupToResult, VISIBILITY } from "@interfaces/auth";
+import { formatDateTime } from "@utils/dates";
+import { totalPagesFor, clampPage } from "@utils/pagination";
 
 interface CollectionDetailPageProps {
   collectionId: string;
   onNavigate: (page: string, params?: Record<string, any>) => void;
-}
-
-// Formateo seguro de fecha del brief (puede no ser ISO perfecto)
-function formatBriefDate(raw: string | null): string {
-  if (!raw) return "—";
-  const d = new Date(raw);
-  if (Number.isNaN(d.getTime())) return raw;
-  return d.toLocaleDateString("es-ES");
 }
 
 export function CollectionDetailPage({ collectionId, onNavigate }: CollectionDetailPageProps) {
@@ -285,19 +279,19 @@ export function CollectionDetailPage({ collectionId, onNavigate }: CollectionDet
   // ================== Paginación derivada ==================
   // Usuarios
   const usersTotal = usersResp?.total ?? 0;
-  const usersTotalPages = usersTotal === 0 ? 1 : Math.ceil(usersTotal / usersLimit);
-  const usersCurrentPage = Math.min(usersTotalPages, usersPage);
+  const usersTotalPages = totalPagesFor(usersTotal, usersLimit);
+  const usersCurrentPage = clampPage(usersPage, usersTotalPages);
 
   const gotoUsersPage = (page: number) => {
-    setUsersPage(Math.max(1, Math.min(usersTotalPages, page)));
+    setUsersPage(clampPage(page, usersTotalPages));
   };
 
   // Ocurrencias
   const occTotal = occResp?.total ?? 0;
-  const occTotalPages = occTotal === 0 ? 1 : Math.ceil(occTotal / occLimit);
-  const occCurrentPage = Math.min(occTotalPages, occPage);
+  const occTotalPages = totalPagesFor(occTotal, occLimit);
+  const occCurrentPage = clampPage(occPage, occTotalPages);
   const gotoOccPage = (page: number) => {
-    setOccPage(Math.max(1, Math.min(occTotalPages, page)));
+    setOccPage(clampPage(page, occTotalPages));
   };
 
   // ================== Helpers UI ==================
@@ -321,7 +315,9 @@ export function CollectionDetailPage({ collectionId, onNavigate }: CollectionDet
     { key: "family", header: "Familia", cell: (occ) => occ.family ?? "—" },
     { key: "location", header: "Ubicación", cell: (occ) => occ.location ?? "—" },
     { key: "collector", header: "Recolector", cell: (occ) => occ.collector ?? "—" },
-    { key: "date", header: "Fecha", cell: (occ) => formatBriefDate(occ.date) },
+    // occ.date es Occurrence.eventDate: texto libre DwC (fecha parcial o rango posible), se
+    // muestra tal cual, sin pasar por un parser de fecha real (ver nota en TaxonDetailPage.tsx).
+    { key: "date", header: "Fecha", cell: (occ) => occ.date ?? "—" },
     {
       key: "actions",
       header: "Acciones",
@@ -397,6 +393,7 @@ export function CollectionDetailPage({ collectionId, onNavigate }: CollectionDet
           )}
           <p className="text-muted-foreground">
             {occCount} ocurrencias en esta colección • {usersCount} usuarios con acceso a esta colección
+            {collection && <> • Creada el {formatDateTime(collection.createdAt)}</>}
           </p>
         </div>
       </div>

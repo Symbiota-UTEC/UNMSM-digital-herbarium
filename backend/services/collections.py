@@ -35,6 +35,7 @@ from backend.services.collection_permissions import (
     user_can_manage_collection_permissions,
     user_can_view_collection,
 )
+from backend.utils.dates import format_display_date
 
 
 def _paginate_total(db: Session, ids_query):
@@ -98,6 +99,8 @@ def _collection_out(
         canEdit=caps.can_edit,
         canManage=caps.can_manage,
         occurrencesCount=occ_count or 0,
+        createdAt=col.createdAt,
+        updatedAt=col.updatedAt,
     )
 
 
@@ -494,7 +497,7 @@ def list_occurrences_brief_by_collection_id(
             family=r.family,
             location=r.location,
             collector=r.collector,
-            date=r.date,
+            date=format_display_date(r.date),
         )
         for r in rows
     ]

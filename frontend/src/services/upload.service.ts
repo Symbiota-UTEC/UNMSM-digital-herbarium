@@ -1,50 +1,7 @@
-import type { ImportJobStatus } from "@constants/enums";
 import { API, PAGE_SIZE } from "@constants/api";
 import type { PaginatedResponse } from "@interfaces/utils/pagination";
+import type { DwcImportResult, TaxonFloraImportJob, TaxonFloraUploadAcceptedResponse } from "@interfaces/upload";
 import { throwIfError, type ApiFetch } from "./api.error";
-
-export interface TaxonFloraImportJob {
-  jobId: string;
-  filename: string;
-  status: ImportJobStatus;
-  stage: string | null;
-  detail: string | null;
-  errorMessage: string | null;
-  fileSizeBytes: number | null;
-  bytesProcessed: number | null;
-  progressPercent: number | null;
-  estimatedSecondsRemaining: number | null;
-  rowsProcessed: number;
-  rowsFilteredOut: number;
-  taxaMarkedNotCurrent: number;
-  taxaInserted: number;
-  taxaUpdated: number;
-  taxaSetCurrent: number;
-  lastProcessedRow: number | null;
-  createdAt: string;
-  startedAt: string | null;
-  finishedAt: string | null;
-  uploadedByUserId: string | null;
-}
-
-export interface TaxonFloraUploadAcceptedResponse {
-  status: string;
-  backbone: string;
-  filename: string;
-  detail: string;
-  jobId: string;
-}
-
-/** Resultado de POST /upload/dwc-csv. */
-export interface DwcImportResult {
-  status: string;
-  collectionId: string;
-  rows: number;
-  occurrencesInserted: number;
-  taxaMatched: number;
-  identificationsInserted: number;
-  identifiersInserted: number;
-}
 
 export const uploadService = {
   /** Lanza ApiError (con `status` y `detail`) si el backend rechaza el CSV. */

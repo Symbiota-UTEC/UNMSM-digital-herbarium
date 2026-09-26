@@ -1,4 +1,5 @@
 # backend/schemas/collections.py
+from datetime import datetime
 from typing import Literal, Optional
 from uuid import UUID
 
@@ -31,6 +32,8 @@ class CollectionOut(ORMBaseModel):
     canEdit: bool = False  # crear/editar ocurrencias, importar CSV
     canManage: bool = False  # gestionar accesos y la colección
     occurrencesCount: int = 0
+    createdAt: datetime
+    updatedAt: datetime
 
 
 # Un solo criterio a la vez, igual que OccurrenceSort. myRole/canEdit/canManage quedan fuera:

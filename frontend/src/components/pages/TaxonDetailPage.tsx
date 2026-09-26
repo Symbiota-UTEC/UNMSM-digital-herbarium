@@ -7,12 +7,9 @@ import { DataTable, type ColumnDef } from "../ui/data-table";
 import { ArrowLeft, Leaf, CheckCircle, XCircle, Eye } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { PAGE_SIZE } from "@constants/api";
-import {
-  taxonService,
-  type TaxonDetailOut,
-  type TaxonIdentificationOut,
-  type TaxonIdentifierOut,
-} from "@services/taxon.service";
+import { formatDateTime } from "@utils/dates";
+import { taxonService } from "@services/taxon.service";
+import type { TaxonDetailOut, TaxonIdentificationOut, TaxonIdentifierOut } from "@interfaces/taxon";
 
 /* ------------------------ Props de la página ------------------------ */
 
@@ -133,14 +130,6 @@ export function TaxonDetailPage({
     });
   };
 
-  // Formateo seguro de fecha (puede no ser ISO perfecto)
-  const formatDate = (raw: string | null): string => {
-    if (!raw) return "—";
-    const d = new Date(raw);
-    if (Number.isNaN(d.getTime())) return raw;
-    return d.toLocaleDateString("es-ES");
-  };
-
   const identColumns: ColumnDef<TaxonIdentificationOut>[] = [
     {
       key: "scientific-name",
@@ -183,7 +172,10 @@ export function TaxonDetailPage({
       header: "Fecha identificado",
       sortKey: "dateIdentified",
       sortDir: "desc",
-      cell: (identification) => formatDate(identification.dateIdentified),
+      // dateIdentified es texto libre DwC (puede ser una fecha parcial o un rango, ver
+      // Identification.dateIdentified en el backend): se muestra tal cual, sin pasar por un
+      // parser de fecha real que fabricaría un día/mes que el dato nunca tuvo.
+      cell: (identification) => identification.dateIdentified || "—",
     },
     {
       key: "status",
@@ -443,6 +435,14 @@ export function TaxonDetailPage({
             <div className="grid grid-cols-2 gap-2">
               <span className="text-muted-foreground">Modificado:</span>
               <span>{displayValue(taxon.modified)}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <span className="text-muted-foreground">Registrado en el sistema:</span>
+              <span>{formatDateTime(taxon.createdAt)}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <span className="text-muted-foreground">Última actualización en el sistema:</span>
+              <span>{formatDateTime(taxon.updatedAt)}</span>
             </div>
             {taxon.references && (
               <div className="col-span-2">

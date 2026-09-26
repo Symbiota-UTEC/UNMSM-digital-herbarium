@@ -22,6 +22,8 @@ export interface Institution extends BasicInstitutionInfo {
   institutionAdminUserId?: string | null;
   institutionAdminUser?: InstitutionAdminUser | null;
   usersCount?: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type InstitutionPage = PaginatedResponse<Institution>;

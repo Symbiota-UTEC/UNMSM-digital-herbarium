@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import ForeignKey, Integer, String, Text, Uuid
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.config.database import Base
@@ -39,6 +40,18 @@ class Institution(Base):
     )
 
     usersCount: Mapped[int] = mapped_column("users_count", Integer, default=0, nullable=False)
+
+    createdAt: Mapped[datetime] = mapped_column(
+        "created_at", DateTime, default=datetime.utcnow, nullable=False
+    )
+    updatedAt: Mapped[datetime] = mapped_column(
+        "updated_at",
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+
     users: Mapped[List["User"]] = relationship(
         "User",
         back_populates="institution",

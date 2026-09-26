@@ -172,6 +172,8 @@ class TaxonDetailOut(BaseModel):
     nameAccordingToID: Optional[str] = None
     taxonRemarks: Optional[str] = None
 
+    # Proveniencia del dato en WFO (no confundir con createdAt/updatedAt, la trazabilidad de
+    # esta fila en nuestra base).
     created: Optional[date] = None
     modified: Optional[date] = None
 
@@ -181,6 +183,9 @@ class TaxonDetailOut(BaseModel):
     tplID: Optional[str] = None
 
     isCurrent: bool
+
+    createdAt: datetime
+    updatedAt: datetime
 
     class Config:
         from_attributes = True

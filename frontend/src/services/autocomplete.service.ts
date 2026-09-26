@@ -1,12 +1,6 @@
 import { API } from "@constants/api";
+import type { ScientificNameSuggestion } from "@interfaces/autocomplete";
 import { throwIfError, type ApiFetch } from "./api.error";
-
-export interface ScientificNameSuggestion {
-  scientificName: string;
-  taxonId: string | null;
-  wfoTaxonId: string | null;
-  scientificNameAuthorship?: string | null;
-}
 
 export const autocompleteService = {
   /** Autocomplete genérico — devuelve lista de strings */

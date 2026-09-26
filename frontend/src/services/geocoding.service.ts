@@ -1,15 +1,7 @@
 import { API } from "@constants/api";
 import { adminDivisionsService } from "@services/adminDivisions.service";
 import type { ApiFetch } from "@services/api.error";
-
-export interface AdminUnits {
-  countryCode?: string;
-  country?: string;
-  stateProvince?: string;
-  county?: string;
-  municipality?: string;
-  locationId?: string;
-}
+import type { AdminUnits } from "@interfaces/geocoding";
 
 type NominatimAddress = Record<string, string | undefined>;
 type PeruResolver = "inei" | "nominatim";

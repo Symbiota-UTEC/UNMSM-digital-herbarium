@@ -44,6 +44,17 @@ class Collection(Base):
         foreign_keys=[creatorUserId],
     )
 
+    createdAt: Mapped[datetime] = mapped_column(
+        "created_at", DateTime, default=datetime.utcnow, nullable=False
+    )
+    updatedAt: Mapped[datetime] = mapped_column(
+        "updated_at",
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+
     occurrences: Mapped[List["Occurrence"]] = relationship(
         "Occurrence", back_populates="collection"
     )

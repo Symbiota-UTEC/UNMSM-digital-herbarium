@@ -44,6 +44,13 @@ export interface ApiUserOut {
   createdAt: string;
 }
 
+/** Respuesta de POST /auth/login (snake_case: convención OAuth2 password flow, no el
+ * camelCase del resto de la API). */
+export interface LoginResponse {
+  access_token: string;
+  user: ApiUserOut;
+}
+
 /** Objeto + unión para Visibility */
 export const VISIBILITY = {
   FULL: "full",

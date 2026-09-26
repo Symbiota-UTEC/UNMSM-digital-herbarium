@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
@@ -26,6 +27,9 @@ class InstitutionOut(ORMBaseModel):
     usersCount: int = 0
 
     institutionAdminUser: Optional[AdminUserOut] = None
+
+    createdAt: datetime
+    updatedAt: datetime
 
 
 class InstitutionBase(StrictBaseModel):

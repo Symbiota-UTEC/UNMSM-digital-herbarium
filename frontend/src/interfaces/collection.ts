@@ -23,6 +23,8 @@ export interface CollectionOut {
   canEdit?: boolean; // crear/editar ocurrencias, importar CSV
   canManage?: boolean; // gestionar accesos y la colección
   occurrencesCount?: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface CollectionCreate {
@@ -42,6 +44,8 @@ export interface CollectionListItem {
   institutionId?: string | null;
   institutionName?: string | null;
   creatorName?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface CollectionUserAccessItem {
@@ -62,5 +66,7 @@ export function toCollectionListItem(c: CollectionOut): CollectionListItem {
     institutionId: c.institution?.institutionId ?? null,
     institutionName: c.institution?.institutionName ?? null,
     creatorName: c.creator?.fullName || c.creator?.username || null,
+    createdAt: c.createdAt,
+    updatedAt: c.updatedAt,
   };
 }

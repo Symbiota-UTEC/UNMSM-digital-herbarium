@@ -2,7 +2,7 @@ import { API } from "@constants/api";
 import type { RegistrationStatus } from "@constants/enums";
 import type { PaginatedResponse } from "@interfaces/utils/pagination";
 import type { RegistrationRequest } from "@interfaces/registrationRequest";
-import type { ApiUserOut } from "@interfaces/auth";
+import type { LoginResponse } from "@interfaces/auth";
 import { ApiError, throwIfError, type ApiFetch } from "./api.error";
 
 export interface RegistrationRequestsParams {
@@ -11,11 +11,6 @@ export interface RegistrationRequestsParams {
   statusFilter?: string;
   institutionId?: string | number;
   fullNamePrefix?: string;
-}
-
-export interface LoginResponse {
-  access_token: string;
-  user: ApiUserOut;
 }
 
 export const authService = {

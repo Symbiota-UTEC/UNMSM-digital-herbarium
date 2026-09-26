@@ -12,8 +12,11 @@ import { useAuth } from "@contexts/AuthContext";
 import { PAGE_SIZE } from "@constants/api";
 import { Role } from "@constants/roles";
 import { ImportJobStatus } from "@constants/enums";
-import { uploadService, type TaxonFloraImportJob } from "@services/upload.service";
+import { uploadService } from "@services/upload.service";
+import type { TaxonFloraImportJob } from "@interfaces/upload";
 import { DataTable, type ColumnDef } from "../ui/data-table";
+import { totalPagesFor } from "@utils/pagination";
+import { formatDateTime } from "@utils/dates";
 
 const POLL_MS = 4000;
 
@@ -43,13 +46,6 @@ function badgeVariant(status: ImportJobStatus): "default" | "secondary" | "destr
     default:
       return "outline";
   }
-}
-
-function formatDateTime(raw: string | null): string {
-  if (!raw) return "—";
-  const parsed = new Date(raw);
-  if (Number.isNaN(parsed.getTime())) return "—";
-  return parsed.toLocaleString("es-PE", { dateStyle: "short", timeStyle: "short" });
 }
 
 function formatBytes(value: number | null): string {
@@ -214,7 +210,7 @@ export function UploadsPage() {
 
   const latestJob = activeJob ?? jobHistory[0] ?? null;
   const jobCurrentPage = jobHistoryPage;
-  const jobTotalPages = Math.ceil(jobHistoryTotal / PAGE_SIZE.TAXON_FLORA_JOBS) || 1;
+  const jobTotalPages = totalPagesFor(jobHistoryTotal, PAGE_SIZE.TAXON_FLORA_JOBS);
 
   const handleHistorialPrev = () => {
     const prev = Math.max(1, jobHistoryPage - 1);
@@ -242,7 +238,7 @@ export function UploadsPage() {
     {
       key: "created-at",
       header: "Fecha",
-      cell: (job) => <span className="text-sm">{formatDateTime(job.createdAt)}</span>,
+      cell: (job) => <span className="text-sm">{formatDateTime(job.createdAt, "—")}</span>,
     },
     {
       key: "duration",
@@ -417,7 +413,7 @@ export function UploadsPage() {
                   <div className="text-xs text-muted-foreground">Duración</div>
                   <div className="text-lg font-semibold tabular-nums">{formatJobDuration(latestJob)}</div>
                   <div className="text-xs text-muted-foreground">
-                    Inicio: {formatDateTime(latestJob.startedAt || latestJob.createdAt)}
+                    Inicio: {formatDateTime(latestJob.startedAt || latestJob.createdAt, "—")}
                   </div>
                 </div>
                 <div className="rounded-md bg-muted/40 p-3">
@@ -425,7 +421,9 @@ export function UploadsPage() {
                   <div className="text-lg font-semibold">
                     {latestJob.lastProcessedRow?.toLocaleString("es-PE") || "—"}
                   </div>
-                  <div className="text-xs text-muted-foreground">Finalizó: {formatDateTime(latestJob.finishedAt)}</div>
+                  <div className="text-xs text-muted-foreground">
+                    Finalizó: {formatDateTime(latestJob.finishedAt, "—")}
+                  </div>
                 </div>
               </div>
 

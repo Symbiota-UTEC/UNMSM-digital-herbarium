@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Info, Loader2 } from "lucide-react";
 import { PAGE_SIZE } from "@constants/api";
-import { taxonService, type TaxonSearchItem } from "@services/taxon.service";
+import { taxonService } from "@services/taxon.service";
+import type { TaxonSearchItem } from "@interfaces/taxon";
 import { useAuth } from "@contexts/AuthContext";
 import { useDebounce } from "@utils/useDebounce";
 import { Alert, AlertDescription } from "../ui/alert";

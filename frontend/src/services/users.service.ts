@@ -1,17 +1,7 @@
 import { API } from "@constants/api";
 import type { ApiUserLookupResponse } from "@interfaces/auth";
+import type { UserProfileResponse } from "@interfaces/users";
 import { throwIfError, type ApiFetch } from "./api.error";
-
-export interface UserProfileResponse {
-  userId: string;
-  username: string;
-  email: string;
-  isActive: boolean;
-  isSuperuser: boolean;
-  isInstitutionAdmin: boolean;
-  institutionId: string;
-  createdAt: string;
-}
 
 export const usersService = {
   async getById(apiFetch: ApiFetch, userId: string): Promise<UserProfileResponse> {

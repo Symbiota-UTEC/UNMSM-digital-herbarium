@@ -8,7 +8,9 @@ import { Mail, Calendar, Building } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@contexts/AuthContext";
 import { Role } from "@constants/roles";
-import { usersService, type UserProfileResponse } from "@services/users.service";
+import { formatDateLong } from "@utils/dates";
+import { usersService } from "@services/users.service";
+import type { UserProfileResponse } from "@interfaces/users";
 
 const ROLE_LABELS: Record<Role, string> = {
   [Role.Admin]: "Administrador",
@@ -25,17 +27,6 @@ const initialsFrom = (primary?: string | null, fallback?: string | null) => {
     .join("")
     .slice(0, 2)
     .toUpperCase();
-};
-
-const formatDateLong = (value?: string | null) => {
-  if (!value) return "—";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "—";
-  return parsed.toLocaleDateString("es-PE", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  });
 };
 
 export function ProfilePage() {

@@ -217,7 +217,7 @@ def _merge_staged_taxa(db: Session, mapped_fields: List[str]) -> Dict[str, int]:
     insert_values = ", ".join(selected_values)
     assignments = ", ".join(
         [f"{quote(column)} = EXCLUDED.{quote(column)}" for column in columns]
-        + ["is_current = TRUE"]
+        + ["is_current = TRUE", "updated_at = now()"]
     )
     conflict_values = [f"EXCLUDED.{quote(column)}" for column in columns] + ["TRUE"]
     existing_values = [f"taxon.{quote(column)}" for column in columns] + ["taxon.is_current"]

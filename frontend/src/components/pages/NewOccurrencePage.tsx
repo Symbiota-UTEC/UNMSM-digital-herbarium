@@ -19,12 +19,14 @@ import { ArrowLeft, Plus, X, AlertCircle, Loader2, CheckCircle2, Trash2, Star } 
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "../ui/alert";
 import { useAuth } from "../../contexts/AuthContext";
-import { autocompleteService, type ScientificNameSuggestion } from "@services/autocomplete.service";
+import { autocompleteService } from "@services/autocomplete.service";
+import type { ScientificNameSuggestion } from "@interfaces/autocomplete";
 import { AutocompleteDropdown, useSuggestions } from "../ui/autocomplete";
 import { ImageManager, type PendingImage } from "../ImageManager";
 import { cameraService } from "@services/camera.service";
 import { collectionsService } from "@services/collections.service";
-import { taxonService, type TaxonDetailOut } from "@services/taxon.service";
+import { taxonService } from "@services/taxon.service";
+import type { TaxonDetailOut } from "@interfaces/taxon";
 import { occurrencesService } from "@services/occurrences.service";
 import { uploadService } from "@services/upload.service";
 import { adminDivisionsService } from "@services/adminDivisions.service";
@@ -36,6 +38,11 @@ import { LocationPicker } from "../LocationPicker";
 import { resolveAdminUnits } from "@services/geocoding.service";
 import { DwcTerm } from "../DwcTerm";
 import { formatVerbatimDate } from "@utils/dates";
+import {
+  OCCURRENCE_TABS as TABS,
+  OCCURRENCE_TAB_DOT_STYLE as TAB_DOT_STYLE,
+  type OccurrenceTabKey as TabKey,
+} from "@constants/occurrenceTabs";
 
 interface NewOccurrencePageProps {
   onNavigate: (page: string, params?: Record<string, any>) => void;
@@ -93,21 +100,6 @@ const COUNTRIES: { code: string; name: string }[] = [
   { code: "SE", name: "Suecia" },
   { code: "CH", name: "Suiza" },
 ];
-
-/* ─── Tab definitions ───────────── */
-type TabKey = "occurrence" | "event" | "location" | "taxon" | "images";
-
-const TABS: { key: TabKey; label: string }[] = [
-  { key: "occurrence", label: "Ocurrencia" },
-  { key: "event", label: "Evento" },
-  { key: "location", label: "Localización" },
-  { key: "taxon", label: "Taxonomía" },
-  { key: "images", label: "Imágenes" },
-];
-
-// w-1.5/h-1.5/ml-1.5 y bg-green-400 no están compiladas en index.css (ver frontend/CLAUDE.md
-// > CSS / Theming): sin esto el punto queda invisible (0x0, sin color).
-const TAB_DOT_STYLE = { marginLeft: "0.375rem", width: "0.375rem", height: "0.375rem", backgroundColor: "#22c55e" };
 
 /* ────────────────────────────────────────────────────────────────── */
 export function NewOccurrencePage({

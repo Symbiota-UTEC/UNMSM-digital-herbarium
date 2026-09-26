@@ -17,3 +17,16 @@ export interface AdminDivision {
   /** URI estable para dwc:locationID (ubigeo o GeoNames) */
   locationId: string;
 }
+
+export interface ResolvedDivision {
+  name: string;
+  code: string;
+  locationId: string;
+}
+
+/** Respuesta de GET /admin-divisions/resolve. */
+export interface ResolveResult {
+  department: ResolvedDivision | null;
+  province: ResolvedDivision | null;
+  district: ResolvedDivision | null;
+}

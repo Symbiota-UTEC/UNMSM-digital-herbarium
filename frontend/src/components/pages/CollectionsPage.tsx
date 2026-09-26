@@ -20,7 +20,7 @@ import { collectionsService } from "@services/collections.service";
 import { CollectionCreate, CollectionListItem, toCollectionListItem } from "@interfaces/collection";
 
 type CollectionsPageProps = {
-  onNavigate: (page: string, params?: any) => void;
+  onNavigate: (page: string, params?: Record<string, any>) => void;
 };
 
 const ROLE_BADGE: Record<EffectiveRole, { label: string; className: string }> = {

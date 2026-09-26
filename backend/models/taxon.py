@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 from typing import List, Optional
 
-from sqlalchemy import Boolean, Date, String, Text, Uuid
+from sqlalchemy import Boolean, Date, DateTime, String, Text, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.config.database import Base
@@ -60,6 +60,8 @@ class Taxon(Base):
     nameAccordingToID: Mapped[Optional[str]] = mapped_column("name_according_to_id", String(255))
     taxonRemarks: Mapped[Optional[str]] = mapped_column("taxon_remarks", Text())
 
+    # Proveniencia del dato en el backbone WFO (cuándo WFO creó/modificó este registro allá,
+    # no en nuestra base): vienen tal cual del classification.csv importado.
     created: Mapped[Optional[date]] = mapped_column("created", Date)
     modified: Mapped[Optional[date]] = mapped_column("modified", Date)
 
@@ -76,6 +78,22 @@ class Taxon(Base):
         nullable=False,
         default=True,
         server_default="true",
+    )
+
+    # Trazabilidad de esta fila en NUESTRA base (distinto de created/modified de arriba, que
+    # son del propio WFO): cuándo se insertó/actualizó por última vez vía el import de Flora.
+    # server_default (no default= de Python) porque el import hace INSERT/UPDATE en SQL crudo
+    # (_merge_staged_taxa en taxon_flora_import.py), sin pasar por el ORM: un default de Python
+    # nunca se ejecutaría ahí. updated_at se bumpea explícitamente en esa misma consulta SQL.
+    createdAt: Mapped[datetime] = mapped_column(
+        "created_at", DateTime, server_default=func.now(), nullable=False
+    )
+    updatedAt: Mapped[datetime] = mapped_column(
+        "updated_at",
+        DateTime,
+        server_default=func.now(),
+        onupdate=datetime.utcnow,
+        nullable=False,
     )
 
     # Relación inversa con Identification

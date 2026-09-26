@@ -54,6 +54,7 @@ import {
 } from "@services/occurrences.service";
 import { formatMeters, polygonToWkt, representativePoint, wktToPolygon } from "@utils/geo";
 import { createSimplePolygonDraw } from "@utils/polygonDraw";
+import { totalPagesFor } from "@utils/pagination";
 import {
   MAP_MAX_ZOOM,
   MAP_MIN_ZOOM,
@@ -598,7 +599,7 @@ export function MapPage({ onNavigate }: MapPageProps) {
   // Sin área de búsqueda, fullyContained viene null en todos los puntos: no hay nada que distinguir.
   const hasAreaSearch = result?.items.some((p) => p.fullyContained != null) ?? false;
 
-  const tableTotalPages = Math.max(Math.ceil(tableTotal / TABLE_PAGE_SIZE), 1);
+  const tableTotalPages = totalPagesFor(tableTotal, TABLE_PAGE_SIZE);
   const handleTablePrevPage = () => {
     if (!activeSearch || tablePage <= 1 || tableLoading) return;
     fetchTable(activeSearch.input, activeSearch.query, tablePage - 1);

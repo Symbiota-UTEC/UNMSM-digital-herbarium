@@ -1,18 +1,6 @@
 import { API } from "@constants/api";
 import { throwIfError, type ApiFetch } from "./api.error";
-import type { AdminDivision, CatalogCountry } from "@interfaces/adminDivision";
-
-export interface ResolvedDivision {
-  name: string;
-  code: string;
-  locationId: string;
-}
-
-export interface ResolveResult {
-  department: ResolvedDivision | null;
-  province: ResolvedDivision | null;
-  district: ResolvedDivision | null;
-}
+import type { AdminDivision, CatalogCountry, ResolveResult } from "@interfaces/adminDivision";
 
 export const adminDivisionsService = {
   /** Países del catálogo (única fuente de la lista de países de la UI) */

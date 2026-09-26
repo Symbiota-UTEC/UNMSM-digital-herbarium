@@ -7,7 +7,8 @@ import { Leaf, ChevronLeft, ChevronRight, ChevronDown, Loader2, Plus, Eye } from
 import { toast } from "sonner";
 import { useAuth } from "@contexts/AuthContext";
 import { PAGE_SIZE } from "@constants/api";
-import { taxonService, type TaxonTreeNode, type TaxonSearchItem } from "@services/taxon.service";
+import { taxonService } from "@services/taxon.service";
+import type { TaxonTreeNode, TaxonSearchItem } from "@interfaces/taxon";
 import { FiltersCard, FilterAutocompleteInput, filterLabelClass, useScientificNameAutocomplete } from "../ui/filters";
 import { DataTable, type ColumnDef } from "../ui/data-table";
 

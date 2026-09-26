@@ -15,6 +15,7 @@ import {
   type OccurrenceFilterValues,
 } from "../OccurrenceFilterFields";
 import { DataTable, type ColumnDef } from "../ui/data-table";
+import { totalPagesFor } from "@utils/pagination";
 
 interface OccurrencesPageProps {
   onNavigate: (page: string, params?: Record<string, any>) => void;
@@ -51,7 +52,7 @@ export function OccurrencesPage({ onNavigate }: OccurrencesPageProps) {
     dateTo: searchParams.get("to") ?? "",
   }));
 
-  const totalPages = useMemo(() => Math.max(Math.ceil(total / pageSize), 1), [total, pageSize]);
+  const totalPages = useMemo(() => totalPagesFor(total, pageSize), [total, pageSize]);
 
   const filtersActive = hasActiveOccurrenceFilters(filters);
 
