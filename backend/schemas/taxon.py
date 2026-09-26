@@ -2,7 +2,7 @@ from __future__ import annotations
 
 # backend/schemas/taxon.py
 from datetime import date, datetime
-from typing import List, Optional
+from typing import List, Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -74,6 +74,16 @@ class TaxonSearchItem(BaseModel):
         from_attributes = True
 
 
+# Un solo criterio a la vez, igual que OccurrenceSort. taxonRank/taxonomicStatus quedan
+# fuera: son categóricos con pocos valores fijos, ordenarlos no ayuda a navegar resultados.
+TaxonSearchSort = Literal["scientificName", "family", "occurrenceCount"]
+
+# Si no se envía, cada `sort` usa su propia dirección por defecto (ver search_taxa en
+# services/taxon.py): "asc" para scientificName/family, "desc" para occurrenceCount (los
+# taxones más documentados primero).
+TaxonSearchOrder = Literal["asc", "desc"]
+
+
 # -------------------------------------------------
 # Schemas para detalle de Taxon + identificaciones
 # -------------------------------------------------
@@ -90,9 +100,22 @@ class TaxonIdentifierOut(BaseModel):
         from_attributes = True
 
 
+# Un solo criterio a la vez, igual que OccurrenceSort. Sin índice dedicado: el volumen por
+# taxón es acotado (identificaciones de un único taxón, no de todo el backbone). No incluye
+# scientificName: todas las filas ya son identificaciones del mismo taxón, así que ese campo
+# no distingue nada útil para ordenar (a lo sumo varía en la autoría/grafía verbatim).
+TaxonIdentificationSort = Literal["dateIdentified", "isCurrent", "institution"]
+
+# Si no se envía, cada `sort` usa su propia dirección por defecto (ver
+# list_taxon_identifications en services/taxon.py): "desc" para dateIdentified e isCurrent,
+# "asc" para institution.
+TaxonIdentificationOrder = Literal["asc", "desc"]
+
+
 class TaxonIdentificationOut(BaseModel):
     """Identificación taxonómica que usa este taxón."""
 
+    identificationId: UUID
     taxonId: UUID
     occurrenceId: UUID
 
@@ -103,6 +126,10 @@ class TaxonIdentificationOut(BaseModel):
 
     scientificName: Optional[str] = None
     scientificNameAuthorship: Optional[str] = None
+
+    institution: Optional[str] = Field(
+        None, description="Institución dueña de la colección de la ocurrencia identificada."
+    )
 
     createdAt: datetime
     updatedAt: datetime
@@ -154,9 +181,6 @@ class TaxonDetailOut(BaseModel):
     tplID: Optional[str] = None
 
     isCurrent: bool
-
-    # Todas las identificaciones que usan este taxón
-    identifications: List[TaxonIdentificationOut] = Field(default_factory=list)
 
     class Config:
         from_attributes = True

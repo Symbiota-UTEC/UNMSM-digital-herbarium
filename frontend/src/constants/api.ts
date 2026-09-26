@@ -33,6 +33,7 @@ export const API = {
       TREE: "/taxon/tree",
       SEARCH: "/taxon/search",
       BY_ID: (taxonId: string) => `/taxon/${taxonId}`,
+      IDENTIFICATIONS: (taxonId: string) => `/taxon/${taxonId}/identifications`,
     },
     UPLOAD: {
       DWC_CSV: "/upload/dwc-csv",
@@ -74,4 +75,5 @@ export const PAGE_SIZE = {
   OCCURRENCES_TABLE: 20,
   COLLECTION_ACCESS_USERS: 3,
   COLLECTION_OCCURRENCES: 5,
+  TAXON_IDENTIFICATIONS: 5,
 };

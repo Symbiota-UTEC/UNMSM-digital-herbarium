@@ -7,9 +7,23 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from backend.models.models import Identification, Taxon
+from backend.models.models import Collection, Identification, Institution, Occurrence, Taxon, User
 from backend.schemas.common.pages import Page
-from backend.schemas.taxon import TaxonSearchItem, TaxonSynonym, TaxonTreeNode
+from backend.schemas.taxon import (
+    TaxonIdentificationOrder,
+    TaxonIdentificationOut,
+    TaxonIdentificationSort,
+    TaxonSearchItem,
+    TaxonSearchOrder,
+    TaxonSearchSort,
+    TaxonSynonym,
+    TaxonTreeNode,
+)
+from backend.services.collection_permissions import visible_occurrences_condition
+
+
+def _unaccent_lower(expr):
+    return func.unaccent_immutable(func.lower(expr))
 
 
 def get_taxon_tree(
@@ -136,8 +150,42 @@ def get_taxon_tree(
     return Page[TaxonTreeNode].of(items, total=total, limit=limit, offset=offset)
 
 
+def _taxon_search_order_by(
+    sort: Optional[TaxonSearchSort],
+    order: Optional[TaxonSearchOrder],
+    occurrence_count_col,
+):
+    """Un solo criterio a la vez (ver TaxonSearchSort). Sin sort, alfabético por
+    scientificName (con scientificNameAuthorship y taxonId como desempate estable)."""
+    if sort is None:
+        return [
+            Taxon.scientificName.nulls_last(),
+            Taxon.scientificNameAuthorship.nulls_last(),
+            Taxon.taxonId,
+        ]
+
+    default_order = "desc" if sort == "occurrenceCount" else "asc"
+    asc = (order or default_order) == "asc"
+
+    if sort == "occurrenceCount":
+        column = occurrence_count_col
+    else:
+        column = _unaccent_lower(
+            {"scientificName": Taxon.scientificName, "family": Taxon.family}[sort]
+        )
+
+    direction = column.asc().nulls_last() if asc else column.desc().nulls_last()
+    return [direction, Taxon.taxonId]
+
+
 def search_taxa(
-    db: Session, q: str, only_current: bool, page: int, size: int
+    db: Session,
+    q: str,
+    only_current: bool,
+    page: int,
+    size: int,
+    sort: Optional[TaxonSearchSort] = None,
+    order: Optional[TaxonSearchOrder] = None,
 ) -> Page[TaxonSearchItem]:
     term = q.strip()
     limit = size
@@ -145,6 +193,9 @@ def search_taxa(
 
     if not term:
         return Page[TaxonSearchItem].of([], total=0, limit=limit, offset=offset)
+
+    if order is not None and sort is None:
+        raise HTTPException(status_code=400, detail="order requiere sort.")
 
     pattern = f"%{term.lower()}%"
     filters = [
@@ -160,6 +211,10 @@ def search_taxa(
 
     total: int = db.scalar(select(func.count()).select_from(base_query.subquery())) or 0
 
+    occurrence_count_col = func.count(func.distinct(Identification.occurrenceId)).label(
+        "occurrence_count"
+    )
+
     rows = db.execute(
         select(
             Taxon.taxonId,
@@ -170,7 +225,7 @@ def search_taxa(
             Taxon.taxonomicStatus,
             Taxon.family,
             Taxon.isCurrent,
-            func.count(func.distinct(Identification.occurrenceId)).label("occurrence_count"),
+            occurrence_count_col,
         )
         .outerjoin(Identification, Identification.taxonId == Taxon.taxonId)
         .where(*filters)
@@ -184,11 +239,7 @@ def search_taxa(
             Taxon.family,
             Taxon.isCurrent,
         )
-        .order_by(
-            Taxon.scientificName.nulls_last(),
-            Taxon.scientificNameAuthorship.nulls_last(),
-            Taxon.taxonId,
-        )
+        .order_by(*_taxon_search_order_by(sort, order, occurrence_count_col))
         .offset(offset)
         .limit(limit)
     ).all()
@@ -215,13 +266,90 @@ def get_taxon_detail(db: Session, taxon_id: str) -> Taxon:
     if not taxon_id or taxon_id == "undefined":
         raise HTTPException(status_code=400, detail="taxon_id inválido")
 
-    taxon: Optional[Taxon] = db.scalar(
-        select(Taxon)
-        .options(selectinload(Taxon.identifications).selectinload(Identification.identifiers))
-        .where(Taxon.taxonId == taxon_id)
-    )
+    # Sin las identificaciones: pueden ser N y saturar esta respuesta si N es grande.
+    # Se piden aparte, paginadas, con list_taxon_identifications.
+    taxon: Optional[Taxon] = db.scalar(select(Taxon).where(Taxon.taxonId == taxon_id))
 
     if taxon is None:
         raise HTTPException(status_code=404, detail="Taxón no encontrado")
 
     return taxon
+
+
+def _taxon_identifications_order_by(
+    sort: Optional[TaxonIdentificationSort], order: Optional[TaxonIdentificationOrder]
+):
+    """Un solo criterio a la vez (ver TaxonIdentificationSort). Sin sort, el orden por
+    defecto es vigentes primero y luego las más recientes."""
+    if sort is None:
+        return [Identification.isCurrent.desc(), Identification.createdAt.desc()]
+
+    default_order = "asc" if sort == "institution" else "desc"
+    asc = (order or default_order) == "asc"
+
+    if sort == "institution":
+        column = _unaccent_lower(Institution.institutionName)
+    else:
+        column = {
+            "dateIdentified": Identification.dateIdentified,
+            "isCurrent": Identification.isCurrent,
+        }[sort]
+    return [column.asc().nulls_last() if asc else column.desc().nulls_last()]
+
+
+def list_taxon_identifications(
+    db: Session,
+    taxon_id: str,
+    page: int,
+    page_size: int,
+    current_user: User,
+    sort: Optional[TaxonIdentificationSort] = None,
+    order: Optional[TaxonIdentificationOrder] = None,
+) -> Page[TaxonIdentificationOut]:
+    if not taxon_id or taxon_id == "undefined":
+        raise HTTPException(status_code=400, detail="taxon_id inválido")
+
+    if order is not None and sort is None:
+        raise HTTPException(status_code=400, detail="order requiere sort.")
+
+    exists = db.scalar(select(Taxon.taxonId).where(Taxon.taxonId == taxon_id))
+    if exists is None:
+        raise HTTPException(status_code=404, detail="Taxón no encontrado")
+
+    limit = page_size
+    offset = (page - 1) * page_size
+
+    # Solo identificaciones de ocurrencias visibles para current_user (misma regla que
+    # _visible_occurrences_select en services/occurrences.py): sin esto, cualquier usuario
+    # vería identificaciones de colecciones privadas a las que no tiene acceso.
+    base_query = (
+        select(Identification, Institution.institutionName)
+        .join(Occurrence, Identification.occurrenceId == Occurrence.occurrenceId)
+        .join(Collection, Occurrence.collectionId == Collection.collectionId)
+        .outerjoin(Institution, Collection.institutionId == Institution.institutionId)
+        .where(Identification.taxonId == taxon_id)
+    )
+    visibility = visible_occurrences_condition(current_user)
+    if visibility is not None:
+        base_query = base_query.where(visibility)
+
+    total = db.scalar(select(func.count()).select_from(base_query.subquery())) or 0
+
+    rows = (
+        db.execute(
+            base_query.options(selectinload(Identification.identifiers))
+            .order_by(*_taxon_identifications_order_by(sort, order))
+            .offset(offset)
+            .limit(limit)
+        )
+        .unique()
+        .all()
+    )
+
+    items = []
+    for identification, institution_name in rows:
+        item = TaxonIdentificationOut.model_validate(identification, from_attributes=True)
+        item.institution = institution_name
+        items.append(item)
+
+    return Page[TaxonIdentificationOut].of(items, total=total, limit=limit, offset=offset)

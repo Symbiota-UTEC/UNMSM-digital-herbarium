@@ -21,8 +21,10 @@ from backend.schemas.collections import (
     AddUserToCollectionBody,
     CollectionAccessUser,
     CollectionCreate,
+    CollectionOrder,
     CollectionOut,
     CollectionPermissionOut,
+    CollectionSort,
 )
 from backend.schemas.common.pages import Page
 from backend.schemas.occurrence import OccurrenceBriefItem
@@ -48,6 +50,38 @@ def _bounds(limit: int, offset: int):
     limit = max(1, min(limit or 20, 200))  # límite sensato (1..200)
     offset = max(0, offset or 0)
     return limit, offset
+
+
+def _unaccent_lower(expr):
+    return func.unaccent_immutable(func.lower(expr))
+
+
+def _collections_order_by(
+    sort: Optional[CollectionSort],
+    order: Optional[CollectionOrder],
+    institution_name_col,
+    creator_name_col,
+    occ_count_col,
+):
+    """Un solo criterio a la vez (ver CollectionSort). Sin sort, alfabético por
+    collectionName (como antes de agregar sort explícito)."""
+    if sort is None:
+        return [Collection.collectionName.nulls_last()]
+
+    default_order = "desc" if sort == "occurrencesCount" else "asc"
+    asc = (order or default_order) == "asc"
+
+    if sort == "occurrencesCount":
+        column = occ_count_col
+    else:
+        column = _unaccent_lower(
+            {
+                "collectionName": Collection.collectionName,
+                "institution": institution_name_col,
+                "creator": creator_name_col,
+            }[sort]
+        )
+    return [column.asc().nulls_last() if asc else column.desc().nulls_last()]
 
 
 def _collection_out(
@@ -94,6 +128,8 @@ def _build_collections_page(
     ids_q,
     limit: int,
     offset: int,
+    sort: Optional[CollectionSort] = None,
+    order: Optional[CollectionOrder] = None,
 ) -> Page[CollectionOut]:
     """
     Dado un IDs query (select(Collection.collectionId) ...), pagina y construye
@@ -121,16 +157,31 @@ def _build_collections_page(
         .subquery()
     )
 
+    # outerjoin a Institution y join a User (creador) solo para poder ordenar por esos
+    # atributos; ambos son 1:1 desde Collection (institutionId/creatorUserId son FKs a su
+    # PK), así que no duplican filas.
+    creator_name_col = func.coalesce(User.fullName, User.username)
+
     q = (
         select(Collection, cp_role_sq.c.role, occ_counts.c.occ_count)
         .join(ids_subq, ids_subq.c.collectionId == Collection.collectionId)
         .join(occ_counts, occ_counts.c.collection_id == Collection.collectionId, isouter=True)
         .join(cp_role_sq, cp_role_sq.c.cid == Collection.collectionId, isouter=True)
+        .outerjoin(Institution, Institution.institutionId == Collection.institutionId)
+        .join(User, User.userId == Collection.creatorUserId)
         .options(
             selectinload(Collection.institution),
             selectinload(Collection.creator),
         )
-        .order_by(Collection.collectionName.nulls_last())
+        .order_by(
+            *_collections_order_by(
+                sort,
+                order,
+                Institution.institutionName,
+                creator_name_col,
+                func.coalesce(occ_counts.c.occ_count, 0),
+            )
+        )
         .offset(offset)
         .limit(limit)
     )
@@ -149,7 +200,12 @@ def get_collections(
     page: int,
     page_size: int,
     current_user: User,
+    sort: Optional[CollectionSort] = None,
+    order: Optional[CollectionOrder] = None,
 ) -> Page[CollectionOut]:
+    if order is not None and sort is None:
+        raise HTTPException(status_code=400, detail="order requiere sort.")
+
     limit, offset = _bounds(page_size, (page - 1) * page_size)
 
     if access == CollectionAccess.OWNER:
@@ -187,7 +243,7 @@ def get_collections(
                 .group_by(Collection.collectionId)
             )
 
-    return _build_collections_page(db, current_user, ids_q, limit, offset)
+    return _build_collections_page(db, current_user, ids_q, limit, offset, sort, order)
 
 
 def create_collection(db: Session, payload: CollectionCreate, current_user: User) -> CollectionOut:

@@ -6,9 +6,20 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from backend.auth.jwt import get_current_user
 from backend.config.database import get_db
+from backend.models.models import User
 from backend.schemas.common.pages import Page
-from backend.schemas.taxon import TaxonDetailOut, TaxonSearchItem, TaxonTreeNode
+from backend.schemas.taxon import (
+    TaxonDetailOut,
+    TaxonIdentificationOrder,
+    TaxonIdentificationOut,
+    TaxonIdentificationSort,
+    TaxonSearchItem,
+    TaxonSearchOrder,
+    TaxonSearchSort,
+    TaxonTreeNode,
+)
 from backend.services import taxon as taxon_service
 
 router = APIRouter(prefix="/taxon", tags=["Taxon"])
@@ -65,18 +76,49 @@ def search_taxa(
     ),
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
+    sort: Optional[TaxonSearchSort] = Query(
+        default=None, description="Un solo criterio: scientificName, family u occurrenceCount."
+    ),
+    order: Optional[TaxonSearchOrder] = Query(
+        default=None,
+        description="'asc' o 'desc'; requiere sort. Sin él, cada sort usa su dirección por defecto.",
+    ),
     db: Session = Depends(get_db),
 ):
-    return taxon_service.search_taxa(db, q, only_current, page, size)
+    return taxon_service.search_taxa(db, q, only_current, page, size, sort, order)
 
 
 @router.get(
     "/{taxon_id}",
     response_model=TaxonDetailOut,
-    summary="Devuelve un taxón del backbone y todas sus identificaciones asociadas.",
+    summary="Devuelve un taxón del backbone (sin sus identificaciones: ver /{taxon_id}/identifications).",
 )
 def get_taxon_detail(
     taxon_id: str,
     db: Session = Depends(get_db),
 ):
     return taxon_service.get_taxon_detail(db, taxon_id)
+
+
+@router.get(
+    "/{taxon_id}/identifications",
+    response_model=Page[TaxonIdentificationOut],
+    summary="Identificaciones que usan este taxón, de ocurrencias visibles para el usuario (paginado).",
+)
+def list_taxon_identifications(
+    taxon_id: str,
+    page: int = Query(1, ge=1, description="Número de página (1-based)"),
+    page_size: int = Query(20, ge=1, le=100, alias="pageSize", description="Tamaño de página"),
+    sort: Optional[TaxonIdentificationSort] = Query(
+        default=None, description="Un solo criterio: dateIdentified, isCurrent o institution."
+    ),
+    order: Optional[TaxonIdentificationOrder] = Query(
+        default=None,
+        description="'asc' o 'desc'; requiere sort. Sin él, cada sort usa su dirección por defecto.",
+    ),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return taxon_service.list_taxon_identifications(
+        db, taxon_id, page, page_size, current_user, sort, order
+    )

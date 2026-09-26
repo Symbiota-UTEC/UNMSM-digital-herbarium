@@ -13,8 +13,10 @@ from backend.schemas.collections import (
     AddUserToCollectionBody,
     CollectionAccessUser,
     CollectionCreate,
+    CollectionOrder,
     CollectionOut,
     CollectionPermissionOut,
+    CollectionSort,
 )
 from backend.schemas.common.pages import Page
 from backend.schemas.occurrence import OccurrenceBriefItem
@@ -40,10 +42,20 @@ def get_collections(
     ),
     page: int = Query(1, ge=1, description="Número de página (1-based)"),
     page_size: int = Query(20, ge=1, le=200, alias="pageSize", description="Tamaño de página"),
+    sort: Optional[CollectionSort] = Query(
+        default=None,
+        description="Un solo criterio: collectionName, institution, creator u occurrencesCount.",
+    ),
+    order: Optional[CollectionOrder] = Query(
+        default=None,
+        description="'asc' o 'desc'; requiere sort. Sin él, cada sort usa su dirección por defecto.",
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return collections_service.get_collections(db, access, page, page_size, current_user)
+    return collections_service.get_collections(
+        db, access, page, page_size, current_user, sort, order
+    )
 
 
 @router.post(

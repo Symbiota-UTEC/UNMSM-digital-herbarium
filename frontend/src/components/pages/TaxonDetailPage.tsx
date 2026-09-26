@@ -3,72 +3,16 @@ import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { Separator } from "../ui/separator";
-import { ArrowLeft, Leaf, CheckCircle, XCircle, AlertCircle, Eye } from "lucide-react";
+import { DataTable, type ColumnDef } from "../ui/data-table";
+import { ArrowLeft, Leaf, CheckCircle, XCircle, Eye } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
-import { taxonService } from "@services/taxon.service";
-
-/* ---------------------- Tipos según el backend ---------------------- */
-
-interface IdentifierOut {
-  identifierId: string;
-  fullName: string | null;
-  orcID: string | null;
-}
-
-interface TaxonIdentificationOut {
-  identificationId: string;
-  occurrenceId: string;
-  scientificName: string | null;
-  scientificNameAuthorship: string | null;
-  dateIdentified: string | null;
-  isCurrent: boolean;
-  identificationVerificationStatus: string | null;
-  typeStatus: string | null;
-  identifiers: IdentifierOut[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface TaxonDetailOut {
-  taxonId: string;
-  // Modelo Taxon
-  scientificNameID: string | null;
-  localID: string | null;
-  scientificName: string | null;
-  taxonRank: string | null;
-  parentNameUsageID: string | null;
-
-  scientificNameAuthorship: string | null;
-  family: string | null;
-  subfamily: string | null;
-  tribe: string | null;
-  subtribe: string | null;
-  genus: string | null;
-  subgenus: string | null;
-  specificEpithet: string | null;
-  infraspecificEpithet: string | null;
-  verbatimTaxonRank: string | null;
-  nomenclaturalStatus: string | null;
-
-  namePublishedIn: string | null;
-  taxonomicStatus: string | null;
-  acceptedNameUsageID: string | null;
-  originalNameUsageID: string | null;
-  nameAccordingToID: string | null;
-  taxonRemarks: string | null;
-
-  created: string | null; // Date en backend, llega como string
-  modified: string | null;
-
-  references: string | null;
-  source: string | null;
-  majorGroup: string | null;
-  tplID: string | null;
-  isCurrent: boolean;
-
-  // Identificaciones asociadas
-  identifications: TaxonIdentificationOut[];
-}
+import { PAGE_SIZE } from "@constants/api";
+import {
+  taxonService,
+  type TaxonDetailOut,
+  type TaxonIdentificationOut,
+  type TaxonIdentifierOut,
+} from "@services/taxon.service";
 
 /* ------------------------ Props de la página ------------------------ */
 
@@ -94,12 +38,22 @@ export function TaxonDetailPage({
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Identificaciones relacionadas: aparte del detalle del taxón y paginadas (pueden ser
+  // muchísimas), no todas de una — ver GET /taxon/{id}/identifications.
+  const [identifications, setIdentifications] = useState<TaxonIdentificationOut[]>([]);
+  const [identLoading, setIdentLoading] = useState<boolean>(true);
+  const [identPage, setIdentPage] = useState(1);
+  const [identTotal, setIdentTotal] = useState(0);
+  const [identTotalPages, setIdentTotalPages] = useState(1);
+  const [identSort, setIdentSort] = useState<string | null>(null);
+  const [identDir, setIdentDir] = useState<"asc" | "desc" | null>(null);
+
   const fetchTaxon = async () => {
     try {
       setLoading(true);
       setError(null);
       const data = await taxonService.getById(apiFetch, taxonId);
-      setTaxon(data as unknown as TaxonDetailOut);
+      setTaxon(data);
     } catch (err: any) {
       console.error(err);
       if (err?.status === 404) {
@@ -113,11 +67,50 @@ export function TaxonDetailPage({
     }
   };
 
+  const fetchIdentifications = async (page: number, sort: string | null, dir: "asc" | "desc" | null) => {
+    try {
+      setIdentLoading(true);
+      const data = await taxonService.listIdentifications(
+        apiFetch,
+        taxonId,
+        page,
+        PAGE_SIZE.TAXON_IDENTIFICATIONS,
+        sort,
+        dir,
+      );
+      setIdentifications(data.items ?? []);
+      setIdentTotal(data.total ?? 0);
+      setIdentTotalPages(data.totalPages || 1);
+      setIdentPage(page);
+    } catch (err) {
+      console.error("fetch taxon identifications error:", err);
+    } finally {
+      setIdentLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!taxonId) return;
     fetchTaxon();
+    fetchIdentifications(1, null, null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taxonId]);
+
+  const handleIdentPrevPage = () => {
+    if (identPage <= 1 || identLoading) return;
+    fetchIdentifications(identPage - 1, identSort, identDir);
+  };
+
+  const handleIdentNextPage = () => {
+    if (identPage >= identTotalPages || identLoading) return;
+    fetchIdentifications(identPage + 1, identSort, identDir);
+  };
+
+  const handleIdentSortChange = (key: string | null, dir: "asc" | "desc" | null) => {
+    setIdentSort(key);
+    setIdentDir(dir);
+    fetchIdentifications(1, key, dir);
+  };
 
   const handleBack = () => {
     if (returnTo === "occurrence-detail" && returnOccurrenceId) {
@@ -139,6 +132,102 @@ export function TaxonDetailPage({
       taxonId,
     });
   };
+
+  // Formateo seguro de fecha (puede no ser ISO perfecto)
+  const formatDate = (raw: string | null): string => {
+    if (!raw) return "—";
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return raw;
+    return d.toLocaleDateString("es-ES");
+  };
+
+  const identColumns: ColumnDef<TaxonIdentificationOut>[] = [
+    {
+      key: "scientific-name",
+      header: "Nombre científico",
+      cell: (identification) => (
+        <div>
+          <p className="italic">{identification.scientificName || "Sin nombre"}</p>
+          {identification.scientificNameAuthorship && (
+            <p className="text-xs text-muted-foreground">{identification.scientificNameAuthorship}</p>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "institution",
+      header: "Institución",
+      sortKey: "institution",
+      sortDir: "asc",
+      cell: (identification) => identification.institution || "—",
+    },
+    {
+      key: "identifiers",
+      header: "Identificado por",
+      cell: (identification) =>
+        identification.identifiers.length > 0 ? (
+          <ul className="space-y-0.5">
+            {identification.identifiers.map((id: TaxonIdentifierOut) => (
+              <li key={id.identifierId}>
+                {id.fullName || "Sin nombre"}
+                {id.orcID && <span className="text-muted-foreground ml-1">(ORCID: {id.orcID})</span>}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <span className="text-muted-foreground">No especificado</span>
+        ),
+    },
+    {
+      key: "date",
+      header: "Fecha identificado",
+      sortKey: "dateIdentified",
+      sortDir: "desc",
+      cell: (identification) => formatDate(identification.dateIdentified),
+    },
+    {
+      key: "status",
+      header: "Estado",
+      sortKey: "isCurrent",
+      sortDir: "desc",
+      cell: (identification) => (
+        <div className="flex gap-2 flex-wrap">
+          {identification.isCurrent ? (
+            <Badge className="bg-green-100 text-green-800">
+              <CheckCircle className="h-3 w-3 mr-1" />
+              Vigente
+            </Badge>
+          ) : (
+            <Badge variant="secondary">
+              <XCircle className="h-3 w-3 mr-1" />
+              No vigente
+            </Badge>
+          )}
+          {identification.identificationVerificationStatus && (
+            <Badge className="bg-blue-100 text-blue-800">{identification.identificationVerificationStatus}</Badge>
+          )}
+          {identification.typeStatus && (
+            <Badge className="bg-purple-100 text-purple-800">{identification.typeStatus}</Badge>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "actions",
+      header: "Acciones",
+      cell: (identification) => (
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 w-8 p-0"
+          title="Ver ocurrencia"
+          onClick={() => handleOpenOccurrence(identification.occurrenceId)}
+        >
+          <Eye className="h-4 w-4" />
+        </Button>
+      ),
+    },
+  ];
 
   // Helper para mostrar valores opcionales
   const displayValue = (value: string | number | null | undefined): ReactNode => {
@@ -184,8 +273,6 @@ export function TaxonDetailPage({
       </div>
     );
   }
-
-  const identifications = taxon.identifications ?? [];
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -384,97 +471,21 @@ export function TaxonDetailPage({
       {/* Identificaciones */}
       <div className="mt-8">
         <h2 className="text-2xl mb-4">Identificaciones Relacionadas</h2>
-        <p className="text-muted-foreground mb-6">
-          Registros de especímenes identificados con este taxón ({identifications.length})
-        </p>
-
-        {identifications.length === 0 ? (
-          <Card>
-            <CardContent className="py-8">
-              <p className="text-center text-muted-foreground">No hay identificaciones registradas para este taxón</p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="space-y-3">
-            {identifications.map((identification) => (
-              <Card
-                key={identification.identificationId}
-                className={
-                  identification.occurrenceId
-                    ? "cursor-pointer transition-shadow hover:shadow-md hover:ring-1 hover:ring-primary/20"
-                    : "transition-shadow hover:shadow-md"
-                }
-                onClick={() => handleOpenOccurrence(identification.occurrenceId)}
-                role={identification.occurrenceId ? "button" : undefined}
-                tabIndex={identification.occurrenceId ? 0 : undefined}
-                onKeyDown={(event) => {
-                  if (identification.occurrenceId && (event.key === "Enter" || event.key === " ")) {
-                    event.preventDefault();
-                    handleOpenOccurrence(identification.occurrenceId);
-                  }
-                }}
-              >
-                <CardContent className="py-4">
-                  <div className="grid md:grid-cols-6 gap-4 items-center">
-                    <div className="md:col-span-2">
-                      <p className="italic mb-1">{identification.scientificName || "Sin nombre"}</p>
-                      {identification.scientificNameAuthorship && (
-                        <p className="text-sm text-muted-foreground">{identification.scientificNameAuthorship}</p>
-                      )}
-                    </div>
-
-                    <div className="md:col-span-2">
-                      <p className="text-sm text-muted-foreground mb-1">Identificado por:</p>
-                      {identification.identifiers.length > 0 ? (
-                        <ul className="text-sm space-y-0.5">
-                          {identification.identifiers.map((id: IdentifierOut) => (
-                            <li key={id.identifierId}>
-                              {id.fullName || "Sin nombre"}
-                              {id.orcID && <span className="text-muted-foreground ml-1">(ORCID: {id.orcID})</span>}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="text-sm">No especificado</p>
-                      )}
-                    </div>
-
-                    <div className="flex gap-2 md:col-span-2 flex-wrap">
-                      {identification.occurrenceId && (
-                        <Badge variant="outline">
-                          <Eye className="h-3 w-3 mr-1" />
-                          Ver ocurrencia
-                        </Badge>
-                      )}
-
-                      {identification.isCurrent ? (
-                        <Badge className="bg-green-100 text-green-800">
-                          <CheckCircle className="h-3 w-3 mr-1" />
-                          Vigente
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary">
-                          <XCircle className="h-3 w-3 mr-1" />
-                          No vigente
-                        </Badge>
-                      )}
-
-                      {identification.identificationVerificationStatus && (
-                        <Badge className="bg-blue-100 text-blue-800">
-                          {identification.identificationVerificationStatus}
-                        </Badge>
-                      )}
-
-                      {identification.typeStatus && (
-                        <Badge className="bg-purple-100 text-purple-800">{identification.typeStatus}</Badge>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
+        <DataTable<TaxonIdentificationOut>
+          description={`Registros de especímenes identificados con este taxón (${identTotal})`}
+          columns={identColumns}
+          data={identifications}
+          keyExtractor={(row) => row.identificationId}
+          loading={identLoading}
+          emptyMessage="No hay identificaciones registradas para este taxón."
+          page={identPage}
+          totalPages={identTotalPages}
+          onPrevPage={handleIdentPrevPage}
+          onNextPage={handleIdentNextPage}
+          sortBy={identSort}
+          sortDir={identDir}
+          onSortChange={handleIdentSortChange}
+        />
       </div>
     </div>
   );

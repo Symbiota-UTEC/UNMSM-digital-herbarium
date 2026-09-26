@@ -33,6 +33,16 @@ class CollectionOut(ORMBaseModel):
     occurrencesCount: int = 0
 
 
+# Un solo criterio a la vez, igual que OccurrenceSort. myRole/canEdit/canManage quedan fuera:
+# se calculan para el usuario actual, no son un atributo propio de la colección.
+CollectionSort = Literal["collectionName", "institution", "creator", "occurrencesCount"]
+
+# Si no se envía, cada `sort` usa su propia dirección por defecto (ver get_collections en
+# services/collections.py): "asc" para collectionName/institution/creator, "desc" para
+# occurrencesCount (las colecciones con más ocurrencias primero).
+CollectionOrder = Literal["asc", "desc"]
+
+
 class CollectionCreate(StrictBaseModel):
     collectionName: Optional[str] = None
     description: Optional[str] = None

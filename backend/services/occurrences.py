@@ -9,14 +9,12 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from geoalchemy2 import Geography, Geometry
 from geoalchemy2.elements import WKTElement
-from sqlalchemy import and_, case, cast, delete, func, or_, select
+from sqlalchemy import and_, case, cast, delete, func, select
 from sqlalchemy.exc import DataError, InternalError
 from sqlalchemy.orm import Session, selectinload
 
-from backend.models.enums import CollectionRole
 from backend.models.models import (
     Collection,
-    CollectionPermission,
     Identification,
     Identifier,
     Institution,
@@ -42,6 +40,7 @@ from backend.services.collection_permissions import (
     my_role_label,
     user_can_edit_collection,
     user_can_view_collection,
+    visible_occurrences_condition,
 )
 from backend.services.geometry import InvalidPolygon, check_simple_polygon
 from backend.services.occurrence_filters import (
@@ -332,18 +331,9 @@ def _visible_occurrences_select(
         )
     )
 
-    if not current_user.isSuperuser:
-        perm_subq = select(CollectionPermission.collectionId).where(
-            CollectionPermission.userId == current_user.userId,
-            CollectionPermission.role.in_(list(CollectionRole)),
-        )
-
-        conds = [Occurrence.collectionId.in_(perm_subq)]
-
-        if current_user.isInstitutionAdmin and current_user.institutionId:
-            conds.append(Collection.institutionId == current_user.institutionId)
-
-        stmt = stmt.where(or_(*conds))
+    visibility = visible_occurrences_condition(current_user)
+    if visibility is not None:
+        stmt = stmt.where(visibility)
 
     if collection_id is not None:
         stmt = stmt.where(Occurrence.collectionId == collection_id)

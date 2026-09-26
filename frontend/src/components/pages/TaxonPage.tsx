@@ -231,6 +231,10 @@ export function TaxonPage({ onNavigate }: TaxonPageProps) {
   const [searchCurrentPage, setSearchCurrentPage] = useState(() => Math.max(1, Number(searchParams.get("page")) || 1));
   const [searchTotalPages, setSearchTotalPages] = useState(1);
   const [searchTotal, setSearchTotal] = useState(0);
+  const [searchSort, setSearchSort] = useState<string | null>(() => searchParams.get("sort") || null);
+  const [searchDir, setSearchDir] = useState<"asc" | "desc" | null>(
+    () => (searchParams.get("order") as "asc" | "desc" | null) || null,
+  );
 
   const fetchRootNodes = async (page = 1) => {
     try {
@@ -247,11 +251,11 @@ export function TaxonPage({ onNavigate }: TaxonPageProps) {
     }
   };
 
-  const fetchSearchResults = async (query: string, page: number) => {
+  const fetchSearchResults = async (query: string, page: number, sort: string | null, dir: "asc" | "desc" | null) => {
     if (!query.trim()) return;
     try {
       setSearchLoading(true);
-      const data = await taxonService.search(apiFetch, { q: query.trim(), page, size: 20 });
+      const data = await taxonService.search(apiFetch, { q: query.trim(), page, size: 20, sort, order: dir });
       setSearchResults(data.items ?? []);
       setSearchCurrentPage(data.currentPage ?? page);
       setSearchTotalPages(data.totalPages ?? 1);
@@ -264,13 +268,21 @@ export function TaxonPage({ onNavigate }: TaxonPageProps) {
     }
   };
 
+  const buildSearchUrlParams = (q: string, page: number, sort: string | null, dir: "asc" | "desc" | null) => {
+    const params: Record<string, string> = { q };
+    if (page > 1) params.page = String(page);
+    if (sort) params.sort = sort;
+    if (sort && dir) params.order = dir;
+    return params;
+  };
+
   // Los resultados previos se conservan (atenuados) hasta que llegue la respuesta.
   const applySearch = (query: string) => {
     const q = query.trim();
     setAppliedQuery(q);
     if (q) {
-      setSearchParams({ q }, { replace: true });
-      fetchSearchResults(q, 1);
+      setSearchParams(buildSearchUrlParams(q, 1, searchSort, searchDir), { replace: true });
+      fetchSearchResults(q, 1, searchSort, searchDir);
     }
   };
 
@@ -283,6 +295,8 @@ export function TaxonPage({ onNavigate }: TaxonPageProps) {
     setSearchCurrentPage(1);
     setSearchTotalPages(1);
     setSearchTotal(0);
+    setSearchSort(null);
+    setSearchDir(null);
     setSearchParams({}, { replace: true });
   };
 
@@ -290,8 +304,18 @@ export function TaxonPage({ onNavigate }: TaxonPageProps) {
     setSearchCurrentPage(newPage);
     const q = appliedQuery.trim();
     if (q) {
-      setSearchParams(newPage > 1 ? { q, page: String(newPage) } : { q }, { replace: true });
-      fetchSearchResults(q, newPage);
+      setSearchParams(buildSearchUrlParams(q, newPage, searchSort, searchDir), { replace: true });
+      fetchSearchResults(q, newPage, searchSort, searchDir);
+    }
+  };
+
+  const handleSearchSortChange = (key: string | null, dir: "asc" | "desc" | null) => {
+    setSearchSort(key);
+    setSearchDir(dir);
+    const q = appliedQuery.trim();
+    if (q) {
+      setSearchParams(buildSearchUrlParams(q, 1, key, dir), { replace: true });
+      fetchSearchResults(q, 1, key, dir);
     }
   };
 
@@ -312,7 +336,7 @@ export function TaxonPage({ onNavigate }: TaxonPageProps) {
     const q = searchParams.get("q");
     if (q) {
       const p = Math.max(1, Number(searchParams.get("page")) || 1);
-      fetchSearchResults(q, p);
+      fetchSearchResults(q, p, searchSort, searchDir);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -321,6 +345,8 @@ export function TaxonPage({ onNavigate }: TaxonPageProps) {
     {
       key: "scientific-name",
       header: "Nombre científico",
+      sortKey: "scientificName",
+      sortDir: "asc",
       cell: (r) => (
         <div className="space-y-0.5">
           <div className="italic">{r.scientificName || "(sin nombre)"}</div>
@@ -357,11 +383,15 @@ export function TaxonPage({ onNavigate }: TaxonPageProps) {
     {
       key: "family",
       header: "Familia",
+      sortKey: "family",
+      sortDir: "asc",
       cell: (r) => <span className="text-sm">{r.family || "—"}</span>,
     },
     {
       key: "occurrences",
       header: "Ocurrencias",
+      sortKey: "occurrenceCount",
+      sortDir: "desc",
       cell: (r) => <span className="text-sm tabular-nums">{r.occurrenceCount.toLocaleString("es-PE")}</span>,
     },
     {
@@ -428,6 +458,9 @@ export function TaxonPage({ onNavigate }: TaxonPageProps) {
           onPrevPage={() => handleSearchPageChange(searchCurrentPage - 1)}
           onNextPage={() => handleSearchPageChange(searchCurrentPage + 1)}
           onRowClick={(r) => handleSearchResultClick(r.taxonId)}
+          sortBy={searchSort}
+          sortDir={searchDir}
+          onSortChange={handleSearchSortChange}
         />
       ) : (
         <Card>

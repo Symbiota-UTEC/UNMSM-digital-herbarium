@@ -11,10 +11,14 @@ export const collectionsService = {
     access: CollectionAccess,
     page: number,
     pageSize: number,
+    sort?: string | null,
+    order?: "asc" | "desc" | null,
   ): Promise<PaginatedResponse<CollectionOut>> {
-    const res = await apiFetch(
-      `${API.BASE_URL}${API.PATHS.COLLECTIONS.BASE}?access=${access}&page=${page}&pageSize=${pageSize}`,
-    );
+    const query = new URLSearchParams({ access, page: String(page), pageSize: String(pageSize) });
+    if (sort) query.set("sort", sort);
+    if (sort && order) query.set("order", order);
+
+    const res = await apiFetch(`${API.BASE_URL}${API.PATHS.COLLECTIONS.BASE}?${query.toString()}`);
     await throwIfError(res);
     return res.json();
   },

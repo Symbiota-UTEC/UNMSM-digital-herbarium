@@ -54,6 +54,10 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(() => Math.max(1, Number(searchParams.get("page")) || 1));
   const [totalPages, setTotalPages] = useState(1);
+  const [sort, setSort] = useState<string | null>(() => searchParams.get("sort") || null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc" | null>(
+    () => (searchParams.get("order") as "asc" | "desc" | null) || null,
+  );
 
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -62,10 +66,22 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
   const [form, setForm] = useState<CollectionCreate>({ collectionName: "", description: "" });
 
   const fetchCollections = useCallback(
-    async (currentAccess: CollectionAccess, currentPage: number) => {
+    async (
+      currentAccess: CollectionAccess,
+      currentPage: number,
+      currentSort: string | null,
+      currentDir: "asc" | "desc" | null,
+    ) => {
       try {
         setLoading(true);
-        const data = await collectionsService.getCollections(apiFetch, currentAccess, currentPage, collectionsPerPage);
+        const data = await collectionsService.getCollections(
+          apiFetch,
+          currentAccess,
+          currentPage,
+          collectionsPerPage,
+          currentSort,
+          currentDir,
+        );
         setItems(data.items.map(toCollectionListItem));
         setTotalPages(data.totalPages ?? 1);
       } catch (e) {
@@ -80,29 +96,45 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
     [apiFetch, collectionsPerPage],
   );
 
-  const syncURL = (currentAccess: CollectionAccess, pageNum: number) => {
+  const syncURL = (
+    currentAccess: CollectionAccess,
+    pageNum: number,
+    currentSort: string | null,
+    currentDir: "asc" | "desc" | null,
+  ) => {
     const p = new URLSearchParams();
     if (currentAccess !== CollectionAccess.Owner) p.set("access", currentAccess);
     if (pageNum > 1) p.set("page", String(pageNum));
+    if (currentSort) p.set("sort", currentSort);
+    if (currentSort && currentDir) p.set("order", currentDir);
     setSearchParams(p, { replace: true });
   };
 
   const handleApplyFilters = () => {
     setAccess(filterAccess);
     setPage(1);
-    syncURL(filterAccess, 1);
+    syncURL(filterAccess, 1, sort, sortDir);
   };
   const handleClearFilters = () => {
     setFilterAccess(CollectionAccess.Owner);
     setAccess(CollectionAccess.Owner);
     setPage(1);
+    setSort(null);
+    setSortDir(null);
     setSearchParams({}, { replace: true });
   };
   const filtersActive = true; // access filter always has an active value
 
+  const handleSortChange = (key: string | null, dir: "asc" | "desc" | null) => {
+    setSort(key);
+    setSortDir(dir);
+    setPage(1);
+    syncURL(access, 1, key, dir);
+  };
+
   useEffect(() => {
-    fetchCollections(access, page);
-  }, [access, page, fetchCollections]);
+    fetchCollections(access, page, sort, sortDir);
+  }, [access, page, sort, sortDir, fetchCollections]);
 
   const resetForm = () => {
     setForm({ collectionName: "", description: "" });
@@ -152,7 +184,7 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
       setOpen(false);
       resetForm();
       setPage(1);
-      fetchCollections(access, 1);
+      fetchCollections(access, 1, sort, sortDir);
     } catch (e) {
       console.error(e);
       toast.error("Error creando la colección");
@@ -173,6 +205,8 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
           {
             key: "creator",
             header: "Creador",
+            sortKey: "creator",
+            sortDir: "asc",
             cell: (c) => <span className="text-sm text-muted-foreground">{c.creatorName ?? "—"}</span>,
           },
         ]
@@ -182,6 +216,8 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
     {
       key: "name",
       header: "Colección",
+      sortKey: "collectionName",
+      sortDir: "asc",
       cell: (c) => (
         <div className="flex items-center gap-2">
           <Folder className="h-4 w-4 text-primary shrink-0" />
@@ -192,6 +228,8 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
     {
       key: "institution",
       header: "Institución",
+      sortKey: "institution",
+      sortDir: "asc",
       cell: (c) => (
         <div className="flex items-center gap-1 text-sm text-muted-foreground">
           <Users className="h-3 w-3 shrink-0" />
@@ -203,6 +241,8 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
     {
       key: "count",
       header: "Ocurrencias",
+      sortKey: "occurrencesCount",
+      sortDir: "desc",
       cell: (c) => (
         <Badge variant="outline" className="text-xs tabular-nums">
           {c.occurrencesCount}
@@ -374,17 +414,20 @@ export function CollectionsPage({ onNavigate }: CollectionsPageProps) {
         totalPages={totalPages}
         onPrevPage={() => {
           setPage((p) => {
-            syncURL(access, p - 1);
+            syncURL(access, p - 1, sort, sortDir);
             return p - 1;
           });
         }}
         onNextPage={() => {
           setPage((p) => {
-            syncURL(access, p + 1);
+            syncURL(access, p + 1, sort, sortDir);
             return p + 1;
           });
         }}
         onRowClick={goToCollectionDetail}
+        sortBy={sort}
+        sortDir={sortDir}
+        onSortChange={handleSortChange}
       />
     </div>
   );

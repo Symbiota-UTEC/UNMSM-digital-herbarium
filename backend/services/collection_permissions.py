@@ -19,11 +19,12 @@ from dataclasses import dataclass
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from backend.models.enums import CollectionRole, EffectiveRole
-from backend.models.models import Collection, CollectionPermission, User
+from backend.models.models import Collection, CollectionPermission, Occurrence, User
 
 
 @dataclass(frozen=True)
@@ -110,3 +111,25 @@ def user_can_edit_collection(db: Session, user: User, collection: Collection) ->
 
 def user_can_manage_collection_permissions(db: Session, user: User, collection: Collection) -> bool:
     return _capabilities(db, user, collection).can_manage
+
+
+def visible_occurrences_condition(user: User) -> Optional[ColumnElement[bool]]:
+    """Condición SQLAlchemy que limita `Occurrence` a las visibles para `user`: sin filtro
+    (None) si es superuser; si no, las de colecciones con un `CollectionPermission` explícito
+    más -si es admin de institución- las de su propia institución. Comparte la regla de
+    `_visible_occurrences_select` en services/occurrences.py; cualquier query nueva sobre
+    Occurrence que dependa de quién puede verla debe usar esta función en vez de reimplementar
+    la lógica. Requiere que el SELECT ya haga
+    `.join(Collection, Occurrence.collectionId == Collection.collectionId)` (el caso de admin
+    de institución compara `Collection.institutionId`)."""
+    if user.isSuperuser:
+        return None
+
+    perm_subq = select(CollectionPermission.collectionId).where(
+        CollectionPermission.userId == user.userId,
+        CollectionPermission.role.in_(list(CollectionRole)),
+    )
+    conds = [Occurrence.collectionId.in_(perm_subq)]
+    if user.isInstitutionAdmin and user.institutionId:
+        conds.append(Collection.institutionId == user.institutionId)
+    return or_(*conds)

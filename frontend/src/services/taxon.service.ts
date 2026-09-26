@@ -37,6 +37,28 @@ export interface TaxonSearchItem {
   occurrenceCount: number;
 }
 
+export interface TaxonIdentifierOut {
+  identifierId: string;
+  fullName: string | null;
+  orcID: string | null;
+}
+
+export interface TaxonIdentificationOut {
+  identificationId: string;
+  taxonId: string;
+  occurrenceId: string;
+  scientificName: string | null;
+  scientificNameAuthorship: string | null;
+  institution: string | null;
+  dateIdentified: string | null;
+  isCurrent: boolean;
+  identificationVerificationStatus: string | null;
+  typeStatus: string | null;
+  identifiers: TaxonIdentifierOut[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface TaxonDetailOut {
   taxonId: string;
   scientificNameID: string | null;
@@ -68,7 +90,6 @@ export interface TaxonDetailOut {
   majorGroup: string | null;
   tplID: string | null;
   isCurrent: boolean;
-  identifications: any[];
 }
 
 export interface TaxonTreeParams {
@@ -82,6 +103,8 @@ export interface TaxonSearchParams {
   page?: number;
   size?: number;
   onlyCurrent?: boolean;
+  sort?: string | null;
+  order?: "asc" | "desc" | null;
 }
 
 export const taxonService = {
@@ -103,6 +126,24 @@ export const taxonService = {
     return res.json();
   },
 
+  async listIdentifications(
+    apiFetch: ApiFetch,
+    taxonId: string,
+    page: number,
+    pageSize: number,
+    sort?: string | null,
+    order?: "asc" | "desc" | null,
+  ): Promise<PaginatedResponse<TaxonIdentificationOut>> {
+    const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+    if (sort) query.set("sort", sort);
+    if (sort && order) query.set("order", order);
+    const res = await apiFetch(
+      `${API.BASE_URL}${API.PATHS.TAXON.IDENTIFICATIONS(encodeURIComponent(taxonId))}?${query.toString()}`,
+    );
+    await throwIfError(res);
+    return res.json();
+  },
+
   async search(apiFetch: ApiFetch, params: TaxonSearchParams): Promise<PaginatedResponse<TaxonSearchItem>> {
     const query = new URLSearchParams({
       q: params.q,
@@ -112,6 +153,8 @@ export const taxonService = {
     if (params.onlyCurrent !== undefined) {
       query.set("only_current", String(params.onlyCurrent));
     }
+    if (params.sort) query.set("sort", params.sort);
+    if (params.sort && params.order) query.set("order", params.order);
 
     const res = await apiFetch(`${API.BASE_URL}${API.PATHS.TAXON.SEARCH}?${query.toString()}`);
     await throwIfError(res);
