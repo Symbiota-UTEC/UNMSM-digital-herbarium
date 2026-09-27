@@ -15,20 +15,13 @@ import { useAuth } from "@contexts/AuthContext";
 import { PAGE_SIZE } from "@constants/api";
 import { AutocompleteInstitution } from "../AutocompleteInstitution";
 import { Role } from "@constants/roles";
-import { CollectionAccess, EffectiveRole } from "@constants/enums";
+import { CollectionAccess } from "@constants/enums";
+import { ROLE_BADGE } from "@constants/roleBadge";
 import { collectionsService } from "@services/collections.service";
 import { CollectionCreate, CollectionListItem, toCollectionListItem } from "@interfaces/collection";
 
 type CollectionsPageProps = {
   onNavigate: (page: string, params?: Record<string, any>) => void;
-};
-
-const ROLE_BADGE: Record<EffectiveRole, { label: string; className: string }> = {
-  [EffectiveRole.Superuser]: { label: "Superuser", className: "bg-purple-100 text-purple-800" },
-  [EffectiveRole.InstitutionAdmin]: { label: "Admin institución", className: "bg-orange-100 text-orange-800" },
-  [EffectiveRole.Owner]: { label: "Propietario", className: "bg-blue-100 text-blue-800" },
-  [EffectiveRole.Editor]: { label: "Editor", className: "bg-green-50 text-green-700" },
-  [EffectiveRole.Viewer]: { label: "Lector", className: "bg-gray-100 text-gray-800" },
 };
 
 export function CollectionsPage({ onNavigate }: CollectionsPageProps) {

@@ -7,6 +7,7 @@ import { Leaf, ChevronLeft, ChevronRight, ChevronDown, Loader2, Plus, Eye } from
 import { toast } from "sonner";
 import { useAuth } from "@contexts/AuthContext";
 import { PAGE_SIZE } from "@constants/api";
+import { IDENTIFICATION_STATUS_COLORS } from "@constants/identificationStatus";
 import { taxonService } from "@services/taxon.service";
 import type { TaxonTreeNode, TaxonSearchItem } from "@interfaces/taxon";
 import { FiltersCard, FilterAutocompleteInput, filterLabelClass, useScientificNameAutocomplete } from "../ui/filters";
@@ -85,11 +86,15 @@ function TaxonTreeRow({
               {node.scientificNameAuthorship && (
                 <span className="text-xs text-muted-foreground">{node.scientificNameAuthorship}</span>
               )}
-              <Badge variant="outline" className="text-[10px]">
+              <Badge variant="outline" style={{ fontSize: "10px" }}>
                 {rankLabel}
               </Badge>
             </div>
-            {synonymsLabel && <div className="text-[11px] text-muted-foreground">[{synonymsLabel}]</div>}
+            {synonymsLabel && (
+              <div className="text-muted-foreground" style={{ fontSize: "11px" }}>
+                [{synonymsLabel}]
+              </div>
+            )}
           </div>
 
           {onViewDetail && node.taxonId && (
@@ -362,7 +367,7 @@ export function TaxonPage({ onNavigate }: TaxonPageProps) {
       header: "Rango",
       cell: (r) =>
         r.taxonRank ? (
-          <Badge variant="outline" className="text-[10px]">
+          <Badge variant="outline" style={{ fontSize: "10px" }}>
             {r.taxonRank}
           </Badge>
         ) : (
@@ -374,9 +379,13 @@ export function TaxonPage({ onNavigate }: TaxonPageProps) {
       header: "Estado",
       cell: (r) =>
         r.taxonomicStatus ? (
-          <Badge variant="secondary" className="text-[10px]">
-            {r.taxonomicStatus}
-          </Badge>
+          r.taxonomicStatus.toLowerCase() === "accepted" ? (
+            <Badge style={{ ...IDENTIFICATION_STATUS_COLORS.current, fontSize: "10px" }}>{r.taxonomicStatus}</Badge>
+          ) : (
+            <Badge variant="secondary" style={{ fontSize: "10px" }}>
+              {r.taxonomicStatus}
+            </Badge>
+          )
         ) : (
           <span className="text-muted-foreground text-sm">—</span>
         ),

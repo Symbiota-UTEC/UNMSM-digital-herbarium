@@ -14,6 +14,7 @@ import {
   OCCURRENCE_TAB_DOT_STYLE as TAB_DOT_STYLE,
   type OccurrenceTabKey as TabKey,
 } from "@constants/occurrenceTabs";
+import { IDENTIFICATION_STATUS_COLORS } from "@constants/identificationStatus";
 import { formatDateTime } from "@utils/dates";
 import "../image-manager.css";
 
@@ -318,18 +319,28 @@ export function OccurrenceDetailPage({
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
                   {ident.isCurrent ? (
-                    <Badge className="bg-green-100 text-green-800 text-[11px] font-medium rounded-full px-2 py-0.5">
+                    <Badge
+                      className="font-medium rounded-full px-2 py-0.5"
+                      style={{ ...IDENTIFICATION_STATUS_COLORS.current, fontSize: "11px" }}
+                    >
                       <CheckCircle className="h-3 w-3 mr-1" />
                       Vigente
                     </Badge>
                   ) : (
-                    <Badge variant="secondary" className="text-[11px] font-medium rounded-full px-2 py-0.5">
+                    <Badge
+                      variant="secondary"
+                      className="font-medium rounded-full px-2 py-0.5"
+                      style={{ fontSize: "11px" }}
+                    >
                       <XCircle className="h-3 w-3 mr-1" />
                       No vigente
                     </Badge>
                   )}
                   {ident.identificationVerificationStatus && (
-                    <Badge className="bg-blue-100 text-blue-800 text-[11px] font-medium rounded-full px-2 py-0.5">
+                    <Badge
+                      className="font-medium rounded-full px-2 py-0.5"
+                      style={{ ...IDENTIFICATION_STATUS_COLORS.verification, fontSize: "11px" }}
+                    >
                       {ident.identificationVerificationStatus}
                     </Badge>
                   )}

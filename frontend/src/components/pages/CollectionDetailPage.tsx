@@ -37,6 +37,7 @@ import { usersService } from "@services/users.service";
 import { ApiError } from "@services/api.error";
 import { Role } from "@constants/roles";
 import { CollectionRole } from "@constants/enums";
+import { ROLE_BADGE } from "@constants/roleBadge";
 import { PAGE_SIZE } from "@constants/api";
 import type { OccurrenceBriefItem } from "@interfaces/occurrence";
 import type { PaginatedResponse } from "@interfaces/utils/pagination";
@@ -591,26 +592,16 @@ export function CollectionDetailPage({ collectionId, onNavigate }: CollectionDet
                               </TableCell>
                               <TableCell className="whitespace-nowrap align-middle">
                                 <div>
-                                  {u.role === CollectionRole.Owner && (
-                                    <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
-                                      Propietario
-                                    </span>
-                                  )}
-                                  {u.role === CollectionRole.Editor && (
-                                    <span className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-700">
-                                      Editor
-                                    </span>
-                                  )}
-                                  {u.role === CollectionRole.Viewer && (
-                                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-800">
-                                      Lector
-                                    </span>
-                                  )}
-                                  {!Object.values(CollectionRole).includes(u.role) && (
-                                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-800">
-                                      {u.role}
-                                    </span>
-                                  )}
+                                  {(() => {
+                                    const badge = ROLE_BADGE[u.role];
+                                    return (
+                                      <span
+                                        className={`text-xs px-2 py-0.5 rounded-full ${badge?.className ?? "bg-gray-100 text-gray-800"}`}
+                                      >
+                                        {badge?.label ?? u.role}
+                                      </span>
+                                    );
+                                  })()}
                                 </div>
                               </TableCell>
                               <TableCell className="whitespace-nowrap align-middle" style={{ width: "1px" }}>

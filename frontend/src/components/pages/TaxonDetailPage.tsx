@@ -7,6 +7,7 @@ import { DataTable, type ColumnDef } from "../ui/data-table";
 import { ArrowLeft, Leaf, CheckCircle, XCircle, Eye } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { PAGE_SIZE } from "@constants/api";
+import { IDENTIFICATION_STATUS_COLORS } from "@constants/identificationStatus";
 import { formatDateTime } from "@utils/dates";
 import { taxonService } from "@services/taxon.service";
 import type { TaxonDetailOut, TaxonIdentificationOut, TaxonIdentifierOut } from "@interfaces/taxon";
@@ -185,7 +186,7 @@ export function TaxonDetailPage({
       cell: (identification) => (
         <div className="flex gap-2 flex-wrap">
           {identification.isCurrent ? (
-            <Badge className="bg-green-100 text-green-800">
+            <Badge style={IDENTIFICATION_STATUS_COLORS.current}>
               <CheckCircle className="h-3 w-3 mr-1" />
               Vigente
             </Badge>
@@ -196,10 +197,12 @@ export function TaxonDetailPage({
             </Badge>
           )}
           {identification.identificationVerificationStatus && (
-            <Badge className="bg-blue-100 text-blue-800">{identification.identificationVerificationStatus}</Badge>
+            <Badge style={IDENTIFICATION_STATUS_COLORS.verification}>
+              {identification.identificationVerificationStatus}
+            </Badge>
           )}
           {identification.typeStatus && (
-            <Badge className="bg-purple-100 text-purple-800">{identification.typeStatus}</Badge>
+            <Badge style={IDENTIFICATION_STATUS_COLORS.type}>{identification.typeStatus}</Badge>
           )}
         </div>
       ),
@@ -287,12 +290,13 @@ export function TaxonDetailPage({
             )}
             <div className="flex gap-2 mt-3 flex-wrap">
               {taxon.taxonRank && <Badge variant="outline">{taxon.taxonRank}</Badge>}
-              {taxon.taxonomicStatus && (
-                <Badge variant={taxon.taxonomicStatus.toLowerCase() === "accepted" ? "default" : "secondary"}>
-                  {taxon.taxonomicStatus}
-                </Badge>
-              )}
-              {taxon.isCurrent && <Badge className="bg-green-100 text-green-800">Actual</Badge>}
+              {taxon.taxonomicStatus &&
+                (taxon.taxonomicStatus.toLowerCase() === "accepted" ? (
+                  <Badge style={IDENTIFICATION_STATUS_COLORS.current}>{taxon.taxonomicStatus}</Badge>
+                ) : (
+                  <Badge variant="secondary">{taxon.taxonomicStatus}</Badge>
+                ))}
+              {taxon.isCurrent && <Badge style={IDENTIFICATION_STATUS_COLORS.current}>Actual</Badge>}
             </div>
           </div>
         </div>

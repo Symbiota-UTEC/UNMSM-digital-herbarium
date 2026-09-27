@@ -8,6 +8,7 @@ import { Mail, Calendar, Building } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@contexts/AuthContext";
 import { Role } from "@constants/roles";
+import { ROLE_BADGE } from "@constants/roleBadge";
 import { formatDateLong } from "@utils/dates";
 import { usersService } from "@services/users.service";
 import type { UserProfileResponse } from "@interfaces/users";
@@ -16,6 +17,15 @@ const ROLE_LABELS: Record<Role, string> = {
   [Role.Admin]: "Administrador",
   [Role.InstitutionAdmin]: "Admin. de institución",
   [Role.User]: "Usuario",
+};
+
+// Role (admin/institution_admin/user, el privilegio global) no es el mismo enum que
+// EffectiveRole/CollectionRole (el rol dentro de una colección), pero comparten la misma
+// paleta en ROLE_BADGE: un admin del sistema se ve igual que un "superuser" de colección.
+const ROLE_BADGE_KEY: Record<Role, string | null> = {
+  [Role.Admin]: "superuser",
+  [Role.InstitutionAdmin]: "institution_admin",
+  [Role.User]: null,
 };
 
 const initialsFrom = (primary?: string | null, fallback?: string | null) => {
@@ -75,6 +85,8 @@ export function ProfilePage() {
   }
 
   const roleLabel = ROLE_LABELS[user.role] ?? "Usuario";
+  const roleBadgeKey = ROLE_BADGE_KEY[user.role];
+  const roleBadge = roleBadgeKey ? ROLE_BADGE[roleBadgeKey] : null;
   const displayName = user.username || user.email || "Usuario sin nombre";
   const initials = initialsFrom(user.username, user.email);
   const institutionName = user.institution || "Sin institución asignada";
@@ -99,9 +111,15 @@ export function ProfilePage() {
               </Avatar>
               <CardTitle>{displayName}</CardTitle>
               <CardDescription>{user.email}</CardDescription>
-              <Badge className="mx-auto mt-2" variant={user.role === Role.Admin ? "default" : "secondary"}>
-                {roleLabel}
-              </Badge>
+              {roleBadge ? (
+                <span className={`mx-auto mt-2 inline-block text-xs px-2 py-0.5 rounded-full ${roleBadge.className}`}>
+                  {roleBadge.label}
+                </span>
+              ) : (
+                <Badge className="mx-auto mt-2" variant="secondary">
+                  {roleLabel}
+                </Badge>
+              )}
             </CardHeader>
             <CardContent>
               <Button
