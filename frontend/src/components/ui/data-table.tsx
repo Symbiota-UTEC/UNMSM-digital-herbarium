@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table";
 import { Button } from "./button";
@@ -73,6 +73,13 @@ export interface DataTableProps<T> {
   sortBy?: string | null;
   sortDir?: "asc" | "desc" | null;
   onSortChange?: (key: string | null, dir: "asc" | "desc" | null) => void;
+  // Si se da, cada fila suma un botón para expandir/colapsar una fila de detalle debajo con
+  // este contenido (solo una fila expandida a la vez). Sin expandedKey/onExpandedKeyChange
+  // el estado de expansión es interno; con ellos, el caller lo controla (p.ej. para abrir
+  // una fila por defecto según datos que solo él conoce).
+  renderExpanded?: (row: T) => ReactNode;
+  expandedKey?: string | null;
+  onExpandedKeyChange?: (key: string | null) => void;
 }
 
 export function DataTable<T>({
@@ -93,6 +100,9 @@ export function DataTable<T>({
   sortBy,
   sortDir,
   onSortChange,
+  renderExpanded,
+  expandedKey: expandedKeyProp,
+  onExpandedKeyChange,
 }: DataTableProps<T>) {
   const handleHeaderClick = (col: ColumnDef<T>) => {
     if (!col.sortKey || !onSortChange) return;
@@ -105,6 +115,14 @@ export function DataTable<T>({
       onSortChange(null, null);
     }
   };
+  const [internalExpandedKey, setInternalExpandedKey] = useState<string | null>(null);
+  const isExpandControlled = expandedKeyProp !== undefined;
+  const expandedKey = isExpandControlled ? expandedKeyProp : internalExpandedKey;
+  const setExpandedKey = (key: string | null) => {
+    if (!isExpandControlled) setInternalExpandedKey(key);
+    onExpandedKeyChange?.(key);
+  };
+  const hasExpand = !!renderExpanded;
   const lastColIdx = columns.length - 1;
   const hasHeader = !!(title || description);
   // Primera carga: skeleton. Refresco: se conservan las filas y solo se atenúan (sin saltos de altura).
@@ -156,6 +174,7 @@ export function DataTable<T>({
                       )}
                     </TableHead>
                   ))}
+                  {hasExpand && <TableHead style={{ width: "1px" }} />}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -170,40 +189,79 @@ export function DataTable<T>({
                           />
                         </TableCell>
                       ))}
+                      {hasExpand && <TableCell />}
                     </TableRow>
                   ))
                 ) : data.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={columns.length} className="py-8 text-center text-sm text-muted-foreground">
+                    <TableCell
+                      colSpan={columns.length + (hasExpand ? 1 : 0)}
+                      className="py-8 text-center text-sm text-muted-foreground"
+                    >
                       {emptyMessage}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  data.map((row, idx) => (
-                    <TableRow
-                      key={keyExtractor(row, idx)}
-                      onClick={onRowClick ? () => onRowClick(row) : undefined}
-                      className={onRowClick ? "cursor-pointer hover:bg-muted/60" : ""}
-                    >
-                      {columns.map((col, i) => (
-                        <TableCell
-                          key={col.key}
-                          className={["align-middle", i === lastColIdx ? "whitespace-nowrap" : "", col.className ?? ""]
-                            .filter(Boolean)
-                            .join(" ")}
-                          style={i === lastColIdx ? { width: "1px" } : undefined}
+                  data.map((row, idx) => {
+                    const rowKey = keyExtractor(row, idx);
+                    const isExpanded = hasExpand && expandedKey === rowKey;
+                    return (
+                      <Fragment key={rowKey}>
+                        <TableRow
+                          onClick={onRowClick ? () => onRowClick(row) : undefined}
+                          className={onRowClick ? "cursor-pointer hover:bg-muted/60" : ""}
                         >
-                          {i === lastColIdx ? (
-                            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center" }}>
-                              {col.cell(row)}
-                            </div>
-                          ) : (
-                            col.cell(row)
+                          {columns.map((col, i) => (
+                            <TableCell
+                              key={col.key}
+                              className={[
+                                "align-middle",
+                                i === lastColIdx ? "whitespace-nowrap" : "",
+                                col.className ?? "",
+                              ]
+                                .filter(Boolean)
+                                .join(" ")}
+                              style={i === lastColIdx ? { width: "1px" } : undefined}
+                            >
+                              {i === lastColIdx ? (
+                                <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center" }}>
+                                  {col.cell(row)}
+                                </div>
+                              ) : (
+                                col.cell(row)
+                              )}
+                            </TableCell>
+                          ))}
+                          {hasExpand && (
+                            <TableCell className="align-middle" style={{ width: "1px" }}>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setExpandedKey(isExpanded ? null : rowKey);
+                                }}
+                                aria-label={isExpanded ? "Contraer fila" : "Expandir fila"}
+                              >
+                                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                              </Button>
+                            </TableCell>
                           )}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))
+                        </TableRow>
+                        {isExpanded && renderExpanded && (
+                          <TableRow>
+                            <TableCell colSpan={columns.length + 1} className="p-0">
+                              <div className="bg-muted/20 p-3" style={{ borderLeft: "4px solid var(--primary)" }}>
+                                {renderExpanded(row)}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </Fragment>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>

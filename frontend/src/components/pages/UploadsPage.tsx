@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type BaseSyntheticEvent, type ChangeEvent } from "react";
 import { Button } from "../ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -48,19 +47,6 @@ function badgeVariant(status: ImportJobStatus): "default" | "secondary" | "destr
   }
 }
 
-function formatBytes(value: number | null): string {
-  if (value == null || value < 0) return "—";
-  if (value < 1024) return `${value} B`;
-  const units = ["KB", "MB", "GB", "TB"];
-  let size = value;
-  let unitIndex = -1;
-  while (size >= 1024 && unitIndex < units.length - 1) {
-    size /= 1024;
-    unitIndex += 1;
-  }
-  return `${size.toFixed(size >= 100 ? 0 : 1)} ${units[unitIndex]}`;
-}
-
 function formatSeconds(seconds: number | null): string {
   if (seconds == null || seconds < 0) return "—";
   if (seconds < 60) return `${seconds}s`;
@@ -86,6 +72,18 @@ function formatJobDuration(job: Pick<TaxonFloraImportJob, "status" | "startedAt"
   return formatSeconds(Math.max(0, Math.floor((finishedAt - startedAt) / 1000)));
 }
 
+/* Mismas clases de caja que ReadOnlyField (border + bg-muted/40 + p-3); leyenda opcional debajo
+ * del valor, para las métricas del job que no aparecen ya en su fila de la tabla. */
+function StatTile({ label, value, caption }: { label: string; value: string; caption?: string }) {
+  return (
+    <div className="rounded-md border bg-muted/40 p-3 space-y-1">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-sm font-semibold">{value}</p>
+      {caption && <p className="text-xs text-muted-foreground">{caption}</p>}
+    </div>
+  );
+}
+
 export function UploadsPage() {
   const { apiFetch, user } = useAuth();
   const isSuperuser = user?.role === Role.Admin;
@@ -99,6 +97,7 @@ export function UploadsPage() {
   const [activeJob, setActiveJob] = useState<TaxonFloraImportJob | null>(null);
   const [jobHistoryPage, setJobHistoryPage] = useState(1);
   const [jobHistoryTotal, setJobHistoryTotal] = useState(0);
+  const [expandedJobKey, setExpandedJobKey] = useState<string | null>(null);
 
   const syncActiveJobFromHistory = (jobs: TaxonFloraImportJob[], preferredJobId?: string | null) => {
     if (jobs.length === 0) {
@@ -211,6 +210,40 @@ export function UploadsPage() {
   const latestJob = activeJob ?? jobHistory[0] ?? null;
   const jobCurrentPage = jobHistoryPage;
   const jobTotalPages = totalPagesFor(jobHistoryTotal, PAGE_SIZE.TAXON_FLORA_JOBS);
+
+  // Abre sola la fila del job más reciente (p.ej. al cargar la página, o cuando arranca uno
+  // nuevo); si el usuario la colapsa a mano, no se vuelve a abrir sola mientras siga siendo
+  // el mismo job.
+  useEffect(() => {
+    if (latestJob) setExpandedJobKey(latestJob.jobId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [latestJob?.jobId]);
+
+  // Solo lo que la fila de la tabla no muestra ya (Duración, Filas y Progreso están ahí).
+  // Mismo StatTile para las 5 métricas, en una sola grilla: todas iguales en tamaño y forma,
+  // sin mezclar tarjetas con leyenda y cajas con subtítulo interno.
+  const renderJobDetail = (job: TaxonFloraImportJob) => (
+    <div className="space-y-3">
+      {/* 5 columnas no están compiladas en index.css (solo grid-cols-2 y md:grid-cols-3);
+          auto-fit/minmax evita ese límite: cabe en una sola fila cuando hay espacio y se
+          reparte en menos columnas solo cuando de verdad no entran, sin depender de un
+          breakpoint fijo. */}
+      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))" }}>
+        <StatTile label="ETA" value={formatSeconds(job.estimatedSecondsRemaining)} />
+        <StatTile label="Última fila" value={job.lastProcessedRow?.toLocaleString("es-PE") || "—"} />
+        <StatTile label="Taxones insertados" value={job.taxaInserted.toLocaleString("es-PE")} />
+        <StatTile label="Taxones actualizados" value={job.taxaUpdated.toLocaleString("es-PE")} />
+        <StatTile label="Taxones vigentes" value={job.taxaSetCurrent.toLocaleString("es-PE")} />
+      </div>
+
+      {job.errorMessage && (
+        <Alert variant="destructive">
+          <Info className="h-4 w-4" />
+          <AlertDescription>{job.errorMessage}</AlertDescription>
+        </Alert>
+      )}
+    </div>
+  );
 
   const handleHistorialPrev = () => {
     const prev = Math.max(1, jobHistoryPage - 1);
@@ -370,102 +403,14 @@ export function UploadsPage() {
         )}
       </div>
 
-      {/* Job activo */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Estado de última importación</CardTitle>
-          <CardDescription>Sigue el progreso de la carga del backbone taxonómico.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoadingJobs && jobHistory.length === 0 ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span>Cargando estado de importación…</span>
-            </div>
-          ) : latestJob ? (
-            <div className="rounded-lg border p-4 space-y-4">
-              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <div className="font-medium">{latestJob.filename}</div>
-                  <div className="text-sm text-muted-foreground">
-                    {latestJob.detail || latestJob.stage || "Sin detalle disponible"}
-                  </div>
-                </div>
-                <Badge variant={badgeVariant(latestJob.status)}>{formatStatus(latestJob.status)}</Badge>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-4">
-                <div className="rounded-md bg-muted/40 p-3">
-                  <div className="text-xs text-muted-foreground">Progreso</div>
-                  <div className="text-lg font-semibold">
-                    {latestJob.progressPercent != null ? `${latestJob.progressPercent.toFixed(1)}%` : "—"}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {formatBytes(latestJob.bytesProcessed)} de {formatBytes(latestJob.fileSizeBytes)}
-                  </div>
-                </div>
-                <div className="rounded-md bg-muted/40 p-3">
-                  <div className="text-xs text-muted-foreground">ETA</div>
-                  <div className="text-lg font-semibold">{formatSeconds(latestJob.estimatedSecondsRemaining)}</div>
-                  <div className="text-xs text-muted-foreground">Tiempo restante estimado</div>
-                </div>
-                <div className="rounded-md bg-muted/40 p-3">
-                  <div className="text-xs text-muted-foreground">Duración</div>
-                  <div className="text-lg font-semibold tabular-nums">{formatJobDuration(latestJob)}</div>
-                  <div className="text-xs text-muted-foreground">
-                    Inicio: {formatDateTime(latestJob.startedAt || latestJob.createdAt, "—")}
-                  </div>
-                </div>
-                <div className="rounded-md bg-muted/40 p-3">
-                  <div className="text-xs text-muted-foreground">Última fila</div>
-                  <div className="text-lg font-semibold">
-                    {latestJob.lastProcessedRow?.toLocaleString("es-PE") || "—"}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    Finalizó: {formatDateTime(latestJob.finishedAt, "—")}
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-4">
-                <div className="rounded-md border p-3">
-                  <div className="text-xs text-muted-foreground">Filas leídas</div>
-                  <div className="font-semibold">{latestJob.rowsProcessed.toLocaleString("es-PE")}</div>
-                </div>
-                <div className="rounded-md border p-3">
-                  <div className="text-xs text-muted-foreground">Taxones insertados</div>
-                  <div className="font-semibold">{latestJob.taxaInserted.toLocaleString("es-PE")}</div>
-                </div>
-                <div className="rounded-md border p-3">
-                  <div className="text-xs text-muted-foreground">Taxones actualizados</div>
-                  <div className="font-semibold">{latestJob.taxaUpdated.toLocaleString("es-PE")}</div>
-                </div>
-                <div className="rounded-md border p-3">
-                  <div className="text-xs text-muted-foreground">Taxones vigentes</div>
-                  <div className="font-semibold">{latestJob.taxaSetCurrent.toLocaleString("es-PE")}</div>
-                </div>
-              </div>
-
-              {latestJob.errorMessage && (
-                <Alert variant="destructive">
-                  <Info className="h-4 w-4" />
-                  <AlertDescription>{latestJob.errorMessage}</AlertDescription>
-                </Alert>
-              )}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">Aún no hay importaciones registradas.</p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Historial */}
+      {/* Importaciones: cada fila se puede expandir para ver el detalle del job (la de arriba
+          es la más reciente y se abre sola mientras está en cola o corriendo). */}
       <DataTable<TaxonFloraImportJob>
-        title="Historial de importaciones"
+        title="Importaciones"
         description={
           jobHistoryTotal > 0
             ? `${jobHistoryTotal} ${jobHistoryTotal === 1 ? "importación" : "importaciones"} en total`
-            : "Importaciones ejecutadas previamente."
+            : "Progreso y resultados de cada carga del backbone taxonómico."
         }
         columns={historialColumns}
         data={jobHistory}
@@ -476,6 +421,9 @@ export function UploadsPage() {
         totalPages={jobTotalPages}
         onPrevPage={handleHistorialPrev}
         onNextPage={handleHistorialNext}
+        renderExpanded={renderJobDetail}
+        expandedKey={expandedJobKey}
+        onExpandedKeyChange={setExpandedJobKey}
       />
     </div>
   );
