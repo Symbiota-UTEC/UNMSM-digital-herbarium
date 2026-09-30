@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { Card, CardContent } from "../ui/card";
-import { FieldSectionHeader } from "../ui/field-section";
+import { FieldSectionHeader, ReadOnlyField } from "../ui/field-section";
 import { ArrowLeft, Eye, Leaf, CheckCircle, XCircle, AlertCircle, Pencil } from "lucide-react";
 
 import { useAuth } from "@contexts/AuthContext";
@@ -11,11 +11,12 @@ import { uploadService } from "@services/upload.service";
 import type { OccurrenceItem } from "@interfaces/occurrence";
 import { OccurrenceLocationMap } from "../OccurrenceLocationMap";
 import { ImageLightbox } from "../ImageLightbox";
+import { OccurrenceTabsNav } from "../OccurrenceTabsNav";
+import { DwcGlossaryDialog } from "../DwcGlossaryDialog";
 import {
-  OCCURRENCE_TABS as TABS,
-  OCCURRENCE_TAB_ICONS as TAB_ICONS,
-  OCCURRENCE_TAB_DOT_STYLE as TAB_DOT_STYLE,
+  tabCompletionStatus,
   type OccurrenceTabKey as TabKey,
+  type TabCompletionStatus,
 } from "@constants/occurrenceTabs";
 import { IDENTIFICATION_STATUS_COLORS } from "@constants/identificationStatus";
 import { formatDateTime } from "@utils/dates";
@@ -31,24 +32,6 @@ interface OccurrenceDetailPageProps {
 }
 
 const show = (v: unknown) => (v === null || v === undefined || v === "" ? "—" : String(v));
-
-/* Fila etiqueta/valor. A nivel de módulo: dentro del componente se remontaría en cada render. */
-const Field = ({
-  label,
-  value,
-  mono = false,
-  italic = false,
-}: {
-  label: string;
-  value: unknown;
-  mono?: boolean;
-  italic?: boolean;
-}) => (
-  <div className="space-y-1">
-    <p className="text-xs font-medium text-muted-foreground">{label}</p>
-    <p className={[mono ? "font-mono" : "", italic ? "italic" : "", "text-sm"].join(" ")}>{show(value)}</p>
-  </div>
-);
 
 export function OccurrenceDetailPage({
   occurrenceId,
@@ -166,6 +149,16 @@ export function OccurrenceDetailPage({
     );
   }
 
+  // Mismo criterio que NewOccurrencePage.tsx (misma función compartida), pero contra lo ya
+  // guardado en vez del estado editado: para que ambas vistas de una ocurrencia coincidan.
+  const TAB_STATUSES: Record<TabKey, TabCompletionStatus> = {
+    occurrence: tabCompletionStatus(!!data.catalogNumber, !!data.recordedBy && !!data.occurrenceStatus),
+    event: tabCompletionStatus(true, !!data.eventDate),
+    location: tabCompletionStatus(true, !!data.locality),
+    taxon: tabCompletionStatus(sortedIdentifications.length > 0, true),
+    images: tabCompletionStatus(true, !!data.images && data.images.length > 0),
+  };
+
   /* ══ TAB RENDERERS ══ */
 
   const renderOccurrenceTab = () => (
@@ -174,9 +167,9 @@ export function OccurrenceDetailPage({
         <CardContent className="pt-6">
           <FieldSectionHeader title="Identificación del Ejemplar" subtitle="Campos clave para trazabilidad" />
           <div className="grid md:grid-cols-3 gap-4">
-            <Field label="Número de catálogo" value={data.catalogNumber} />
-            <Field label="Número de registro" value={data.recordNumber} />
-            <Field label="Registrado por" value={data.recordedBy} />
+            <ReadOnlyField label="Número de catálogo" value={data.catalogNumber} />
+            <ReadOnlyField label="Número de registro" value={data.recordNumber} />
+            <ReadOnlyField label="Registrado por" value={data.recordedBy} />
           </div>
         </CardContent>
       </Card>
@@ -185,20 +178,17 @@ export function OccurrenceDetailPage({
         <CardContent className="pt-6">
           <FieldSectionHeader title="Estado y Cuantificación" subtitle="Atributos biológicos y preservación" />
           <div className="grid md:grid-cols-3 gap-4">
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-muted-foreground">Cantidad de organismos</p>
-              <p className="text-sm">
-                {show(data.organismQuantity)}
-                {data.organismQuantityType ? ` (${data.organismQuantityType})` : ""}
-              </p>
-            </div>
-            <Field label="Estado de la ocurrencia" value={data.occurrenceStatus} />
-            <Field label="Etapa de vida" value={data.lifeStage} />
+            <ReadOnlyField
+              label="Cantidad de organismos"
+              value={`${show(data.organismQuantity)}${data.organismQuantityType ? ` (${data.organismQuantityType})` : ""}`}
+            />
+            <ReadOnlyField label="Estado de la ocurrencia" value={data.occurrenceStatus} />
+            <ReadOnlyField label="Etapa de vida" value={data.lifeStage} />
           </div>
           <div className="grid md:grid-cols-3 gap-4 mt-4">
-            <Field label="Medio de establecimiento" value={data.establishmentMeans} />
-            <Field label="Taxa asociados" value={data.associatedTaxa} />
-            <Field label="Colección" value={data.collection?.collectionName} />
+            <ReadOnlyField label="Medio de establecimiento" value={data.establishmentMeans} />
+            <ReadOnlyField label="Taxa asociados" value={data.associatedTaxa} />
+            <ReadOnlyField label="Colección" value={data.collection?.collectionName} />
           </div>
         </CardContent>
       </Card>
@@ -207,18 +197,9 @@ export function OccurrenceDetailPage({
         <CardContent className="pt-6">
           <FieldSectionHeader title="Notas y Observaciones" subtitle="Documentación de libreta" />
           <div className="grid md:grid-cols-3 gap-4">
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-muted-foreground">Referencias asociadas</p>
-              <p className="text-sm whitespace-pre-wrap">{show(data.associatedReferences)}</p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-muted-foreground">Notas de campo</p>
-              <p className="text-sm whitespace-pre-wrap">{show(data.fieldNotes)}</p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-muted-foreground">Observaciones de la ocurrencia</p>
-              <p className="text-sm whitespace-pre-wrap">{show(data.occurrenceRemarks)}</p>
-            </div>
+            <ReadOnlyField label="Referencias asociadas" value={data.associatedReferences} />
+            <ReadOnlyField label="Notas de campo" value={data.fieldNotes} />
+            <ReadOnlyField label="Observaciones de la ocurrencia" value={data.occurrenceRemarks} />
           </div>
         </CardContent>
       </Card>
@@ -251,7 +232,7 @@ export function OccurrenceDetailPage({
         </Card>
       )}
 
-      <div className="flex gap-6 text-xs text-muted-foreground border-t pt-3">
+      <div className="rounded-md border bg-muted/20 px-4 py-3 flex flex-wrap gap-6 text-xs text-muted-foreground">
         <span>Creado: {formatDateTime(data.createdAt as any)}</span>
         <span>Actualizado: {formatDateTime(data.updatedAt as any)}</span>
       </div>
@@ -264,13 +245,13 @@ export function OccurrenceDetailPage({
         <CardContent className="pt-6">
           <FieldSectionHeader title="Fecha del Evento" subtitle="Cuándo se recolectó el ejemplar" />
           <div className="grid md:grid-cols-2 gap-4">
-            <Field label="Fecha del evento (normalizada)" value={data.eventDate} />
-            <Field label="Fecha original en etiqueta" value={data.verbatimEventDate} />
+            <ReadOnlyField label="Fecha del evento (normalizada)" value={data.eventDate} />
+            <ReadOnlyField label="Fecha original en etiqueta" value={data.verbatimEventDate} />
           </div>
           <div className="grid md:grid-cols-3 gap-4 mt-4">
-            <Field label="Año" value={data.year} />
-            <Field label="Mes" value={data.month} />
-            <Field label="Día" value={data.day} />
+            <ReadOnlyField label="Año" value={data.year} />
+            <ReadOnlyField label="Mes" value={data.month} />
+            <ReadOnlyField label="Día" value={data.day} />
           </div>
         </CardContent>
       </Card>
@@ -279,14 +260,8 @@ export function OccurrenceDetailPage({
         <CardContent className="pt-6">
           <FieldSectionHeader title="Hábitat y Observaciones" subtitle="Contexto ecológico del hallazgo" />
           <div className="grid md:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-muted-foreground">Hábitat</p>
-              <p className="text-sm whitespace-pre-wrap">{show(data.habitat)}</p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-muted-foreground">Observaciones del evento</p>
-              <p className="text-sm whitespace-pre-wrap">{show(data.eventRemarks)}</p>
-            </div>
+            <ReadOnlyField label="Hábitat" value={data.habitat} />
+            <ReadOnlyField label="Observaciones del evento" value={data.eventRemarks} />
           </div>
         </CardContent>
       </Card>
@@ -305,9 +280,9 @@ export function OccurrenceDetailPage({
             uncertaintyMeters={data.coordinateUncertaintyInMeters}
           />
           <div className="grid md:grid-cols-3 gap-4 mt-4">
-            <Field label="Latitud decimal" value={data.decimalLatitude} mono />
-            <Field label="Longitud decimal" value={data.decimalLongitude} mono />
-            <Field
+            <ReadOnlyField label="Latitud decimal" value={data.decimalLatitude} />
+            <ReadOnlyField label="Longitud decimal" value={data.decimalLongitude} />
+            <ReadOnlyField
               label="Incertidumbre de la coordenada"
               value={data.coordinateUncertaintyInMeters != null ? `${data.coordinateUncertaintyInMeters} m` : null}
             />
@@ -319,16 +294,13 @@ export function OccurrenceDetailPage({
         <CardContent className="pt-6">
           <FieldSectionHeader title="División Administrativa" subtitle="País, departamento, provincia y distrito" />
           <div className="grid md:grid-cols-4 gap-4">
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-muted-foreground">País</p>
-              <p className="text-sm">
-                {show(data.country)}
-                {data.countryCode ? ` (${data.countryCode})` : ""}
-              </p>
-            </div>
-            <Field label="Departamento / Región" value={data.stateProvince} />
-            <Field label="Provincia" value={data.county} />
-            <Field label="Distrito / Municipio" value={data.municipality} />
+            <ReadOnlyField
+              label="País"
+              value={`${show(data.country)}${data.countryCode ? ` (${data.countryCode})` : ""}`}
+            />
+            <ReadOnlyField label="Departamento / Región" value={data.stateProvince} />
+            <ReadOnlyField label="Provincia" value={data.county} />
+            <ReadOnlyField label="Distrito / Municipio" value={data.municipality} />
           </div>
         </CardContent>
       </Card>
@@ -337,16 +309,13 @@ export function OccurrenceDetailPage({
         <CardContent className="pt-6">
           <FieldSectionHeader title="Localidad y Contexto" subtitle="Descripción del sitio y su verificación" />
           <div className="grid md:grid-cols-3 gap-4">
-            <Field label="Localidad" value={data.locality} />
-            <Field label="Localidad en etiqueta" value={data.verbatimLocality} />
-            <Field label="Estado de verificación" value={data.georeferenceVerificationStatus} />
+            <ReadOnlyField label="Localidad" value={data.locality} />
+            <ReadOnlyField label="Localidad en etiqueta" value={data.verbatimLocality} />
+            <ReadOnlyField label="Estado de verificación" value={data.georeferenceVerificationStatus} />
           </div>
           <div className="grid md:grid-cols-2 gap-4 mt-4">
-            <Field label="Elevación en etiqueta" value={data.verbatimElevation} />
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-muted-foreground">Observaciones sobre la localización</p>
-              <p className="text-sm whitespace-pre-wrap">{show(data.locationRemarks)}</p>
-            </div>
+            <ReadOnlyField label="Elevación en etiqueta" value={data.verbatimElevation} />
+            <ReadOnlyField label="Observaciones sobre la localización" value={data.locationRemarks} />
           </div>
         </CardContent>
       </Card>
@@ -549,50 +518,25 @@ export function OccurrenceDetailPage({
             </div>
           </div>
 
-          {canEdit && (
-            <Button
-              type="button"
-              style={{ backgroundColor: "rgb(117,26,29)", color: "white" }}
-              className="flex-shrink-0 hover:opacity-90 transition-opacity"
-              onClick={handleEdit}
-            >
-              <Pencil className="h-4 w-4 mr-2" />
-              Editar
-            </Button>
-          )}
+          <div className="flex-shrink-0 flex items-center gap-2">
+            <DwcGlossaryDialog />
+            {canEdit && (
+              <Button
+                type="button"
+                style={{ backgroundColor: "rgb(117,26,29)", color: "white" }}
+                className="hover:opacity-90 transition-opacity"
+                onClick={handleEdit}
+              >
+                <Pencil className="h-4 w-4 mr-2" />
+                Editar
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Tabs navigation */}
-      <div className="mb-6">
-        <div className="flex gap-1.5 bg-muted rounded-xl p-1.5 overflow-x-auto">
-          {TABS.map((tab) => {
-            const Icon = TAB_ICONS[tab.key];
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setActiveTab(tab.key)}
-                className={[
-                  "flex-1 min-w-fit flex items-center justify-center gap-2 px-4 py-3 text-sm whitespace-nowrap rounded-lg transition-all duration-200",
-                  activeTab === tab.key
-                    ? "bg-white text-[rgb(117,26,29)] font-semibold shadow-sm"
-                    : "font-medium text-muted-foreground hover:text-foreground",
-                ].join(" ")}
-              >
-                <Icon className="h-4 w-4" />
-                {tab.label}
-                {tab.key === "taxon" && sortedIdentifications.length > 0 && (
-                  <span className="inline-flex rounded-full" style={TAB_DOT_STYLE} />
-                )}
-                {tab.key === "images" && data.images && data.images.length > 0 && (
-                  <span className="inline-flex rounded-full" style={TAB_DOT_STYLE} />
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <OccurrenceTabsNav activeTab={activeTab} onTabChange={setActiveTab} statuses={TAB_STATUSES} />
 
       {/* Tab content */}
       <div className="rounded-lg border bg-card mb-8" style={{ padding: "2rem 3rem" }}>

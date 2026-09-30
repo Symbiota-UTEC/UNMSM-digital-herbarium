@@ -52,3 +52,37 @@ export function RequirementBadge({ kind }: { kind: FieldRequirement }) {
     </Badge>
   );
 }
+
+const showValue = (v: unknown) => (v === null || v === undefined || v === "" ? "—" : String(v));
+
+/** Fila etiqueta/valor de solo lectura: mismo lenguaje que el resto de cajas informativas de la
+ * app (border + bg-muted/40, como el spinner de carga del taxón o el aviso del polígono
+ * dibujado). Usado tanto por el panel de taxón verificado del formulario como por todo
+ * OccurrenceDetailPage.tsx, para que el detalle y el formulario se vean iguales. La etiqueta va
+ * DENTRO de la caja (a diferencia de un campo editable, donde el Label siempre está afuera,
+ * encima del Input), así no se confunde con un control de formulario. */
+export function ReadOnlyField({
+  label,
+  value,
+  mono = false,
+  italic = false,
+  className,
+}: {
+  label: string;
+  value?: unknown;
+  mono?: boolean;
+  italic?: boolean;
+  className?: string;
+}) {
+  return (
+    <div className="rounded-md border bg-muted/40 p-3 space-y-1">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p
+        className={["text-sm", mono && "font-mono", italic && "italic", className].filter(Boolean).join(" ")}
+        style={{ whiteSpace: "pre-wrap" }}
+      >
+        {showValue(value)}
+      </p>
+    </div>
+  );
+}

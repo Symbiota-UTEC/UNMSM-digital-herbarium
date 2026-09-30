@@ -6,7 +6,7 @@ import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Badge } from "../ui/badge";
-import { FieldSectionHeader, RequirementBadge } from "../ui/field-section";
+import { FieldSectionHeader, RequirementBadge, ReadOnlyField } from "../ui/field-section";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,7 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../ui/alert-dialog";
-import { ArrowLeft, Plus, X, AlertCircle, Loader2, CheckCircle2, Circle, Trash2, Star, Lock } from "lucide-react";
+import { ArrowLeft, Plus, X, AlertCircle, Loader2, CheckCircle2, Trash2, Star, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "../ui/alert";
 import { useAuth } from "../../contexts/AuthContext";
@@ -26,6 +26,7 @@ import type { ScientificNameSuggestion } from "@interfaces/autocomplete";
 import { AutocompleteDropdown, useSuggestions } from "../ui/autocomplete";
 import { ImageManager, type PendingImage } from "../ImageManager";
 import { DwcGlossaryDialog } from "../DwcGlossaryDialog";
+import { OccurrenceTabsNav } from "../OccurrenceTabsNav";
 import { cameraService } from "@services/camera.service";
 import { collectionsService } from "@services/collections.service";
 import { taxonService } from "@services/taxon.service";
@@ -43,35 +44,10 @@ import { DwcTerm } from "../DwcTerm";
 import { formatVerbatimDate } from "@utils/dates";
 import {
   OCCURRENCE_TABS as TABS,
-  OCCURRENCE_TAB_ICONS as TAB_ICONS,
+  tabCompletionStatus,
   type OccurrenceTabKey as TabKey,
+  type TabCompletionStatus,
 } from "@constants/occurrenceTabs";
-
-/** "missing": falta un campo obligatorio de esa pestaña. "incomplete": lo obligatorio está,
- * pero falta algún campo recomendado. "complete": obligatorios y recomendados están completos. */
-type TabCompletionStatus = "missing" | "incomplete" | "complete";
-
-const tabCompletionStatus = (requiredOk: boolean, recommendedOk: boolean): TabCompletionStatus =>
-  !requiredOk ? "missing" : recommendedOk ? "complete" : "incomplete";
-
-const TAB_STATUS_META: Record<TabCompletionStatus, { icon: typeof CheckCircle2; color: string; title: string }> = {
-  missing: { icon: AlertCircle, color: "#ef4444", title: "Faltan campos obligatorios" },
-  incomplete: { icon: Circle, color: "#f59e0b", title: "Obligatorios completos; faltan campos recomendados" },
-  complete: { icon: CheckCircle2, color: "#22c55e", title: "Completo" },
-};
-
-// Mismo lenguaje que el resto de cajas informativas de solo lectura de este formulario
-// (border + bg-muted/40, como el spinner de carga del taxón o el aviso del polígono dibujado);
-// la etiqueta va DENTRO de la caja (a diferencia de un campo editable, donde el Label siempre
-// está afuera, encima del Input), así no se confunde con un control de formulario.
-function ReadOnlyField({ label, value, className }: { label: string; value: string; className?: string }) {
-  return (
-    <div className="rounded-md border bg-muted/40 p-3 space-y-1">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className={["text-sm", className].filter(Boolean).join(" ")}>{value}</p>
-    </div>
-  );
-}
 
 interface NewOccurrencePageProps {
   onNavigate: (page: string, params?: Record<string, any>) => void;
@@ -1672,34 +1648,7 @@ export function NewOccurrencePage({
         </div>
 
         {/* Tabs navigation */}
-        <div className="mb-6">
-          <div className="flex gap-1.5 bg-muted rounded-xl p-1.5 overflow-x-auto">
-            {TABS.map((tab) => {
-              const Icon = TAB_ICONS[tab.key];
-              const status = TAB_STATUS_META[TAB_STATUSES[tab.key]];
-              const StatusIcon = status.icon;
-              return (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={() => setActiveTab(tab.key)}
-                  className={[
-                    "flex-1 min-w-fit flex items-center justify-center gap-2 px-4 py-3 text-sm whitespace-nowrap rounded-lg transition-all duration-200",
-                    activeTab === tab.key
-                      ? "bg-white text-[rgb(117,26,29)] font-semibold shadow-sm"
-                      : "font-medium text-muted-foreground hover:text-foreground",
-                  ].join(" ")}
-                >
-                  <Icon className="h-4 w-4" />
-                  {tab.label}
-                  <span title={status.title} className="inline-flex">
-                    <StatusIcon className="h-3.5 w-3.5" style={{ color: status.color }} />
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <OccurrenceTabsNav activeTab={activeTab} onTabChange={setActiveTab} statuses={TAB_STATUSES} />
 
         {/* Tab content */}
         <form id="occ-form" onSubmit={handleSubmit}>

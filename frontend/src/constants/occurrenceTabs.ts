@@ -1,5 +1,4 @@
-import type { CSSProperties } from "react";
-import { ClipboardList, CalendarDays, MapPin, Leaf, Image } from "lucide-react";
+import { ClipboardList, CalendarDays, MapPin, Leaf, Image, AlertCircle, Circle, CheckCircle2 } from "lucide-react";
 
 // Compartido por OccurrenceDetailPage.tsx y NewOccurrencePage.tsx (mismas pestañas en modo
 // lectura y edición de una ocurrencia).
@@ -23,11 +22,17 @@ export const OCCURRENCE_TAB_ICONS: Record<OccurrenceTabKey, typeof ClipboardList
   images: Image,
 };
 
-// w-1.5/h-1.5/ml-1.5 y bg-green-400 no están compiladas en index.css (ver frontend/CLAUDE.md
-// > CSS / Theming): sin esto el punto queda invisible (0x0, sin color).
-export const OCCURRENCE_TAB_DOT_STYLE: CSSProperties = {
-  marginLeft: "0.375rem",
-  width: "0.375rem",
-  height: "0.375rem",
-  backgroundColor: "#22c55e",
-};
+/** "missing": falta un campo obligatorio de esa pestaña. "incomplete": lo obligatorio está,
+ * pero falta algún campo recomendado. "complete": obligatorios y recomendados están completos.
+ * Compartido por el formulario (contra el estado editado) y el detalle (contra lo guardado). */
+export type TabCompletionStatus = "missing" | "incomplete" | "complete";
+
+export const tabCompletionStatus = (requiredOk: boolean, recommendedOk: boolean): TabCompletionStatus =>
+  !requiredOk ? "missing" : recommendedOk ? "complete" : "incomplete";
+
+export const TAB_STATUS_META: Record<TabCompletionStatus, { icon: typeof CheckCircle2; color: string; title: string }> =
+  {
+    missing: { icon: AlertCircle, color: "#ef4444", title: "Faltan campos obligatorios" },
+    incomplete: { icon: Circle, color: "#f59e0b", title: "Obligatorios completos; faltan campos recomendados" },
+    complete: { icon: CheckCircle2, color: "#22c55e", title: "Completo" },
+  };
