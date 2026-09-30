@@ -1,7 +1,7 @@
 // src/components/LocationPicker.tsx
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { toast } from "sonner";
-import { Crosshair, Eraser, Hexagon, Loader2, MapPin } from "lucide-react";
+import { Crosshair, Eraser, Hexagon, Loader2, MapPin, Maximize2, Minimize2 } from "lucide-react";
 import { Button } from "./ui/button";
 
 import Map from "ol/Map";
@@ -80,6 +80,7 @@ export function LocationPicker({
   onLocationChange,
   onAdminUnits,
 }: Props) {
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<Map | null>(null);
   const markerRef = useRef<Feature<Point> | null>(null);
@@ -99,6 +100,23 @@ export function LocationPicker({
   const [locating, setLocating] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
   const [basemap, setBasemap] = useBasemap();
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // El toolbar (punto/polígono/ubicación/limpiar/pantalla completa) vive dentro de este mismo
+  // contenedor, así que al entrar a pantalla completa siguen visibles y usables.
+  useEffect(() => {
+    const onFullscreenChange = () => setIsFullscreen(document.fullscreenElement === wrapperRef.current);
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      wrapperRef.current?.requestFullscreen();
+    }
+  };
 
   // Últimos valores para los handlers del mapa, que se registran una sola vez.
   const callbacksRef = useRef({ onLocationChange, onAdminUnits, resolveAdminUnits });
@@ -340,10 +358,23 @@ export function LocationPicker({
     scheduleGeocode(lonValue, latValue);
   }, [lat, lon]);
 
-  const handleClearPolygon = () => {
+  // Limpia lo que haya: el punto, el punto + su radio de incertidumbre, o el polígono —
+  // funciona igual sin importar el modo activo, y siempre debe estar disponible junto a
+  // "Usar mi ubicación actual" (que a su vez limpia cualquier polígono dibujado, vía placePoint).
+  const handleClear = () => {
     polygonSourceRef.current?.clear();
-    commitPolygon();
+    showMarker(null);
+    cancelGeocode();
+    derivedUncertaintyRef.current = false;
+    callbacksRef.current.onLocationChange({
+      lat: null,
+      lon: null,
+      footprintWKT: null,
+      uncertaintyM: null,
+    });
   };
+
+  const hasSomethingToClear = polygonCount > 0 || parseCoord(lat) != null || parseCoord(lon) != null;
 
   const handleLocateMe = () => {
     if (!navigator.geolocation) {
@@ -354,6 +385,10 @@ export function LocationPicker({
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setLocating(false);
+        // Un punto exacto reemplaza cualquier polígono dibujado (placePoint ya lo limpia);
+        // si estábamos en modo polígono, pasamos a modo punto para que quede consistente
+        // con lo que se ve en el mapa y no se reactive el dibujo de polígono sobre el punto.
+        setMode("point");
         const coordinate = fromLonLat([pos.coords.longitude, pos.coords.latitude]);
         placePoint(coordinate);
         mapRef.current?.getView().animate({ center: coordinate, zoom: 15, duration: 300 });
@@ -368,6 +403,59 @@ export function LocationPicker({
     );
   };
 
+  // Estilos en línea: index.css es Tailwind precompilado y estos overlays necesitan valores
+  // (posición, transparencia) que no están en las clases compiladas.
+  //
+  // Todos los controles propios (modo, ubicación, limpiar, mapa base, pantalla completa) viven
+  // en UNA sola barra pegada arriba, a la derecha del control de zoom +/- de OpenLayers, en vez
+  // de varios chips sueltos apilados: así ocupan solo el borde superior del mapa.
+  const toolbarStyle: CSSProperties = {
+    position: "absolute",
+    top: 12,
+    left: 56,
+    right: 12,
+    zIndex: 10,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    padding: "4px 8px",
+    borderRadius: 8,
+    border: "1px solid rgba(0, 0, 0, 0.15)",
+    background: "rgba(255, 255, 255, 0.92)",
+    boxShadow: "0 1px 3px rgba(0, 0, 0, 0.25)",
+    overflowX: "auto",
+  };
+
+  const toolbarGroupStyle: CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: 2,
+    flexShrink: 0,
+  };
+
+  const toolbarDividerStyle: CSSProperties = {
+    width: 1,
+    height: 20,
+    background: "rgba(0, 0, 0, 0.15)",
+    flexShrink: 0,
+  };
+
+  // Ícono suelto dentro de la barra (sin chip propio, ya está el de la barra que lo contiene).
+  const toolbarIconButtonStyle = (disabled?: boolean): CSSProperties => ({
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    border: "none",
+    background: "transparent",
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.4 : 1,
+    flexShrink: 0,
+  });
+
   return (
     <div className="space-y-2">
       <p className="text-sm text-muted-foreground">
@@ -375,64 +463,82 @@ export function LocationPicker({
         departamento, provincia y distrito se completan automáticamente.
       </p>
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-1 rounded-lg border p-0.5">
-          <Button
-            type="button"
-            size="sm"
-            variant={mode === "point" ? "default" : "ghost"}
-            onClick={() => setMode("point")}
-            className="h-7 gap-1.5 text-xs"
-          >
-            <MapPin className="h-3.5 w-3.5" />
-            Punto
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant={mode === "polygon" ? "default" : "ghost"}
-            onClick={() => setMode("polygon")}
-            className="h-7 gap-1.5 text-xs"
-          >
-            <Hexagon className="h-3.5 w-3.5" />
-            Polígono
-          </Button>
-        </div>
-
-        {mode === "point" ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            onClick={handleLocateMe}
-            disabled={locating}
-            className="gap-2"
-          >
-            <Crosshair className="h-4 w-4" />
-            {locating ? "Obteniendo ubicación..." : "Usar mi ubicación actual"}
-          </Button>
-        ) : (
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            onClick={handleClearPolygon}
-            disabled={polygonCount === 0}
-            className="gap-2"
-          >
-            <Eraser className="h-4 w-4" />
-            Borrar polígono
-          </Button>
-        )}
-      </div>
-
-      <div className="relative">
+      {/* Este mismo div (mapa + overlays) es el target de pantalla completa: todos los
+          controles están superpuestos sobre el mapa, así que siguen ahí también en fullscreen. */}
+      <div
+        ref={wrapperRef}
+        className="relative"
+        style={isFullscreen ? { height: "100vh", background: "#fff" } : undefined}
+      >
         <div
           ref={hostRef}
-          className="w-full overflow-hidden rounded-lg border bg-muted/20"
-          style={{ height: "440px" }}
+          className={
+            isFullscreen ? "w-full overflow-hidden bg-muted/20" : "w-full overflow-hidden rounded-lg border bg-muted/20"
+          }
+          style={{ height: isFullscreen ? "100%" : "440px" }}
         />
-        <BasemapSwitcher value={basemap} onChange={setBasemap} />
+
+        <div style={toolbarStyle}>
+          <div style={toolbarGroupStyle}>
+            <Button
+              type="button"
+              size="sm"
+              variant={mode === "point" ? "default" : "ghost"}
+              onClick={() => setMode("point")}
+              className="gap-1.5 text-xs"
+            >
+              <MapPin />
+              Punto
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={mode === "polygon" ? "default" : "ghost"}
+              onClick={() => setMode("polygon")}
+              className="gap-1.5 text-xs"
+            >
+              <Hexagon />
+              Polígono
+            </Button>
+
+            <div style={toolbarDividerStyle} />
+
+            <button
+              type="button"
+              onClick={handleLocateMe}
+              disabled={locating}
+              title={locating ? "Obteniendo ubicación..." : "Usar mi ubicación actual"}
+              style={toolbarIconButtonStyle(locating)}
+            >
+              {locating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Crosshair className="h-4 w-4" />}
+            </button>
+            <button
+              type="button"
+              onClick={handleClear}
+              disabled={!hasSomethingToClear}
+              title="Limpiar"
+              style={toolbarIconButtonStyle(!hasSomethingToClear)}
+            >
+              <Eraser className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div style={toolbarGroupStyle}>
+            <BasemapSwitcher value={basemap} onChange={setBasemap} inline />
+
+            <div style={toolbarDividerStyle} />
+
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              title={isFullscreen ? "Salir de pantalla completa" : "Pantalla completa"}
+              style={toolbarIconButtonStyle()}
+            >
+              {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            </button>
+          </div>
+        </div>
+
         <div
           className="pointer-events-none rounded px-2 py-1 text-xs shadow"
           style={{ position: "absolute", left: 12, bottom: 12, background: "rgba(255, 255, 255, 0.85)" }}
@@ -443,7 +549,7 @@ export function LocationPicker({
         </div>
       </div>
 
-      <p className="flex min-h-[1rem] items-center gap-1.5 text-xs text-muted-foreground">
+      <p className="flex items-center gap-1.5 text-xs text-muted-foreground" style={{ minHeight: "1rem" }}>
         {geocoding && (
           <>
             <Loader2 className="h-3 w-3 animate-spin" />

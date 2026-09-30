@@ -147,6 +147,7 @@ class TaxonDetailOut(BaseModel):
     """
 
     taxonId: UUID
+    wfoTaxonId: Optional[str] = Field(None, description="ID externo del backbone WFO.")
     scientificNameID: Optional[str] = None
     localID: Optional[str] = None
     scientificName: Optional[str] = None

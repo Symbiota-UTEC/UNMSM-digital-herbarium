@@ -1,10 +1,12 @@
 import { useRef, useState, type DragEvent, type KeyboardEvent } from "react";
-import { AlertCircle, Camera, Check, Eye, Loader2, Trash2, Upload, X } from "lucide-react";
+import { AlertCircle, Camera, CameraOff, Check, Eye, Loader2, Trash2, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { uploadService } from "@services/upload.service";
 import type { OccurrenceImageOut } from "@interfaces/occurrence";
 import { Button } from "./ui/button";
+import { Card, CardContent } from "./ui/card";
 import { Input } from "./ui/input";
+import { FieldSectionHeader } from "./ui/field-section";
 import { ImageLightbox, type LightboxImage } from "./ImageLightbox";
 import "./image-manager.css";
 
@@ -30,6 +32,8 @@ interface ImageManagerProps {
   onCapture?: () => void;
   capturing?: boolean;
   cameraError?: string | null;
+  /** null: todavía se está consultando el healthcheck del servicio de cámara. */
+  cameraAvailable?: boolean | null;
   disabled?: boolean;
 }
 
@@ -151,6 +155,7 @@ export function ImageManager({
   onCapture,
   capturing = false,
   cameraError,
+  cameraAvailable = null,
   disabled = false,
 }: ImageManagerProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -198,140 +203,160 @@ export function ImageManager({
   return (
     <div className="space-y-6">
       {existing.length > 0 && (
-        <section className="space-y-3">
-          <p className="text-sm font-semibold">Imágenes guardadas ({existing.length})</p>
-          <div className="hb-image-grid">
-            {existing.map((img, i) => (
-              <ExistingImageCard
-                key={img.occurrenceImageId}
-                image={img}
-                photographer={existingPhotographers[img.occurrenceImageId] ?? img.photographer ?? ""}
-                disabled={disabled}
-                onView={() => setViewerIndex(i)}
-                onDelete={() => onDeleteExisting(img.occurrenceImageId)}
-                onPhotographerChange={(value) => onExistingPhotographerChange(img.occurrenceImageId, value)}
-              />
-            ))}
-          </div>
-        </section>
+        <Card>
+          <CardContent className="pt-6">
+            <FieldSectionHeader
+              title={`Imágenes Guardadas (${existing.length})`}
+              subtitle="Ya forman parte de la ocurrencia"
+            />
+            <div className="hb-image-grid">
+              {existing.map((img, i) => (
+                <ExistingImageCard
+                  key={img.occurrenceImageId}
+                  image={img}
+                  photographer={existingPhotographers[img.occurrenceImageId] ?? img.photographer ?? ""}
+                  disabled={disabled}
+                  onView={() => setViewerIndex(i)}
+                  onDelete={() => onDeleteExisting(img.occurrenceImageId)}
+                  onPhotographerChange={(value) => onExistingPhotographerChange(img.occurrenceImageId, value)}
+                />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
-      <section className="space-y-3">
-        <div
-          className="hb-dropzone"
-          data-active={dragging}
-          role="button"
-          tabIndex={0}
-          aria-label="Seleccionar imágenes"
-          onClick={openPicker}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              openPicker();
-            }
-          }}
-          onDragOver={(e) => {
-            e.preventDefault();
-            if (!disabled) setDragging(true);
-          }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={onDrop}
-        >
-          <div className="hb-dropzone-icon">
-            <Upload className="h-5 w-5" />
-          </div>
-          <p className="text-sm font-medium">{dragging ? "Suelta las imágenes aquí" : "Arrastra tus imágenes aquí"}</p>
-          <p className="text-xs text-muted-foreground">o haz clic para seleccionarlas · JPG, PNG, TIFF o WebP</p>
-          <input
-            ref={inputRef}
-            type="file"
-            accept={ACCEPTED.join(",")}
-            multiple
-            className="hidden"
-            onClick={(e) => e.stopPropagation()}
-            onChange={(e) => {
-              addFiles(e.target.files);
-              e.target.value = "";
-            }}
-          />
-        </div>
+      <Card>
+        <CardContent className="pt-6">
+          <FieldSectionHeader title="Cargar Imágenes" subtitle="Arrastra archivos o usa la cámara del herbario" />
 
-        {onCapture && (
-          <div className="flex flex-wrap items-center gap-3">
-            <Button type="button" variant="outline" size="sm" onClick={onCapture} disabled={capturing || disabled}>
-              {capturing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Camera className="h-4 w-4 mr-2" />}
-              {capturing ? "Capturando…" : "Tomar foto con la cámara"}
-            </Button>
-            {cameraError && (
-              <span className="inline-flex items-center gap-1.5 text-xs text-destructive">
-                <AlertCircle className="h-3.5 w-3.5" />
-                {cameraError}
-              </span>
-            )}
+          {/* Siempre antes del dropzone: en el equipo con la cámara del herbario conectada es la
+              acción principal, y en el resto queda como aviso de por qué no está el botón. */}
+          {onCapture && cameraAvailable === true && (
+            <div className="flex flex-wrap items-center gap-3 mb-3">
+              <Button type="button" onClick={onCapture} disabled={capturing || disabled}>
+                {capturing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Camera className="h-4 w-4 mr-2" />}
+                {capturing ? "Capturando…" : "Tomar foto con la cámara"}
+              </Button>
+              {cameraError && (
+                <span className="inline-flex items-center gap-1.5 text-xs text-destructive">
+                  <AlertCircle className="h-3.5 w-3.5" />
+                  {cameraError}
+                </span>
+              )}
+            </div>
+          )}
+
+          {onCapture && cameraAvailable === false && (
+            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground mb-3">
+              <CameraOff className="h-3.5 w-3.5" />
+              Cámara no disponible, puedes subir fotos desde tu dispositivo.
+            </span>
+          )}
+
+          <div
+            className="hb-dropzone"
+            data-active={dragging}
+            role="button"
+            tabIndex={0}
+            aria-label="Seleccionar imágenes"
+            onClick={openPicker}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                openPicker();
+              }
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              if (!disabled) setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={onDrop}
+          >
+            <div className="hb-dropzone-icon">
+              <Upload className="h-5 w-5" />
+            </div>
+            <p className="text-sm font-medium">
+              {dragging ? "Suelta las imágenes aquí" : "Arrastra tus imágenes aquí"}
+            </p>
+            <p className="text-xs text-muted-foreground">o haz clic para seleccionarlas · JPG, PNG, TIFF o WebP</p>
+            <input
+              ref={inputRef}
+              type="file"
+              accept={ACCEPTED.join(",")}
+              multiple
+              className="hidden"
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => {
+                addFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
           </div>
-        )}
-      </section>
+        </CardContent>
+      </Card>
 
       {pending.length > 0 && (
-        <section className="space-y-3">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <p className="text-sm font-semibold">
-              {pending.length} imagen{pending.length !== 1 ? "es" : ""} por subir
-            </p>
-            <p className="text-xs text-muted-foreground">Se suben al guardar la ocurrencia.</p>
-          </div>
-          <div className="hb-image-grid">
-            {pending.map((img, i) => (
-              <div key={img.id} className="hb-image-card">
-                <div className="hb-image-thumb">
-                  <img src={img.previewUrl} alt={img.file.name} />
-                  <span className="hb-image-badge">Nueva</span>
-                  <button
-                    type="button"
-                    className="hb-image-remove"
-                    onClick={() => onRemovePending(img.id)}
-                    title="Quitar imagen"
-                    aria-label="Quitar imagen"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    className="hb-image-view"
-                    onClick={() => setViewerIndex(existing.length + i)}
-                    title="Ver en pantalla completa"
-                    aria-label="Ver en pantalla completa"
-                  >
-                    <Eye className="h-4 w-4" />
-                  </button>
-                </div>
-                <div className="hb-image-body">
-                  <div className="hb-image-meta">
-                    <span className="hb-image-name" title={img.file.name}>
-                      {img.file.name}
-                    </span>
-                    <span className="hb-image-size">{formatSize(img.file.size)}</span>
-                  </div>
-                  <PhotographerField
-                    id={`photographer-${img.id}`}
-                    value={img.photographer}
-                    onChange={(value) => onPendingPhotographerChange(img.id, value)}
-                  />
-                  {pending.length > 1 && img.photographer.trim() && (
+        <Card>
+          <CardContent className="pt-6">
+            <FieldSectionHeader
+              title={`${pending.length} Imagen${pending.length !== 1 ? "es" : ""} por Subir`}
+              subtitle="Se suben al guardar la ocurrencia"
+            />
+            <div className="hb-image-grid">
+              {pending.map((img, i) => (
+                <div key={img.id} className="hb-image-card">
+                  <div className="hb-image-thumb">
+                    <img src={img.previewUrl} alt={img.file.name} />
+                    <span className="hb-image-badge">Nueva</span>
                     <button
                       type="button"
-                      className="hb-link-button"
-                      onClick={() => onCopyPhotographerToAll(img.photographer)}
+                      className="hb-image-remove"
+                      onClick={() => onRemovePending(img.id)}
+                      title="Quitar imagen"
+                      aria-label="Quitar imagen"
                     >
-                      <Check className="h-3 w-3" />
-                      Usar este nombre en todas
+                      <X className="h-4 w-4" />
                     </button>
-                  )}
+                    <button
+                      type="button"
+                      className="hb-image-view"
+                      onClick={() => setViewerIndex(existing.length + i)}
+                      title="Ver en pantalla completa"
+                      aria-label="Ver en pantalla completa"
+                    >
+                      <Eye className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div className="hb-image-body">
+                    <div className="hb-image-meta">
+                      <span className="hb-image-name" title={img.file.name}>
+                        {img.file.name}
+                      </span>
+                      <span className="hb-image-size">{formatSize(img.file.size)}</span>
+                    </div>
+                    <PhotographerField
+                      id={`photographer-${img.id}`}
+                      value={img.photographer}
+                      onChange={(value) => onPendingPhotographerChange(img.id, value)}
+                    />
+                    {pending.length > 1 && img.photographer.trim() && (
+                      <button
+                        type="button"
+                        className="hb-link-button"
+                        onClick={() => onCopyPhotographerToAll(img.photographer)}
+                      >
+                        <Check className="h-3 w-3" />
+                        Usar este nombre en todas
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </section>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       <ImageLightbox

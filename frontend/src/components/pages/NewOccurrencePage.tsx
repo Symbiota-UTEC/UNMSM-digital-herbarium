@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Button } from "../ui/button";
+import { Card, CardContent } from "../ui/card";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Badge } from "../ui/badge";
+import { FieldSectionHeader, RequirementBadge } from "../ui/field-section";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,7 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../ui/alert-dialog";
-import { ArrowLeft, Plus, X, AlertCircle, Loader2, CheckCircle2, Trash2, Star } from "lucide-react";
+import { ArrowLeft, Plus, X, AlertCircle, Loader2, CheckCircle2, Circle, Trash2, Star, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "../ui/alert";
 import { useAuth } from "../../contexts/AuthContext";
@@ -23,6 +25,7 @@ import { autocompleteService } from "@services/autocomplete.service";
 import type { ScientificNameSuggestion } from "@interfaces/autocomplete";
 import { AutocompleteDropdown, useSuggestions } from "../ui/autocomplete";
 import { ImageManager, type PendingImage } from "../ImageManager";
+import { DwcGlossaryDialog } from "../DwcGlossaryDialog";
 import { cameraService } from "@services/camera.service";
 import { collectionsService } from "@services/collections.service";
 import { taxonService } from "@services/taxon.service";
@@ -40,9 +43,35 @@ import { DwcTerm } from "../DwcTerm";
 import { formatVerbatimDate } from "@utils/dates";
 import {
   OCCURRENCE_TABS as TABS,
-  OCCURRENCE_TAB_DOT_STYLE as TAB_DOT_STYLE,
+  OCCURRENCE_TAB_ICONS as TAB_ICONS,
   type OccurrenceTabKey as TabKey,
 } from "@constants/occurrenceTabs";
+
+/** "missing": falta un campo obligatorio de esa pestaña. "incomplete": lo obligatorio está,
+ * pero falta algún campo recomendado. "complete": obligatorios y recomendados están completos. */
+type TabCompletionStatus = "missing" | "incomplete" | "complete";
+
+const tabCompletionStatus = (requiredOk: boolean, recommendedOk: boolean): TabCompletionStatus =>
+  !requiredOk ? "missing" : recommendedOk ? "complete" : "incomplete";
+
+const TAB_STATUS_META: Record<TabCompletionStatus, { icon: typeof CheckCircle2; color: string; title: string }> = {
+  missing: { icon: AlertCircle, color: "#ef4444", title: "Faltan campos obligatorios" },
+  incomplete: { icon: Circle, color: "#f59e0b", title: "Obligatorios completos; faltan campos recomendados" },
+  complete: { icon: CheckCircle2, color: "#22c55e", title: "Completo" },
+};
+
+// Mismo lenguaje que el resto de cajas informativas de solo lectura de este formulario
+// (border + bg-muted/40, como el spinner de carga del taxón o el aviso del polígono dibujado);
+// la etiqueta va DENTRO de la caja (a diferencia de un campo editable, donde el Label siempre
+// está afuera, encima del Input), así no se confunde con un control de formulario.
+function ReadOnlyField({ label, value, className }: { label: string; value: string; className?: string }) {
+  return (
+    <div className="rounded-md border bg-muted/40 p-3 space-y-1">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className={["text-sm", className].filter(Boolean).join(" ")}>{value}</p>
+    </div>
+  );
+}
 
 interface NewOccurrencePageProps {
   onNavigate: (page: string, params?: Record<string, any>) => void;
@@ -197,6 +226,8 @@ export function NewOccurrencePage({
   /* ── CAMERA ── */
   const [captureLoading, setCaptureLoading] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  // null mientras se consulta el healthcheck del servicio digital-camera-integration.
+  const [cameraAvailable, setCameraAvailable] = useState<boolean | null>(null);
 
   /* ── Cleanup blobs on unmount ── */
   useEffect(() => {
@@ -212,6 +243,10 @@ export function NewOccurrencePage({
       .then(setCountries)
       .catch(() => setCatalogUnavailable(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    cameraService.isAvailable().then(setCameraAvailable);
   }, []);
 
   const handleCountryChange = (code: string) => {
@@ -623,381 +658,393 @@ export function NewOccurrencePage({
 
   const renderOccurrenceTab = () => (
     <div className="space-y-6">
-      <div className="grid md:grid-cols-3 gap-4">
-        <div className="space-y-3">
-          <Label htmlFor="catalogNumber" className="flex items-center gap-2">
-            Número de catálogo <span className="text-destructive">*</span>
-            <Badge variant="secondary" className="text-xs">
-              Requerido
-            </Badge>
-            <DwcTerm term="catalogNumber" />
-          </Label>
-          <Input
-            id="catalogNumber"
-            value={catalogNumber}
-            onChange={(e) => setCatalogNumber(e.target.value)}
-            placeholder="BOT-2024-001"
-            required
-          />
-        </div>
-        <div className="space-y-3">
-          <Label htmlFor="recordNumber" className="flex items-center gap-2">
-            Número de registro
-            <DwcTerm term="recordNumber" />
-          </Label>
-          <Input
-            id="recordNumber"
-            value={recordNumber}
-            onChange={(e) => setRecordNumber(e.target.value)}
-            placeholder="Número de colecta"
-          />
-        </div>
-        <div className="space-y-3">
-          <Label className="flex items-center gap-2">
-            Recolectado por{" "}
-            <Badge variant="outline" className="text-xs">
-              Recomendado
-            </Badge>{" "}
-            <DwcTerm term="recordedBy" />
-          </Label>
-          <Input
-            value={recordedBy}
-            onChange={(e) => setRecordedBy(e.target.value)}
-            placeholder="Nombre del recolector"
-          />
-        </div>
-      </div>
-
-      <div className="grid md:grid-cols-3 gap-4">
-        <div className="space-y-3">
-          <Label htmlFor="organismQuantity" className="flex items-center gap-2">
-            Cantidad <DwcTerm term="organismQuantity" />
-          </Label>
-          <Input
-            id="organismQuantity"
-            type="number"
-            min={0}
-            value={organismQuantity}
-            onChange={(e) => setOrganismQuantity(e.target.value)}
-            placeholder="1"
-          />
-        </div>
-        <div className="space-y-3">
-          <Label htmlFor="organismQuantityType" className="flex items-center gap-2">
-            Tipo de cantidad <DwcTerm term="organismQuantityType" />
-          </Label>
-          <Select value={organismQuantityType} onValueChange={setOrganismQuantityType}>
-            <SelectTrigger id="organismQuantityType">
-              <SelectValue placeholder="Selecciona" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Individuos">Individuos</SelectItem>
-              <SelectItem value="Especímenes">Especímenes</SelectItem>
-              <SelectItem value="Ramas">Ramas</SelectItem>
-              <SelectItem value="Matas">Matas</SelectItem>
-              <SelectItem value="Colonias">Colonias</SelectItem>
-              <SelectItem value="Poblaciones">Poblaciones</SelectItem>
-              <SelectItem value="Porcentaje de cobertura">Porcentaje de cobertura</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-3">
-          <Label htmlFor="occurrenceStatus" className="flex items-center gap-2">
-            Estado <DwcTerm term="occurrenceStatus" />
-          </Label>
-          <Select value={occurrenceStatus} onValueChange={setOccurrenceStatus}>
-            <SelectTrigger id="occurrenceStatus">
-              <SelectValue placeholder="Selecciona" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Presente">Presente</SelectItem>
-              <SelectItem value="Ausente">Ausente</SelectItem>
-              <SelectItem value="En préstamo">En préstamo</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      <div className="grid md:grid-cols-3 gap-4">
-        <div className="space-y-3">
-          <Label htmlFor="lifeStage" className="flex items-center gap-2">
-            Etapa de vida <DwcTerm term="lifeStage" />
-          </Label>
-          <Select value={lifeStage} onValueChange={setLifeStage}>
-            <SelectTrigger id="lifeStage">
-              <SelectValue placeholder="Selecciona" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Plántula">Plántula</SelectItem>
-              <SelectItem value="Juvenil">Juvenil</SelectItem>
-              <SelectItem value="Adulto">Adulto</SelectItem>
-              <SelectItem value="Con flor">Con flor</SelectItem>
-              <SelectItem value="Con fruto">Con fruto</SelectItem>
-              <SelectItem value="Con semilla">Con semilla</SelectItem>
-              <SelectItem value="Estéril">Estéril</SelectItem>
-              <SelectItem value="Vegetativo">Vegetativo</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-3">
-          <Label htmlFor="establishmentMeans" className="flex items-center gap-2">
-            Medio de establecimiento <DwcTerm term="establishmentMeans" />
-          </Label>
-          <Select value={establishmentMeans} onValueChange={setEstablishmentMeans}>
-            <SelectTrigger id="establishmentMeans">
-              <SelectValue placeholder="Selecciona" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Nativo">Nativo</SelectItem>
-              <SelectItem value="Endémico">Endémico</SelectItem>
-              <SelectItem value="Introducido">Introducido</SelectItem>
-              <SelectItem value="Naturalizado">Naturalizado</SelectItem>
-              <SelectItem value="Invasor">Invasor</SelectItem>
-              <SelectItem value="Cultivado">Cultivado</SelectItem>
-              <SelectItem value="Asistido">Asistido por humanos</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-3">
-          <Label htmlFor="associatedTaxa" className="flex items-center gap-2">
-            Taxa asociados <DwcTerm term="associatedTaxa" />
-          </Label>
-          <Input
-            id="associatedTaxa"
-            value={associatedTaxa}
-            onChange={(e) => setAssociatedTaxa(e.target.value)}
-            placeholder="Ej: huésped: Quercus robur"
-          />
-        </div>
-      </div>
-
-      <div className="grid md:grid-cols-3 gap-4">
-        <div className="space-y-3">
-          <Label htmlFor="associatedReferences" className="flex items-center gap-2">
-            Referencias asociadas <DwcTerm term="associatedReferences" />
-          </Label>
-          <Textarea
-            id="associatedReferences"
-            value={associatedReferences}
-            onChange={(e) => setAssociatedReferences(e.target.value)}
-            placeholder="Referencias bibliográficas ligadas a esta ocurrencia"
-            rows={3}
-          />
-        </div>
-        <div className="space-y-3">
-          <Label htmlFor="fieldNotes" className="flex items-center gap-2">
-            Notas de campo <DwcTerm term="fieldNotes" />
-          </Label>
-          <Textarea
-            id="fieldNotes"
-            value={fieldNotes}
-            onChange={(e) => setFieldNotes(e.target.value)}
-            placeholder="Notas tal como aparecen en la libreta de campo"
-            rows={3}
-          />
-        </div>
-        <div className="space-y-3">
-          <Label htmlFor="occurrenceRemarks" className="flex items-center gap-2">
-            Observaciones <DwcTerm term="occurrenceRemarks" />
-          </Label>
-          <Textarea
-            id="occurrenceRemarks"
-            value={occurrenceRemarks}
-            onChange={(e) => setOccurrenceRemarks(e.target.value)}
-            placeholder="Observaciones adicionales sobre la ocurrencia"
-            rows={3}
-          />
-        </div>
-      </div>
-
-      <div className="rounded-md border bg-muted/30 p-3 space-y-2">
-        <p className="text-xs font-medium text-muted-foreground">
-          Propiedades adicionales <DwcTerm term="dynamicProperties" />
-        </p>
-        <div className="flex gap-2">
-          <Input
-            placeholder="Atributo"
-            value={dpKey}
-            onChange={(e) => setDpKey(e.target.value)}
-            className="h-8 text-sm"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                handleAddDynamicProp();
-              }
-            }}
-          />
-          <Input
-            placeholder="Valor"
-            value={dpValue}
-            onChange={(e) => setDpValue(e.target.value)}
-            className="h-8 text-sm"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                handleAddDynamicProp();
-              }
-            }}
-          />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleAddDynamicProp}
-            className="h-8 px-2 flex-shrink-0"
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-        {dynamicProps.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {dynamicProps.map((kv, idx) => (
-              <Badge key={`${kv.key}-${idx}`} variant="secondary" className="gap-1 text-xs font-normal">
-                <span className="font-mono font-medium">{kv.key}</span>: {kv.value}
-                <button
-                  type="button"
-                  onClick={() => handleRemoveDynamicProp(idx)}
-                  className="ml-0.5 hover:text-destructive"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            ))}
+      <Card>
+        <CardContent className="pt-6">
+          <FieldSectionHeader title="Identificación del Ejemplar" subtitle="Campos clave para trazabilidad" />
+          <div className="grid md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="catalogNumber" className="flex items-center gap-2">
+                Número de catálogo <span className="text-destructive">*</span>
+                <RequirementBadge kind="required" />
+                <DwcTerm term="catalogNumber" />
+              </Label>
+              <Input
+                id="catalogNumber"
+                value={catalogNumber}
+                onChange={(e) => setCatalogNumber(e.target.value)}
+                placeholder="BOT-2024-001"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="recordNumber" className="flex items-center gap-2">
+                Número de registro
+                <RequirementBadge kind="optional" />
+                <DwcTerm term="recordNumber" />
+              </Label>
+              <Input
+                id="recordNumber"
+                value={recordNumber}
+                onChange={(e) => setRecordNumber(e.target.value)}
+                placeholder="Número de colecta"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                Recolectado por
+                <RequirementBadge kind="recommended" />
+                <DwcTerm term="recordedBy" />
+              </Label>
+              <Input
+                value={recordedBy}
+                onChange={(e) => setRecordedBy(e.target.value)}
+                placeholder="Nombre del recolector"
+              />
+            </div>
           </div>
-        )}
-      </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="pt-6">
+          <FieldSectionHeader title="Estado y Cuantificación" subtitle="Atributos biológicos y preservación" />
+          <div className="grid md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="organismQuantity" className="flex items-center gap-2">
+                Cantidad
+                <RequirementBadge kind="optional" />
+                <DwcTerm term="organismQuantity" />
+              </Label>
+              <Input
+                id="organismQuantity"
+                type="number"
+                min={0}
+                value={organismQuantity}
+                onChange={(e) => setOrganismQuantity(e.target.value)}
+                placeholder="1"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="organismQuantityType" className="flex items-center gap-2">
+                Tipo de cantidad
+                <RequirementBadge kind="optional" />
+                <DwcTerm term="organismQuantityType" />
+              </Label>
+              <Select value={organismQuantityType} onValueChange={setOrganismQuantityType}>
+                <SelectTrigger id="organismQuantityType">
+                  <SelectValue placeholder="Selecciona" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Individuos">Individuos</SelectItem>
+                  <SelectItem value="Especímenes">Especímenes</SelectItem>
+                  <SelectItem value="Ramas">Ramas</SelectItem>
+                  <SelectItem value="Matas">Matas</SelectItem>
+                  <SelectItem value="Colonias">Colonias</SelectItem>
+                  <SelectItem value="Poblaciones">Poblaciones</SelectItem>
+                  <SelectItem value="Porcentaje de cobertura">Porcentaje de cobertura</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="occurrenceStatus" className="flex items-center gap-2">
+                Estado del ejemplar
+                <RequirementBadge kind="recommended" />
+                <DwcTerm term="occurrenceStatus" />
+              </Label>
+              <Select value={occurrenceStatus} onValueChange={setOccurrenceStatus}>
+                <SelectTrigger id="occurrenceStatus">
+                  <SelectValue placeholder="Selecciona" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Presente">Presente</SelectItem>
+                  <SelectItem value="Ausente">Ausente</SelectItem>
+                  <SelectItem value="En préstamo">En préstamo</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-4 mt-4">
+            <div className="space-y-2">
+              <Label htmlFor="lifeStage" className="flex items-center gap-2">
+                Etapa de vida
+                <RequirementBadge kind="optional" />
+                <DwcTerm term="lifeStage" />
+              </Label>
+              <Select value={lifeStage} onValueChange={setLifeStage}>
+                <SelectTrigger id="lifeStage">
+                  <SelectValue placeholder="Selecciona" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Plántula">Plántula</SelectItem>
+                  <SelectItem value="Juvenil">Juvenil</SelectItem>
+                  <SelectItem value="Adulto">Adulto</SelectItem>
+                  <SelectItem value="Con flor">Con flor</SelectItem>
+                  <SelectItem value="Con fruto">Con fruto</SelectItem>
+                  <SelectItem value="Con semilla">Con semilla</SelectItem>
+                  <SelectItem value="Estéril">Estéril</SelectItem>
+                  <SelectItem value="Vegetativo">Vegetativo</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="establishmentMeans" className="flex items-center gap-2">
+                Medio de establecimiento
+                <RequirementBadge kind="optional" />
+                <DwcTerm term="establishmentMeans" />
+              </Label>
+              <Select value={establishmentMeans} onValueChange={setEstablishmentMeans}>
+                <SelectTrigger id="establishmentMeans">
+                  <SelectValue placeholder="Selecciona" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Nativo">Nativo</SelectItem>
+                  <SelectItem value="Endémico">Endémico</SelectItem>
+                  <SelectItem value="Introducido">Introducido</SelectItem>
+                  <SelectItem value="Naturalizado">Naturalizado</SelectItem>
+                  <SelectItem value="Invasor">Invasor</SelectItem>
+                  <SelectItem value="Cultivado">Cultivado</SelectItem>
+                  <SelectItem value="Asistido">Asistido por humanos</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="associatedTaxa" className="flex items-center gap-2">
+                Taxa asociados
+                <RequirementBadge kind="optional" />
+                <DwcTerm term="associatedTaxa" />
+              </Label>
+              <Input
+                id="associatedTaxa"
+                value={associatedTaxa}
+                onChange={(e) => setAssociatedTaxa(e.target.value)}
+                placeholder="Ej: huésped: Quercus robur"
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="pt-6">
+          <FieldSectionHeader title="Notas y Observaciones" subtitle="Documentación de libreta" />
+          <div className="grid md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="associatedReferences" className="flex items-center gap-2">
+                Referencias asociadas
+                <RequirementBadge kind="optional" />
+                <DwcTerm term="associatedReferences" />
+              </Label>
+              <Textarea
+                id="associatedReferences"
+                value={associatedReferences}
+                onChange={(e) => setAssociatedReferences(e.target.value)}
+                placeholder="Referencias bibliográficas ligadas a esta ocurrencia"
+                rows={3}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="fieldNotes" className="flex items-center gap-2">
+                Notas de campo
+                <RequirementBadge kind="optional" />
+                <DwcTerm term="fieldNotes" />
+              </Label>
+              <Textarea
+                id="fieldNotes"
+                value={fieldNotes}
+                onChange={(e) => setFieldNotes(e.target.value)}
+                placeholder="Notas tal como aparecen en la libreta de campo"
+                rows={3}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="occurrenceRemarks" className="flex items-center gap-2">
+                Observaciones
+                <RequirementBadge kind="optional" />
+                <DwcTerm term="occurrenceRemarks" />
+              </Label>
+              <Textarea
+                id="occurrenceRemarks"
+                value={occurrenceRemarks}
+                onChange={(e) => setOccurrenceRemarks(e.target.value)}
+                placeholder="Observaciones adicionales sobre la ocurrencia"
+                rows={3}
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="pt-6">
+          <FieldSectionHeader
+            title="Propiedades Adicionales"
+            subtitle="Atributos libres sin un campo Darwin Core dedicado"
+          />
+          <div className="space-y-2">
+            <Label className="flex flex-wrap items-center gap-2">
+              Nueva propiedad
+              <RequirementBadge kind="optional" />
+              <DwcTerm term="dynamicProperties" />
+            </Label>
+            <div className="flex gap-2">
+              <Input
+                placeholder="Atributo"
+                value={dpKey}
+                onChange={(e) => setDpKey(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleAddDynamicProp();
+                  }
+                }}
+              />
+              <Input
+                placeholder="Valor"
+                value={dpValue}
+                onChange={(e) => setDpValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleAddDynamicProp();
+                  }
+                }}
+              />
+              <Button type="button" variant="outline" onClick={handleAddDynamicProp} className="flex-shrink-0">
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Escribe un nombre y su valor para agregar cualquier otro dato que no tenga un campo propio.
+            </p>
+          </div>
+
+          {dynamicProps.length > 0 && (
+            <div className="space-y-2 mt-4">
+              {dynamicProps.map((kv, idx) => (
+                <div
+                  key={`${kv.key}-${idx}`}
+                  className="flex items-center justify-between gap-3 rounded-lg border bg-muted/20 px-3 py-2"
+                >
+                  <div className="flex flex-wrap items-center gap-2 min-w-0">
+                    <span className="font-mono text-xs font-semibold flex-shrink-0">{kv.key}</span>
+                    <span className="text-sm text-muted-foreground truncate">{kv.value}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveDynamicProp(idx)}
+                    className="flex-shrink-0 text-muted-foreground hover:text-destructive"
+                    title="Quitar propiedad"
+                    aria-label="Quitar propiedad"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 
   const renderEventTab = () => (
     <div className="space-y-6">
-      <div className="space-y-3">
-        <Label htmlFor="eventDate" className="flex items-center gap-2">
-          Fecha del evento{" "}
-          <Badge variant="outline" className="text-xs">
-            Recomendado
-          </Badge>
-          <DwcTerm term="eventDate" />
-        </Label>
-        <Input
-          id="eventDate"
-          type="date"
-          value={eventDate}
-          onChange={(e) => {
-            setEventDate(e.target.value);
-            if (!verbatimEdited) setVerbatimEventDate(formatVerbatimDate(e.target.value));
-          }}
-        />
+      <Card>
+        <CardContent className="pt-6">
+          <FieldSectionHeader title="Fecha del Evento" subtitle="Cuándo se recolectó el ejemplar" />
+          <div className="grid md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="eventDate" className="flex items-center gap-2">
+                Fecha del evento
+                <RequirementBadge kind="recommended" />
+                <DwcTerm term="eventDate" />
+              </Label>
+              <Input
+                id="eventDate"
+                type="date"
+                value={eventDate}
+                onChange={(e) => {
+                  setEventDate(e.target.value);
+                  if (!verbatimEdited) setVerbatimEventDate(formatVerbatimDate(e.target.value));
+                }}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="verbatimEventDate" className="flex items-center gap-2">
+                Fecha original
+                <RequirementBadge kind="optional" />
+                <DwcTerm term="verbatimEventDate" />
+              </Label>
+              <Input
+                id="verbatimEventDate"
+                value={verbatimEventDate}
+                onChange={(e) => {
+                  setVerbatimEventDate(e.target.value);
+                  // Vaciar el campo devuelve la derivación automática.
+                  setVerbatimEdited(e.target.value.trim() !== "");
+                }}
+                placeholder="Ej: Primavera 2024"
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
-        <Label htmlFor="verbatimEventDate" className="flex items-center gap-2">
-          Fecha original <DwcTerm term="verbatimEventDate" />
-        </Label>
-        <Input
-          id="verbatimEventDate"
-          value={verbatimEventDate}
-          onChange={(e) => {
-            setVerbatimEventDate(e.target.value);
-            // Vaciar el campo devuelve la derivación automática.
-            setVerbatimEdited(e.target.value.trim() !== "");
-          }}
-          placeholder="Ej: Primavera 2024"
-        />
-      </div>
-      <div className="space-y-3">
-        <Label htmlFor="habitat" className="flex items-center gap-2">
-          Hábitat <DwcTerm term="habitat" />
-        </Label>
-        <Textarea
-          id="habitat"
-          value={habitat}
-          onChange={(e) => setHabitat(e.target.value)}
-          placeholder="Descripción del hábitat"
-          rows={3}
-        />
-      </div>
-      <div className="space-y-3">
-        <Label htmlFor="eventRemarks" className="flex items-center gap-2">
-          Observaciones del evento <DwcTerm term="eventRemarks" />
-        </Label>
-        <Textarea
-          id="eventRemarks"
-          value={eventRemarks}
-          onChange={(e) => setEventRemarks(e.target.value)}
-          placeholder="Observaciones o notas sobre el evento"
-          rows={3}
-        />
-      </div>
+      <Card>
+        <CardContent className="pt-6">
+          <FieldSectionHeader title="Hábitat y Observaciones" subtitle="Contexto ecológico del hallazgo" />
+          <div className="grid md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="habitat" className="flex items-center gap-2">
+                Hábitat
+                <RequirementBadge kind="optional" />
+                <DwcTerm term="habitat" />
+              </Label>
+              <Textarea
+                id="habitat"
+                value={habitat}
+                onChange={(e) => setHabitat(e.target.value)}
+                placeholder="Descripción del hábitat"
+                rows={3}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="eventRemarks" className="flex items-center gap-2">
+                Observaciones del evento
+                <RequirementBadge kind="optional" />
+                <DwcTerm term="eventRemarks" />
+              </Label>
+              <Textarea
+                id="eventRemarks"
+                value={eventRemarks}
+                onChange={(e) => setEventRemarks(e.target.value)}
+                placeholder="Observaciones o notas sobre el evento"
+                rows={3}
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 
   const renderLocationTab = () => (
     <div className="space-y-6">
-      <LocationPicker
-        lat={decimalLatitude}
-        lon={decimalLongitude}
-        footprintWKT={footprintWKT}
-        uncertainty={coordinateUncertainty}
-        resolveAdminUnits={(lat, lon) => resolveAdminUnits(apiFetch, lat, lon)}
-        cancelGeocodeKey={geoSelectionRevision}
-        onLocationChange={({ lat, lon, footprintWKT: wkt, uncertaintyM }) => {
-          const nextLat = lat != null ? String(lat) : "";
-          const nextLon = lon != null ? String(lon) : "";
-          if (nextLat !== decimalLatitude || nextLon !== decimalLongitude) {
-            setCountryCode("");
-            setCountryNameFallback("");
-            setStateProvince("");
-            setCounty("");
-            setMunicipality("");
-            setLocationId("");
-          }
-          setDecimalLatitude(nextLat);
-          setDecimalLongitude(nextLon);
-          setFootprintWKT(wkt ?? "");
-          if (uncertaintyM !== undefined) setCoordinateUncertainty(uncertaintyM != null ? String(uncertaintyM) : "");
-        }}
-        onAdminUnits={(admin) => {
-          // Se reemplaza siempre (también si no se pudo deducir) para que estos campos
-          // correspondan al punto actual y no a uno anterior.
-          setCountryCode(admin?.countryCode ?? "");
-          setCountryNameFallback(admin?.country ?? "");
-          setStateProvince(admin?.stateProvince ?? "");
-          setCounty(admin?.county ?? "");
-          setMunicipality(admin?.municipality ?? "");
-          setLocationId(admin?.locationId ?? "");
-          if (!admin) {
-            toast.warning("No se pudo deducir la unidad administrativa", {
-              description: "Completa país, departamento, provincia y distrito manualmente.",
-            });
-          }
-        }}
-      />
-
-      <GeographicHierarchy
-        apiFetch={apiFetch}
-        countries={countries}
-        catalogUnavailable={catalogUnavailable}
-        countryCode={countryCode}
-        countryNameFallback={countryNameFallback}
-        values={{ stateProvince, county, municipality }}
-        locationId={locationId}
-        onCountryChange={handleCountryChange}
-        onCountryNameFallbackChange={setCountryNameFallback}
-        onValuesChange={handleGeoValuesChange}
-      />
-
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem", alignItems: "flex-end" }}>
-        <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
-          <Label htmlFor="decimalLatitude" className="flex flex-wrap items-center gap-2">
-            Latitud
-            <DwcTerm term="decimalLatitude" />
-          </Label>
-          <Input
-            id="decimalLatitude"
-            type="number"
-            step="0.000001"
-            value={decimalLatitude}
-            onChange={(e) => {
-              if (e.target.value !== decimalLatitude) {
+      <Card>
+        <CardContent className="pt-6">
+          <FieldSectionHeader title="Ubicación en el Mapa" subtitle="Marca el punto o dibuja el área de colecta" />
+          <LocationPicker
+            lat={decimalLatitude}
+            lon={decimalLongitude}
+            footprintWKT={footprintWKT}
+            uncertainty={coordinateUncertainty}
+            resolveAdminUnits={(lat, lon) => resolveAdminUnits(apiFetch, lat, lon)}
+            cancelGeocodeKey={geoSelectionRevision}
+            onLocationChange={({ lat, lon, footprintWKT: wkt, uncertaintyM }) => {
+              const nextLat = lat != null ? String(lat) : "";
+              const nextLon = lon != null ? String(lon) : "";
+              if (nextLat !== decimalLatitude || nextLon !== decimalLongitude) {
                 setCountryCode("");
                 setCountryNameFallback("");
                 setStateProvince("");
@@ -1005,148 +1052,224 @@ export function NewOccurrencePage({
                 setMunicipality("");
                 setLocationId("");
               }
-              setDecimalLatitude(e.target.value);
+              setDecimalLatitude(nextLat);
+              setDecimalLongitude(nextLon);
+              setFootprintWKT(wkt ?? "");
+              if (uncertaintyM !== undefined)
+                setCoordinateUncertainty(uncertaintyM != null ? String(uncertaintyM) : "");
             }}
-            placeholder="-12.046373"
-          />
-        </div>
-        <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
-          <Label htmlFor="decimalLongitude" className="flex flex-wrap items-center gap-2">
-            Longitud
-            <DwcTerm term="decimalLongitude" />
-          </Label>
-          <Input
-            id="decimalLongitude"
-            type="number"
-            step="0.000001"
-            value={decimalLongitude}
-            onChange={(e) => {
-              if (e.target.value !== decimalLongitude) {
-                setCountryCode("");
-                setCountryNameFallback("");
-                setStateProvince("");
-                setCounty("");
-                setMunicipality("");
-                setLocationId("");
+            onAdminUnits={(admin) => {
+              // Se reemplaza siempre (también si no se pudo deducir) para que estos campos
+              // correspondan al punto actual y no a uno anterior.
+              setCountryCode(admin?.countryCode ?? "");
+              setCountryNameFallback(admin?.country ?? "");
+              setStateProvince(admin?.stateProvince ?? "");
+              setCounty(admin?.county ?? "");
+              setMunicipality(admin?.municipality ?? "");
+              setLocationId(admin?.locationId ?? "");
+              if (!admin) {
+                toast.warning("No se pudo deducir la unidad administrativa", {
+                  description: "Completa país, departamento, provincia y distrito manualmente.",
+                });
               }
-              setDecimalLongitude(e.target.value);
             }}
-            placeholder="-77.042755"
           />
-        </div>
-        <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
-          <Label htmlFor="coordinateUncertaintyInMeters" className="flex flex-wrap items-center gap-2">
-            Incertidumbre (m)
-            <DwcTerm term="coordinateUncertaintyInMeters" />
-          </Label>
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <Input
-              id="coordinateUncertaintyInMeters"
-              type="number"
-              min={0}
-              step="any"
-              value={coordinateUncertainty}
-              onChange={(e) => setCoordinateUncertainty(e.target.value)}
-              placeholder="Ej: 100"
-              className="flex-1"
-            />
-            <Select value="" onValueChange={(v) => setCoordinateUncertainty(v)}>
-              <SelectTrigger className="w-[6.5rem] shrink-0" aria-label="Valores rápidos de incertidumbre">
-                <SelectValue placeholder="Rápido" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="30">30 m</SelectItem>
-                <SelectItem value="100">100 m</SelectItem>
-                <SelectItem value="500">500 m</SelectItem>
-                <SelectItem value="1000">1 km</SelectItem>
-                <SelectItem value="5000">5 km</SelectItem>
-              </SelectContent>
-            </Select>
+
+          <div className="grid md:grid-cols-3 gap-4 mt-4">
+            <div className="space-y-2">
+              <Label htmlFor="decimalLatitude" className="flex flex-wrap items-center gap-2">
+                Latitud
+                <RequirementBadge kind="optional" />
+                <DwcTerm term="decimalLatitude" />
+              </Label>
+              <Input
+                id="decimalLatitude"
+                type="number"
+                step="0.000001"
+                value={decimalLatitude}
+                onChange={(e) => {
+                  if (e.target.value !== decimalLatitude) {
+                    setCountryCode("");
+                    setCountryNameFallback("");
+                    setStateProvince("");
+                    setCounty("");
+                    setMunicipality("");
+                    setLocationId("");
+                  }
+                  setDecimalLatitude(e.target.value);
+                }}
+                placeholder="-12.046373"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="decimalLongitude" className="flex flex-wrap items-center gap-2">
+                Longitud
+                <RequirementBadge kind="optional" />
+                <DwcTerm term="decimalLongitude" />
+              </Label>
+              <Input
+                id="decimalLongitude"
+                type="number"
+                step="0.000001"
+                value={decimalLongitude}
+                onChange={(e) => {
+                  if (e.target.value !== decimalLongitude) {
+                    setCountryCode("");
+                    setCountryNameFallback("");
+                    setStateProvince("");
+                    setCounty("");
+                    setMunicipality("");
+                    setLocationId("");
+                  }
+                  setDecimalLongitude(e.target.value);
+                }}
+                placeholder="-77.042755"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="coordinateUncertaintyInMeters" className="flex flex-wrap items-center gap-2">
+                Incertidumbre (m)
+                <RequirementBadge kind="optional" />
+                <DwcTerm term="coordinateUncertaintyInMeters" />
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  id="coordinateUncertaintyInMeters"
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={coordinateUncertainty}
+                  onChange={(e) => setCoordinateUncertainty(e.target.value)}
+                  placeholder="Ej: 100"
+                  className="flex-1"
+                />
+                <Select value="" onValueChange={(v) => setCoordinateUncertainty(v)}>
+                  <SelectTrigger
+                    className="shrink-0"
+                    style={{ width: "6.5rem" }}
+                    aria-label="Valores rápidos de incertidumbre"
+                  >
+                    <SelectValue placeholder="Rápido" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="30">30 m</SelectItem>
+                    <SelectItem value="100">100 m</SelectItem>
+                    <SelectItem value="500">500 m</SelectItem>
+                    <SelectItem value="1000">1 km</SelectItem>
+                    <SelectItem value="5000">5 km</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
 
-      {footprintWKT && (
-        <Badge variant="secondary" className="whitespace-normal text-xs font-normal">
-          Polígono dibujado: latitud y longitud son su punto representativo y la incertidumbre es el radio que lo
-          encierra
-        </Badge>
-      )}
-
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
-        <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
-          <Label htmlFor="locality" className="flex flex-wrap items-center gap-2">
-            Localidad{" "}
-            <Badge variant="outline" className="text-[10px] px-1 py-0">
-              Recomendado
+          {footprintWKT && (
+            <Badge variant="secondary" className="text-xs font-normal mt-4" style={{ whiteSpace: "normal" }}>
+              Polígono dibujado: latitud y longitud son su punto representativo y la incertidumbre es el radio que lo
+              encierra
             </Badge>
-            <DwcTerm term="locality" />
-          </Label>
-          <Input
-            id="locality"
-            value={locality}
-            onChange={(e) => setLocality(e.target.value)}
-            placeholder="Descripción sitio"
-          />
-        </div>
-        <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
-          <Label htmlFor="verbatimLocality" className="flex flex-wrap items-center gap-2">
-            Localidad original
-            <DwcTerm term="verbatimLocality" />
-          </Label>
-          <Input
-            id="verbatimLocality"
-            value={verbatimLocality}
-            onChange={(e) => setVerbatimLocality(e.target.value)}
-            placeholder="Tal como etiqueta"
-          />
-        </div>
-      </div>
+          )}
+        </CardContent>
+      </Card>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
-        <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
-          <Label htmlFor="georeferenceVerificationStatus" className="flex flex-wrap items-center gap-2">
-            Estado de Verificación
-            <DwcTerm term="georeferenceVerificationStatus" />
-          </Label>
-          <Select value={georeferenceVerificationStatus} onValueChange={setGeoreferenceVerificationStatus}>
-            <SelectTrigger id="georeferenceVerificationStatus">
-              <SelectValue placeholder="Selecciona" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Requiere verificación">Requiere verificación</SelectItem>
-              <SelectItem value="Verificado por colector">Verificado por colector</SelectItem>
-              <SelectItem value="Verificado por curador">Verificado por curador</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+      <Card>
+        <CardContent className="pt-6">
+          <FieldSectionHeader title="División Administrativa" subtitle="Se completa automáticamente desde el mapa" />
+          <GeographicHierarchy
+            apiFetch={apiFetch}
+            countries={countries}
+            catalogUnavailable={catalogUnavailable}
+            countryCode={countryCode}
+            countryNameFallback={countryNameFallback}
+            values={{ stateProvince, county, municipality }}
+            locationId={locationId}
+            onCountryChange={handleCountryChange}
+            onCountryNameFallbackChange={setCountryNameFallback}
+            onValuesChange={handleGeoValuesChange}
+          />
+        </CardContent>
+      </Card>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
-        <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
-          <Label htmlFor="verbatimElevation" className="flex items-center gap-2">
-            Elevación estimada <DwcTerm term="verbatimElevation" />
-          </Label>
-          <Input
-            id="verbatimElevation"
-            value={verbatimElevation}
-            onChange={(e) => setVerbatimElevation(e.target.value)}
-            placeholder="Ej: 1200-1500m"
-          />
-        </div>
-        <div style={{ flex: "1 1 200px", minWidth: 0 }} className="space-y-3">
-          <Label htmlFor="locationRemarks" className="flex items-center gap-2">
-            Observaciones <DwcTerm term="locationRemarks" />
-          </Label>
-          <Textarea
-            id="locationRemarks"
-            value={locationRemarks}
-            onChange={(e) => setLocationRemarks(e.target.value)}
-            placeholder="Comentarios adicionales sobre la ubicación"
-            rows={2}
-          />
-        </div>
-      </div>
+      <Card>
+        <CardContent className="pt-6">
+          <FieldSectionHeader title="Localidad y Contexto" subtitle="Descripción del sitio y su verificación" />
+          <div className="grid md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="locality" className="flex flex-wrap items-center gap-2">
+                Localidad
+                <RequirementBadge kind="recommended" />
+                <DwcTerm term="locality" />
+              </Label>
+              <Input
+                id="locality"
+                value={locality}
+                onChange={(e) => setLocality(e.target.value)}
+                placeholder="Descripción sitio"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="verbatimLocality" className="flex flex-wrap items-center gap-2">
+                Localidad original
+                <RequirementBadge kind="optional" />
+                <DwcTerm term="verbatimLocality" />
+              </Label>
+              <Input
+                id="verbatimLocality"
+                value={verbatimLocality}
+                onChange={(e) => setVerbatimLocality(e.target.value)}
+                placeholder="Tal como etiqueta"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="georeferenceVerificationStatus" className="flex flex-wrap items-center gap-2">
+                Estado de verificación
+                <RequirementBadge kind="optional" />
+                <DwcTerm term="georeferenceVerificationStatus" />
+              </Label>
+              <Select value={georeferenceVerificationStatus} onValueChange={setGeoreferenceVerificationStatus}>
+                <SelectTrigger id="georeferenceVerificationStatus">
+                  <SelectValue placeholder="Selecciona" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Requiere verificación">Requiere verificación</SelectItem>
+                  <SelectItem value="Verificado por colector">Verificado por colector</SelectItem>
+                  <SelectItem value="Verificado por curador">Verificado por curador</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4 mt-4">
+            <div className="space-y-2">
+              <Label htmlFor="verbatimElevation" className="flex items-center gap-2">
+                Elevación estimada
+                <RequirementBadge kind="optional" />
+                <DwcTerm term="verbatimElevation" />
+              </Label>
+              <Input
+                id="verbatimElevation"
+                value={verbatimElevation}
+                onChange={(e) => setVerbatimElevation(e.target.value)}
+                placeholder="Ej: 1200-1500m"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="locationRemarks" className="flex items-center gap-2">
+                Observaciones
+                <RequirementBadge kind="optional" />
+                <DwcTerm term="locationRemarks" />
+              </Label>
+              <Textarea
+                id="locationRemarks"
+                value={locationRemarks}
+                onChange={(e) => setLocationRemarks(e.target.value)}
+                placeholder="Comentarios adicionales sobre la ubicación"
+                rows={2}
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 
@@ -1154,322 +1277,293 @@ export function NewOccurrencePage({
     <div className="space-y-6">
       {/* Existing identifications list (edit mode only) */}
       {mode === "edit" && existingIdentifications.length > 0 && (
-        <div className="space-y-3">
-          <p className="text-sm font-semibold">Identificaciones existentes</p>
-          <div className="space-y-2">
-            {existingIdentifications.map((ident) => (
-              <div key={ident.identificationId} className="rounded-lg border bg-muted/20 p-4 space-y-2">
-                <div className="flex items-start gap-2 flex-wrap">
-                  <span className="font-medium italic text-sm">
-                    {ident.taxon?.scientificName ?? ident.scientificName ?? "Sin taxón"}
-                  </span>
-                  {ident.taxon?.scientificNameAuthorship && (
-                    <span className="text-xs text-muted-foreground">{ident.taxon.scientificNameAuthorship}</span>
+        <Card>
+          <CardContent className="pt-6">
+            <FieldSectionHeader
+              title="Identificaciones Existentes"
+              subtitle="Historial de identificaciones de este ejemplar"
+            />
+            <div className="space-y-2">
+              {existingIdentifications.map((ident) => (
+                <div key={ident.identificationId} className="rounded-lg border bg-muted/20 p-4 space-y-2">
+                  <div className="flex items-start gap-2 flex-wrap">
+                    <span className="font-medium italic text-sm">
+                      {ident.taxon?.scientificName ?? ident.scientificName ?? "Sin taxón"}
+                    </span>
+                    {ident.taxon?.scientificNameAuthorship && (
+                      <span className="text-xs text-muted-foreground">{ident.taxon.scientificNameAuthorship}</span>
+                    )}
+                    <div className="ml-auto flex items-center gap-1.5 flex-wrap">
+                      {ident.isCurrent && (
+                        <Badge variant="default" className="text-xs">
+                          Vigente
+                        </Badge>
+                      )}
+                      {ident.identificationVerificationStatus && (
+                        <Badge variant="outline" className="text-xs">
+                          {ident.identificationVerificationStatus}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  {ident.identifiers.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {ident.identifiers.map((id) => (
+                        <Badge key={id.identifierId} variant="secondary" className="text-xs">
+                          {id.fullName ?? id.orcID}
+                        </Badge>
+                      ))}
+                    </div>
                   )}
-                  <div className="ml-auto flex items-center gap-1.5 flex-wrap">
-                    {ident.isCurrent && (
-                      <Badge variant="default" className="text-xs">
-                        Vigente
-                      </Badge>
+                  {(ident.dateIdentified || ident.typeStatus) && (
+                    <p className="text-xs text-muted-foreground">
+                      {ident.dateIdentified && <span>Fecha: {ident.dateIdentified}</span>}
+                      {ident.dateIdentified && ident.typeStatus && " · "}
+                      {ident.typeStatus && <span>Tipo: {ident.typeStatus}</span>}
+                    </p>
+                  )}
+                  <div className="flex gap-2 justify-end pt-1">
+                    {!ident.isCurrent && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={inlineSaving}
+                        onClick={() => handleSetCurrentIdentification(ident.identificationId)}
+                        className="gap-1 text-xs h-7"
+                      >
+                        <Star className="h-3 w-3" />
+                        Marcar vigente
+                      </Button>
                     )}
-                    {ident.identificationVerificationStatus && (
-                      <Badge variant="outline" className="text-xs">
-                        {ident.identificationVerificationStatus}
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-                {ident.identifiers.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {ident.identifiers.map((id) => (
-                      <Badge key={id.identifierId} variant="secondary" className="text-xs">
-                        {id.fullName ?? id.orcID}
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-                {(ident.dateIdentified || ident.typeStatus) && (
-                  <p className="text-xs text-muted-foreground">
-                    {ident.dateIdentified && <span>Fecha: {ident.dateIdentified}</span>}
-                    {ident.dateIdentified && ident.typeStatus && " · "}
-                    {ident.typeStatus && <span>Tipo: {ident.typeStatus}</span>}
-                  </p>
-                )}
-                <div className="flex gap-2 justify-end pt-1">
-                  {!ident.isCurrent && (
                     <Button
                       type="button"
                       size="sm"
-                      variant="outline"
+                      variant="ghost"
                       disabled={inlineSaving}
-                      onClick={() => handleSetCurrentIdentification(ident.identificationId)}
-                      className="gap-1 text-xs h-7"
+                      onClick={() => handleDeleteIdentification(ident.identificationId)}
+                      className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
                     >
-                      <Star className="h-3 w-3" />
-                      Marcar vigente
+                      <Trash2 className="h-3.5 w-3.5" />
                     </Button>
-                  )}
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    disabled={inlineSaving}
-                    onClick={() => handleDeleteIdentification(ident.identificationId)}
-                    className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardContent className="pt-6">
+          <FieldSectionHeader
+            title={mode === "edit" ? "Nueva Identificación" : "Identificación Taxonómica"}
+            subtitle="Busca el nombre científico en el backbone taxonómico"
+          />
+
+          <div className="space-y-2">
+            <Label htmlFor="scientificName" className="flex flex-wrap items-center gap-2">
+              Nombre científico
+              <RequirementBadge kind={mode === "create" ? "required" : "optional"} />
+              <DwcTerm term="scientificName" />
+            </Label>
+            <div className="relative" ref={acRef}>
+              <div className="relative">
+                <Input
+                  id="scientificName"
+                  value={scientificNameInput}
+                  onChange={(e) => handleScientificNameChange(e.target.value)}
+                  onFocus={() => {
+                    if (!selectedTaxonID) setAcOpen(true);
+                  }}
+                  placeholder="Escribe para buscar un nombre científico…"
+                  autoComplete="off"
+                  className={selectedTaxonID ? "pr-12 border-green-500 focus-visible:ring-green-500/30" : "pr-12"}
+                />
+                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                  {acLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  ) : selectedTaxonID ? (
+                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                  ) : null}
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Divider for edit mode */}
-      {mode === "edit" && (
-        <div className="flex items-center gap-3">
-          <div className="h-px flex-1 bg-border" />
-          <span className="text-xs text-muted-foreground font-medium">
-            {existingIdentifications.length > 0 ? "Agregar nueva identificación" : "Nueva identificación"}
-          </span>
-          <div className="h-px flex-1 bg-border" />
-        </div>
-      )}
-
-      {/* Scientific name search */}
-      <div className="space-y-3">
-        <Label htmlFor="scientificName" className="flex items-center gap-2">
-          Nombre científico {mode === "create" && <span className="text-destructive">*</span>}
-          {mode === "create" && (
-            <Badge variant="secondary" className="text-xs">
-              Requerido
-            </Badge>
-          )}
-          <DwcTerm term="scientificName" />
-        </Label>
-        <div className="relative" ref={acRef}>
-          <div className="relative">
-            <Input
-              id="scientificName"
-              value={scientificNameInput}
-              onChange={(e) => handleScientificNameChange(e.target.value)}
-              onFocus={() => {
-                if (!selectedTaxonID) setAcOpen(true);
-              }}
-              placeholder="Escribe para buscar un nombre científico…"
-              autoComplete="off"
-              className={selectedTaxonID ? "pr-12 border-green-500 focus-visible:ring-green-500/30" : "pr-12"}
-            />
-            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
-              {acLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-              ) : selectedTaxonID ? (
-                <CheckCircle2 className="h-4 w-4 text-green-500" />
-              ) : null}
-            </div>
-          </div>
-          {acOpen && scientificNameInput.trim().length >= 2 && (
-            <AutocompleteDropdown
-              items={acSuggestions}
-              loading={acLoading}
-              keyOf={(s) => s.taxonId ?? s.scientificName}
-              onSelect={handleSelectSuggestion}
-              renderItem={(s) => (
-                <>
-                  <span className="italic truncate">{s.scientificName}</span>
-                  {s.scientificNameAuthorship && (
-                    <span className="text-xs text-muted-foreground italic truncate">{s.scientificNameAuthorship}</span>
+              {acOpen && scientificNameInput.trim().length >= 2 && (
+                <AutocompleteDropdown
+                  items={acSuggestions}
+                  loading={acLoading}
+                  keyOf={(s) => s.taxonId ?? s.scientificName}
+                  onSelect={handleSelectSuggestion}
+                  renderItem={(s) => (
+                    <>
+                      <span className="italic truncate">{s.scientificName}</span>
+                      {s.scientificNameAuthorship && (
+                        <span className="text-xs text-muted-foreground italic truncate">
+                          {s.scientificNameAuthorship}
+                        </span>
+                      )}
+                      {s.wfoTaxonId && (
+                        <span className="ml-auto pl-2 text-xs text-muted-foreground font-mono">{s.wfoTaxonId}</span>
+                      )}
+                    </>
                   )}
-                  {s.wfoTaxonId && (
-                    <span className="ml-auto pl-2 text-xs text-muted-foreground font-mono">{s.wfoTaxonId}</span>
-                  )}
-                </>
+                />
               )}
-            />
+            </div>
+          </div>
+
+          {taxonLoading && (
+            <div className="flex items-center gap-3 p-4 border rounded-lg bg-muted/30 mt-4">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">Cargando información taxonómica…</span>
+            </div>
           )}
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Escribe al menos 2 caracteres para buscar en el backbone taxonómico.
-        </p>
-      </div>
 
-      {taxonLoading && (
-        <div className="flex items-center gap-3 p-4 border rounded-lg bg-muted/30">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">Cargando información taxonómica…</span>
-        </div>
-      )}
+          {taxonDetail && !taxonLoading && (
+            <div className="rounded-lg border bg-muted/20 p-6 space-y-4 mt-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Lock className="h-4 w-4 text-muted-foreground" />
+                <p className="text-sm font-medium">Información taxonómica verificada</p>
+                <Badge variant="outline" className="text-xs ml-auto">
+                  Solo lectura
+                </Badge>
+              </div>
+              <div className="grid md:grid-cols-2 gap-4">
+                <ReadOnlyField label="WFO ID" value={taxonDetail.wfoTaxonId ?? "—"} className="font-mono" />
+                <ReadOnlyField label="Nombre científico" value={taxonDetail.scientificName ?? "—"} className="italic" />
+              </div>
+              <div className="grid md:grid-cols-2 gap-4">
+                <ReadOnlyField label="Autoría" value={taxonDetail.scientificNameAuthorship ?? "—"} />
+                <ReadOnlyField label="Rango taxonómico" value={taxonDetail.taxonRank ?? "—"} className="capitalize" />
+              </div>
+              <div className="grid md:grid-cols-3 gap-4">
+                <ReadOnlyField label="Familia" value={taxonDetail.family ?? "—"} />
+                <ReadOnlyField label="Género" value={taxonDetail.genus ?? "—"} className="italic" />
+                <ReadOnlyField
+                  label="Epíteto específico"
+                  value={taxonDetail.specificEpithet ?? "—"}
+                  className="italic"
+                />
+              </div>
+            </div>
+          )}
 
-      {taxonDetail && !taxonLoading && (
-        <div className="rounded-lg border bg-muted/20 p-5 space-y-4">
-          <div className="flex items-center gap-2 mb-1">
-            <CheckCircle2 className="h-4 w-4 text-green-500" />
-            <p className="text-sm font-medium">Información taxonómica verificada</p>
-            <Badge variant="outline" className="text-xs ml-auto">
-              Solo lectura
-            </Badge>
-          </div>
+          {!taxonDetail && !taxonLoading && scientificNameInput.trim().length >= 2 && !acOpen && !selectedTaxonID && (
+            <Alert className="mt-4">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>Selecciona un nombre científico de la lista para vincular al taxón.</AlertDescription>
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="pt-6">
+          <FieldSectionHeader title="Datos de la Identificación" subtitle="Fecha, tipo y quién identificó" />
+
           <div className="grid md:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Taxon ID</Label>
-              <div className="flex items-center h-9 px-3 rounded-md border bg-muted/40 text-sm font-mono">
-                {taxonDetail.taxonId ?? "—"}
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="dateIdentified" className="flex flex-wrap items-center gap-2">
+                Fecha de identificación
+                <RequirementBadge kind="optional" />
+                <DwcTerm term="dateIdentified" />
+              </Label>
+              <Input
+                id="dateIdentified"
+                type="date"
+                value={dateIdentified}
+                onChange={(e) => setDateIdentified(e.target.value)}
+              />
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Nombre científico</Label>
-              <div className="flex items-center h-9 px-3 rounded-md border bg-muted/40 text-sm italic">
-                {taxonDetail.scientificName ?? "—"}
-              </div>
-            </div>
-          </div>
-          <div className="grid md:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Autoría</Label>
-              <div className="flex items-center h-9 px-3 rounded-md border bg-muted/40 text-sm">
-                {taxonDetail.scientificNameAuthorship ?? "—"}
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Rango taxonómico</Label>
-              <div className="flex items-center h-9 px-3 rounded-md border bg-muted/40 text-sm capitalize">
-                {taxonDetail.taxonRank ?? "—"}
-              </div>
-            </div>
-          </div>
-          <div className="grid md:grid-cols-3 gap-4">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Familia</Label>
-              <div className="flex items-center h-9 px-3 rounded-md border bg-muted/40 text-sm">
-                {taxonDetail.family ?? "—"}
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Género</Label>
-              <div className="flex items-center h-9 px-3 rounded-md border bg-muted/40 text-sm italic">
-                {taxonDetail.genus ?? "—"}
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Epíteto específico</Label>
-              <div className="flex items-center h-9 px-3 rounded-md border bg-muted/40 text-sm italic">
-                {taxonDetail.specificEpithet ?? "—"}
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="typeStatus" className="flex flex-wrap items-center gap-2">
+                Estado de tipo
+                <RequirementBadge kind="optional" />
+                <DwcTerm term="typeStatus" />
+              </Label>
+              <Select value={typeStatus} onValueChange={setTypeStatus}>
+                <SelectTrigger id="typeStatus">
+                  <SelectValue placeholder="Selecciona" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Holotipo">Holotipo</SelectItem>
+                  <SelectItem value="Isotipo">Isotipo</SelectItem>
+                  <SelectItem value="Paratipo">Paratipo</SelectItem>
+                  <SelectItem value="Lectotipo">Lectotipo</SelectItem>
+                  <SelectItem value="Neotipo">Neotipo</SelectItem>
+                  <SelectItem value="Sintipo">Sintipo</SelectItem>
+                  <SelectItem value="No es tipo">No es tipo</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
-        </div>
-      )}
 
-      {!taxonDetail && !taxonLoading && scientificNameInput.trim().length >= 2 && !acOpen && !selectedTaxonID && (
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>Selecciona un nombre científico de la lista para vincular al taxón.</AlertDescription>
-        </Alert>
-      )}
+          <div className="space-y-2 mt-4">
+            <Label className="flex flex-wrap items-center gap-2">
+              Identificadores
+              <RequirementBadge kind="optional" />
+              <DwcTerm term="identifiedBy" />
+            </Label>
+            <div className="flex gap-2">
+              <Input
+                value={identifierNameInput}
+                onChange={(e) => setIdentifierNameInput(e.target.value)}
+                placeholder="Nombre del identificador"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleAddIdentifier();
+                  }
+                }}
+              />
+              <Input
+                value={identifierOrcidInput}
+                onChange={(e) => setIdentifierOrcidInput(e.target.value)}
+                placeholder="ORCID (opcional)"
+                className="max-w-[180px]"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleAddIdentifier();
+                  }
+                }}
+              />
+              <Button type="button" onClick={handleAddIdentifier} variant="outline">
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {identifiers.map((idn, index) => (
+                <Badge key={index} variant="secondary" className="gap-1">
+                  {idn.name}
+                  {idn.orcid && <span className="text-muted-foreground font-mono text-[10px]"> · {idn.orcid}</span>}
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveIdentifier(index)}
+                    className="ml-1 hover:text-destructive"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          </div>
 
-      {/* Identification form */}
-      <div className="rounded-lg border bg-muted/20 p-5 space-y-4">
-        <p className="text-sm font-semibold">
-          {mode === "edit" ? "Datos de la nueva identificación" : "Identificación"}
-        </p>
-
-        <div className="grid md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="dateIdentified" className="flex items-center gap-2">
-              Fecha de identificación
-              <DwcTerm term="dateIdentified" />
+          <div className="space-y-2 mt-4">
+            <Label htmlFor="identificationVerificationStatus" className="flex flex-wrap items-center gap-2">
+              Estado de verificación
+              <RequirementBadge kind="optional" />
+              <DwcTerm term="identificationVerificationStatus" />
             </Label>
             <Input
-              id="dateIdentified"
-              type="date"
-              value={dateIdentified}
-              onChange={(e) => setDateIdentified(e.target.value)}
+              id="identificationVerificationStatus"
+              value={identificationVerificationStatus}
+              onChange={(event) => setIdentificationVerificationStatus(event.target.value)}
+              placeholder="Ej: Verificada por especialista"
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="typeStatus" className="flex items-center gap-2">
-              Estado de tipo
-              <DwcTerm term="typeStatus" />
-            </Label>
-            <Select value={typeStatus} onValueChange={setTypeStatus}>
-              <SelectTrigger id="typeStatus">
-                <SelectValue placeholder="Selecciona" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Holotipo">Holotipo</SelectItem>
-                <SelectItem value="Isotipo">Isotipo</SelectItem>
-                <SelectItem value="Paratipo">Paratipo</SelectItem>
-                <SelectItem value="Lectotipo">Lectotipo</SelectItem>
-                <SelectItem value="Neotipo">Neotipo</SelectItem>
-                <SelectItem value="Sintipo">Sintipo</SelectItem>
-                <SelectItem value="No es tipo">No es tipo</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label className="flex items-center gap-2">
-            Identificadores <DwcTerm term="identifiedBy" />
-          </Label>
-          <div className="flex gap-2">
-            <Input
-              value={identifierNameInput}
-              onChange={(e) => setIdentifierNameInput(e.target.value)}
-              placeholder="Nombre del identificador"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  handleAddIdentifier();
-                }
-              }}
-            />
-            <Input
-              value={identifierOrcidInput}
-              onChange={(e) => setIdentifierOrcidInput(e.target.value)}
-              placeholder="ORCID (opcional)"
-              className="max-w-[180px]"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  handleAddIdentifier();
-                }
-              }}
-            />
-            <Button type="button" onClick={handleAddIdentifier} variant="outline">
-              <Plus className="h-4 w-4" />
-            </Button>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {identifiers.map((idn, index) => (
-              <Badge key={index} variant="secondary" className="gap-1">
-                {idn.name}
-                {idn.orcid && <span className="text-muted-foreground font-mono text-[10px]"> · {idn.orcid}</span>}
-                <button
-                  type="button"
-                  onClick={() => handleRemoveIdentifier(index)}
-                  className="ml-1 hover:text-destructive"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            ))}
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="identificationVerificationStatus" className="flex items-center gap-2">
-            Estado de verificación <DwcTerm term="identificationVerificationStatus" />
-          </Label>
-          <Input
-            id="identificationVerificationStatus"
-            value={identificationVerificationStatus}
-            onChange={(event) => setIdentificationVerificationStatus(event.target.value)}
-            placeholder="Ej: Verificada por especialista"
-          />
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   );
 
@@ -1487,6 +1581,7 @@ export function NewOccurrencePage({
       onCapture={handleCapture}
       capturing={captureLoading}
       cameraError={cameraError}
+      cameraAvailable={cameraAvailable}
       disabled={inlineSaving || isSubmitting}
     />
   );
@@ -1495,6 +1590,19 @@ export function NewOccurrencePage({
      RENDER PRINCIPAL
   ══════════════════════════════════════════════════ */
   const canSubmit = mode === "edit" ? !!catalogNumber : !!catalogNumber && !!selectedTaxonID;
+
+  // Refleja exactamente los badges "Obligatorio"/"Recomendado" que ya se ven en cada pestaña.
+  const TAB_STATUSES: Record<TabKey, TabCompletionStatus> = {
+    occurrence: tabCompletionStatus(!!catalogNumber.trim(), !!recordedBy.trim() && !!occurrenceStatus),
+    event: tabCompletionStatus(true, !!eventDate),
+    location: tabCompletionStatus(true, !!locality.trim()),
+    taxon: tabCompletionStatus(mode === "edit" || !!selectedTaxonID, true),
+    images: tabCompletionStatus(true, newImages.length + existingImages.length > 0),
+  };
+
+  // Mismo criterio que decide canSubmit: qué pestañas tienen el ícono rojo (falta lo
+  // obligatorio) en este momento, para nombrarlas en el tooltip del botón de guardar.
+  const missingTabLabels = TABS.filter((tab) => TAB_STATUSES[tab.key] === "missing").map((tab) => tab.label);
 
   return (
     <>
@@ -1510,15 +1618,18 @@ export function NewOccurrencePage({
           </Button>
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h1 className="text-3xl mb-2">{mode === "edit" ? "Actualizar ocurrencia" : "Nueva ocurrencia"}</h1>
-              <p className="text-muted-foreground">
+              <h1 className="text-3xl font-semibold tracking-tight mb-2">
+                {mode === "edit" ? "Actualizar ocurrencia" : "Nueva ocurrencia"}
+              </h1>
+              <p className="text-sm text-muted-foreground">
                 {mode === "edit"
                   ? "Modifica la información del espécimen según estándar Darwin Core"
                   : "Completa la información del espécimen recolectado según estándar Darwin Core"}
               </p>
             </div>
 
-            <div className="flex-shrink-0 pt-1">
+            <div className="flex-shrink-0 pt-1 flex items-center gap-2">
+              <DwcGlossaryDialog />
               {!canSubmit ? (
                 <TooltipProvider>
                   <Tooltip>
@@ -1527,7 +1638,8 @@ export function NewOccurrencePage({
                         <Button
                           type="button"
                           disabled
-                          className="bg-[rgb(117,26,29)]/40 text-foreground/40 pointer-events-none"
+                          style={{ backgroundColor: "rgb(117,26,29)", color: "white" }}
+                          className="opacity-50 pointer-events-none"
                         >
                           <CheckCircle2 className="h-4 w-4 mr-2" />
                           {mode === "edit" ? "Actualizar ocurrencia" : "Guardar ocurrencia"}
@@ -1535,11 +1647,7 @@ export function NewOccurrencePage({
                       </span>
                     </TooltipTrigger>
                     <TooltipContent className="bg-popover text-popover-foreground border shadow-md z-[100]">
-                      <p>
-                        {mode === "create"
-                          ? "Completa el número de catálogo y selecciona un taxón para guardar"
-                          : "Completa el número de catálogo para guardar"}
-                      </p>
+                      <p>Completa los campos obligatorios de {missingTabLabels.join(" y ")} para guardar</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -1566,27 +1674,30 @@ export function NewOccurrencePage({
         {/* Tabs navigation */}
         <div className="mb-6">
           <div className="flex gap-1.5 bg-muted rounded-xl p-1.5 overflow-x-auto">
-            {TABS.map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setActiveTab(tab.key)}
-                className={[
-                  "flex-1 min-w-fit px-5 py-2.5 text-sm whitespace-nowrap rounded-lg transition-all duration-200 relative",
-                  activeTab === tab.key
-                    ? "bg-white text-[rgb(117,26,29)] font-semibold shadow-sm"
-                    : "font-medium text-muted-foreground hover:text-foreground",
-                ].join(" ")}
-              >
-                {tab.label}
-                {tab.key === "taxon" && selectedTaxonID && (
-                  <span className="inline-flex rounded-full" style={TAB_DOT_STYLE} />
-                )}
-                {tab.key === "images" && (newImages.length > 0 || existingImages.length > 0) && (
-                  <span className="inline-flex rounded-full" style={TAB_DOT_STYLE} />
-                )}
-              </button>
-            ))}
+            {TABS.map((tab) => {
+              const Icon = TAB_ICONS[tab.key];
+              const status = TAB_STATUS_META[TAB_STATUSES[tab.key]];
+              const StatusIcon = status.icon;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setActiveTab(tab.key)}
+                  className={[
+                    "flex-1 min-w-fit flex items-center justify-center gap-2 px-4 py-3 text-sm whitespace-nowrap rounded-lg transition-all duration-200",
+                    activeTab === tab.key
+                      ? "bg-white text-[rgb(117,26,29)] font-semibold shadow-sm"
+                      : "font-medium text-muted-foreground hover:text-foreground",
+                  ].join(" ")}
+                >
+                  <Icon className="h-4 w-4" />
+                  {tab.label}
+                  <span title={status.title} className="inline-flex">
+                    <StatusIcon className="h-3.5 w-3.5" style={{ color: status.color }} />
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
 

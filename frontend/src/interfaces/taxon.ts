@@ -57,6 +57,7 @@ export interface TaxonIdentificationOut {
 
 export interface TaxonDetailOut {
   taxonId: string;
+  wfoTaxonId: string | null;
   scientificNameID: string | null;
   localID: string | null;
   scientificName: string | null;

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
+import { Card, CardContent } from "../ui/card";
+import { FieldSectionHeader } from "../ui/field-section";
 import { ArrowLeft, Eye, Leaf, CheckCircle, XCircle, AlertCircle, Pencil } from "lucide-react";
 
 import { useAuth } from "@contexts/AuthContext";
@@ -11,6 +13,7 @@ import { OccurrenceLocationMap } from "../OccurrenceLocationMap";
 import { ImageLightbox } from "../ImageLightbox";
 import {
   OCCURRENCE_TABS as TABS,
+  OCCURRENCE_TAB_ICONS as TAB_ICONS,
   OCCURRENCE_TAB_DOT_STYLE as TAB_DOT_STYLE,
   type OccurrenceTabKey as TabKey,
 } from "@constants/occurrenceTabs";
@@ -167,59 +170,85 @@ export function OccurrenceDetailPage({
 
   const renderOccurrenceTab = () => (
     <div className="space-y-6">
-      <div className="grid md:grid-cols-3 gap-4">
-        <Field label="Número de catálogo" value={data.catalogNumber} />
-        <Field label="Número de registro" value={data.recordNumber} />
-        <Field label="Registrado por" value={data.recordedBy} />
-      </div>
+      <Card>
+        <CardContent className="pt-6">
+          <FieldSectionHeader title="Identificación del Ejemplar" subtitle="Campos clave para trazabilidad" />
+          <div className="grid md:grid-cols-3 gap-4">
+            <Field label="Número de catálogo" value={data.catalogNumber} />
+            <Field label="Número de registro" value={data.recordNumber} />
+            <Field label="Registrado por" value={data.recordedBy} />
+          </div>
+        </CardContent>
+      </Card>
 
-      <div className="grid md:grid-cols-3 gap-4">
-        <div className="space-y-1">
-          <p className="text-xs font-medium text-muted-foreground">Cantidad de organismos</p>
-          <p className="text-sm">
-            {show(data.organismQuantity)}
-            {data.organismQuantityType ? ` (${data.organismQuantityType})` : ""}
-          </p>
-        </div>
-        <Field label="Estado de la ocurrencia" value={data.occurrenceStatus} />
-        <Field label="Etapa de vida" value={data.lifeStage} />
-      </div>
+      <Card>
+        <CardContent className="pt-6">
+          <FieldSectionHeader title="Estado y Cuantificación" subtitle="Atributos biológicos y preservación" />
+          <div className="grid md:grid-cols-3 gap-4">
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-muted-foreground">Cantidad de organismos</p>
+              <p className="text-sm">
+                {show(data.organismQuantity)}
+                {data.organismQuantityType ? ` (${data.organismQuantityType})` : ""}
+              </p>
+            </div>
+            <Field label="Estado de la ocurrencia" value={data.occurrenceStatus} />
+            <Field label="Etapa de vida" value={data.lifeStage} />
+          </div>
+          <div className="grid md:grid-cols-3 gap-4 mt-4">
+            <Field label="Medio de establecimiento" value={data.establishmentMeans} />
+            <Field label="Taxa asociados" value={data.associatedTaxa} />
+            <Field label="Colección" value={data.collection?.collectionName} />
+          </div>
+        </CardContent>
+      </Card>
 
-      <div className="grid md:grid-cols-3 gap-4">
-        <Field label="Medio de establecimiento" value={data.establishmentMeans} />
-        <Field label="Taxa asociados" value={data.associatedTaxa} />
-        <Field label="Colección" value={data.collection?.collectionName} />
-      </div>
-
-      <div className="grid md:grid-cols-3 gap-4">
-        <div className="space-y-1 md:col-span-1">
-          <p className="text-xs font-medium text-muted-foreground">Referencias asociadas</p>
-          <p className="text-sm whitespace-pre-wrap">{show(data.associatedReferences)}</p>
-        </div>
-        <div className="space-y-1 md:col-span-1">
-          <p className="text-xs font-medium text-muted-foreground">Notas de campo</p>
-          <p className="text-sm whitespace-pre-wrap">{show(data.fieldNotes)}</p>
-        </div>
-        <div className="space-y-1 md:col-span-1">
-          <p className="text-xs font-medium text-muted-foreground">Observaciones de la ocurrencia</p>
-          <p className="text-sm whitespace-pre-wrap">{show(data.occurrenceRemarks)}</p>
-        </div>
-      </div>
+      <Card>
+        <CardContent className="pt-6">
+          <FieldSectionHeader title="Notas y Observaciones" subtitle="Documentación de libreta" />
+          <div className="grid md:grid-cols-3 gap-4">
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-muted-foreground">Referencias asociadas</p>
+              <p className="text-sm whitespace-pre-wrap">{show(data.associatedReferences)}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-muted-foreground">Notas de campo</p>
+              <p className="text-sm whitespace-pre-wrap">{show(data.fieldNotes)}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-muted-foreground">Observaciones de la ocurrencia</p>
+              <p className="text-sm whitespace-pre-wrap">{show(data.occurrenceRemarks)}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {data.dynamicProperties && Object.keys(data.dynamicProperties).length > 0 && (
-        <div className="rounded-md border bg-muted/30 p-3 space-y-2">
-          <p className="text-xs font-medium text-muted-foreground">Propiedades adicionales</p>
-          <div className="flex flex-wrap gap-1.5">
-            {Object.entries(data.dynamicProperties)
-              .sort(([a], [b]) => a.localeCompare(b))
-              .map(([k, v]) => (
-                <Badge key={k} variant="secondary" className="gap-1 text-xs font-normal">
-                  <span className="font-mono font-medium">{k}</span>:{" "}
-                  {typeof v === "object" ? JSON.stringify(v) : String(v)}
-                </Badge>
-              ))}
-          </div>
-        </div>
+        <Card>
+          <CardContent className="pt-6">
+            <FieldSectionHeader
+              title="Propiedades Adicionales"
+              subtitle="Atributos libres sin un campo Darwin Core dedicado"
+            />
+            <div className="space-y-2">
+              {Object.entries(data.dynamicProperties)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([k, v]) => (
+                  <div
+                    key={k}
+                    className="flex items-center justify-between gap-3 rounded-lg border bg-muted/20 px-3 py-2"
+                  >
+                    <div className="flex flex-wrap items-center gap-2 min-w-0">
+                      <span className="font-mono text-xs font-semibold flex-shrink-0">{k}</span>
+                      <span className="text-sm text-muted-foreground truncate">
+                        {typeof v === "object" ? JSON.stringify(v) : String(v)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       <div className="flex gap-6 text-xs text-muted-foreground border-t pt-3">
@@ -231,165 +260,192 @@ export function OccurrenceDetailPage({
 
   const renderEventTab = () => (
     <div className="space-y-6">
-      <div className="space-y-4">
-        <Field label="Fecha del evento (normalizada)" value={data.eventDate} />
-        <Field label="Fecha original en etiqueta (verbatimEventDate)" value={data.verbatimEventDate} />
-      </div>
-      <div className="grid md:grid-cols-3 gap-4">
-        <Field label="Año" value={data.year} />
-        <Field label="Mes" value={data.month} />
-        <Field label="Día" value={data.day} />
-      </div>
-      <div className="space-y-1">
-        <p className="text-xs font-medium text-muted-foreground">Hábitat</p>
-        <p className="text-sm whitespace-pre-wrap">{show(data.habitat)}</p>
-      </div>
-      <div className="space-y-1">
-        <p className="text-xs font-medium text-muted-foreground">Observaciones del evento</p>
-        <p className="text-sm whitespace-pre-wrap">{show(data.eventRemarks)}</p>
-      </div>
+      <Card>
+        <CardContent className="pt-6">
+          <FieldSectionHeader title="Fecha del Evento" subtitle="Cuándo se recolectó el ejemplar" />
+          <div className="grid md:grid-cols-2 gap-4">
+            <Field label="Fecha del evento (normalizada)" value={data.eventDate} />
+            <Field label="Fecha original en etiqueta" value={data.verbatimEventDate} />
+          </div>
+          <div className="grid md:grid-cols-3 gap-4 mt-4">
+            <Field label="Año" value={data.year} />
+            <Field label="Mes" value={data.month} />
+            <Field label="Día" value={data.day} />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="pt-6">
+          <FieldSectionHeader title="Hábitat y Observaciones" subtitle="Contexto ecológico del hallazgo" />
+          <div className="grid md:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-muted-foreground">Hábitat</p>
+              <p className="text-sm whitespace-pre-wrap">{show(data.habitat)}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-muted-foreground">Observaciones del evento</p>
+              <p className="text-sm whitespace-pre-wrap">{show(data.eventRemarks)}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 
   const renderLocationTab = () => (
     <div className="space-y-6">
-      <OccurrenceLocationMap
-        lat={data.decimalLatitude}
-        lon={data.decimalLongitude}
-        footprintWKT={data.footprintWKT}
-        uncertaintyMeters={data.coordinateUncertaintyInMeters}
-      />
+      <Card>
+        <CardContent className="pt-6">
+          <FieldSectionHeader title="Ubicación en el Mapa" subtitle="Punto o área registrada" />
+          <OccurrenceLocationMap
+            lat={data.decimalLatitude}
+            lon={data.decimalLongitude}
+            footprintWKT={data.footprintWKT}
+            uncertaintyMeters={data.coordinateUncertaintyInMeters}
+          />
+          <div className="grid md:grid-cols-3 gap-4 mt-4">
+            <Field label="Latitud decimal" value={data.decimalLatitude} mono />
+            <Field label="Longitud decimal" value={data.decimalLongitude} mono />
+            <Field
+              label="Incertidumbre de la coordenada"
+              value={data.coordinateUncertaintyInMeters != null ? `${data.coordinateUncertaintyInMeters} m` : null}
+            />
+          </div>
+        </CardContent>
+      </Card>
 
-      <div className="grid md:grid-cols-4 gap-4">
-        <div className="space-y-1">
-          <p className="text-xs font-medium text-muted-foreground">País</p>
-          <p className="text-sm">
-            {show(data.country)}
-            {data.countryCode ? ` (${data.countryCode})` : ""}
-          </p>
-        </div>
-        <Field label="Departamento / Región" value={data.stateProvince} />
-        <Field label="Provincia" value={data.county} />
-        <Field label="Distrito / Municipio" value={data.municipality} />
-      </div>
+      <Card>
+        <CardContent className="pt-6">
+          <FieldSectionHeader title="División Administrativa" subtitle="País, departamento, provincia y distrito" />
+          <div className="grid md:grid-cols-4 gap-4">
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-muted-foreground">País</p>
+              <p className="text-sm">
+                {show(data.country)}
+                {data.countryCode ? ` (${data.countryCode})` : ""}
+              </p>
+            </div>
+            <Field label="Departamento / Región" value={data.stateProvince} />
+            <Field label="Provincia" value={data.county} />
+            <Field label="Distrito / Municipio" value={data.municipality} />
+          </div>
+        </CardContent>
+      </Card>
 
-      <div className="grid md:grid-cols-2 gap-4">
-        <Field label="Localidad" value={data.locality} />
-        <Field label="Localidad en etiqueta (verbatimLocality)" value={data.verbatimLocality} />
-      </div>
-
-      <div className="space-y-1">
-        <p className="text-xs font-medium text-muted-foreground">Observaciones sobre la localización</p>
-        <p className="text-sm whitespace-pre-wrap">{show(data.locationRemarks)}</p>
-      </div>
-
-      <div className="grid md:grid-cols-3 gap-4">
-        <Field label="Latitud decimal" value={data.decimalLatitude} mono />
-        <Field label="Longitud decimal" value={data.decimalLongitude} mono />
-        <Field
-          label="Incertidumbre de la coordenada"
-          value={data.coordinateUncertaintyInMeters != null ? `${data.coordinateUncertaintyInMeters} m` : null}
-        />
-      </div>
-
-      <div className="grid md:grid-cols-3 gap-4">
-        <Field label="Elevación en etiqueta" value={data.verbatimElevation} />
-      </div>
-
-      <div className="grid md:grid-cols-2 gap-4">
-        <Field label="Estado de verificación de georreferenciación" value={data.georeferenceVerificationStatus} />
-      </div>
+      <Card>
+        <CardContent className="pt-6">
+          <FieldSectionHeader title="Localidad y Contexto" subtitle="Descripción del sitio y su verificación" />
+          <div className="grid md:grid-cols-3 gap-4">
+            <Field label="Localidad" value={data.locality} />
+            <Field label="Localidad en etiqueta" value={data.verbatimLocality} />
+            <Field label="Estado de verificación" value={data.georeferenceVerificationStatus} />
+          </div>
+          <div className="grid md:grid-cols-2 gap-4 mt-4">
+            <Field label="Elevación en etiqueta" value={data.verbatimElevation} />
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-muted-foreground">Observaciones sobre la localización</p>
+              <p className="text-sm whitespace-pre-wrap">{show(data.locationRemarks)}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 
   const renderTaxonTab = () => (
     <div className="space-y-6">
-      {sortedIdentifications.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Esta ocurrencia aún no tiene identificaciones registradas.</p>
-      ) : (
-        <div className="space-y-3">
-          {sortedIdentifications.map((ident) => (
-            <div key={ident.identificationId} className="rounded-lg border bg-muted/20 p-4 space-y-3">
-              <div className="flex items-start justify-between gap-3 flex-wrap">
-                <div>
-                  <p className="text-sm font-semibold italic leading-tight">{show(ident.scientificName)}</p>
-                  {ident.scientificNameAuthorship && (
-                    <p className="text-xs text-muted-foreground">{ident.scientificNameAuthorship}</p>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  {ident.isCurrent ? (
-                    <Badge
-                      className="font-medium rounded-full px-2 py-0.5"
-                      style={{ ...IDENTIFICATION_STATUS_COLORS.current, fontSize: "11px" }}
-                    >
-                      <CheckCircle className="h-3 w-3 mr-1" />
-                      Vigente
-                    </Badge>
-                  ) : (
-                    <Badge
-                      variant="secondary"
-                      className="font-medium rounded-full px-2 py-0.5"
-                      style={{ fontSize: "11px" }}
-                    >
-                      <XCircle className="h-3 w-3 mr-1" />
-                      No vigente
-                    </Badge>
-                  )}
-                  {ident.identificationVerificationStatus && (
-                    <Badge
-                      className="font-medium rounded-full px-2 py-0.5"
-                      style={{ ...IDENTIFICATION_STATUS_COLORS.verification, fontSize: "11px" }}
-                    >
-                      {ident.identificationVerificationStatus}
-                    </Badge>
-                  )}
-                  {ident.taxon?.taxonId && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 px-2 text-[11px]"
-                      onClick={() => goToTaxon(ident.taxon?.taxonId)}
-                    >
-                      <Eye className="h-3 w-3 mr-1" />
-                      Ver taxón
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid md:grid-cols-3 gap-3 text-xs">
-                {ident.typeStatus && (
-                  <div>
-                    <span className="text-muted-foreground">Estado de tipo: </span>
-                    <span className="font-medium">{ident.typeStatus}</span>
+      <Card>
+        <CardContent className="pt-6">
+          <FieldSectionHeader title="Identificaciones" subtitle="Historial de identificaciones de este ejemplar" />
+          {sortedIdentifications.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Esta ocurrencia aún no tiene identificaciones registradas.</p>
+          ) : (
+            <div className="space-y-3">
+              {sortedIdentifications.map((ident) => (
+                <div key={ident.identificationId} className="rounded-lg border bg-muted/20 p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div>
+                      <p className="text-sm font-semibold italic leading-tight">{show(ident.scientificName)}</p>
+                      {ident.scientificNameAuthorship && (
+                        <p className="text-xs text-muted-foreground">{ident.scientificNameAuthorship}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {ident.isCurrent ? (
+                        <Badge
+                          className="font-medium rounded-full px-2 py-0.5"
+                          style={{ ...IDENTIFICATION_STATUS_COLORS.current, fontSize: "11px" }}
+                        >
+                          <CheckCircle className="h-3 w-3 mr-1" />
+                          Vigente
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant="secondary"
+                          className="font-medium rounded-full px-2 py-0.5"
+                          style={{ fontSize: "11px" }}
+                        >
+                          <XCircle className="h-3 w-3 mr-1" />
+                          No vigente
+                        </Badge>
+                      )}
+                      {ident.identificationVerificationStatus && (
+                        <Badge
+                          className="font-medium rounded-full px-2 py-0.5"
+                          style={{ ...IDENTIFICATION_STATUS_COLORS.verification, fontSize: "11px" }}
+                        >
+                          {ident.identificationVerificationStatus}
+                        </Badge>
+                      )}
+                      {ident.taxon?.taxonId && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-2 text-[11px]"
+                          onClick={() => goToTaxon(ident.taxon?.taxonId)}
+                        >
+                          <Eye className="h-3 w-3 mr-1" />
+                          Ver taxón
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                )}
-                {ident.dateIdentified && (
-                  <div>
-                    <span className="text-muted-foreground">Fecha: </span>
-                    <span className="font-medium">{ident.dateIdentified}</span>
+
+                  <div className="grid md:grid-cols-3 gap-3 text-xs">
+                    {ident.typeStatus && (
+                      <div>
+                        <span className="text-muted-foreground">Estado de tipo: </span>
+                        <span className="font-medium">{ident.typeStatus}</span>
+                      </div>
+                    )}
+                    {ident.dateIdentified && (
+                      <div>
+                        <span className="text-muted-foreground">Fecha: </span>
+                        <span className="font-medium">{ident.dateIdentified}</span>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
 
-              {ident.identifiers && ident.identifiers.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {ident.identifiers.map((idn) => (
-                    <Badge key={idn.identifierId} variant="secondary" className="text-xs">
-                      {idn.fullName ?? idn.orcID ?? "—"}
-                    </Badge>
-                  ))}
+                  {ident.identifiers && ident.identifiers.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {ident.identifiers.map((idn) => (
+                        <Badge key={idn.identifierId} variant="secondary" className="text-xs">
+                          {idn.fullName ?? idn.orcID ?? "—"}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+
+                  <p className="text-[11px] text-muted-foreground/80">
+                    Creado: {formatDateTime(ident.createdAt)} · Actualizado: {formatDateTime(ident.updatedAt)}
+                  </p>
                 </div>
-              )}
-
-              <p className="text-[11px] text-muted-foreground/80">
-                Creado: {formatDateTime(ident.createdAt)} · Actualizado: {formatDateTime(ident.updatedAt)}
-              </p>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 
@@ -402,57 +458,62 @@ export function OccurrenceDetailPage({
       photographer: img.photographer,
     }));
 
-    if (images.length === 0) {
-      return <p className="text-sm text-muted-foreground">Esta ocurrencia no tiene imágenes asociadas.</p>;
-    }
-
     return (
-      <div className="space-y-4">
-        <div className="hb-image-grid">
-          {images.map((img, i) => (
-            <div key={img.id} className="hb-image-card">
-              <div className="hb-image-thumb">
-                <img src={img.src} alt={img.name || "Imagen de la ocurrencia"} loading="lazy" />
-                <button
-                  type="button"
-                  className="hb-image-view"
-                  onClick={() => setViewerIndex(i)}
-                  title="Ver en pantalla completa"
-                  aria-label="Ver en pantalla completa"
-                >
-                  <Eye className="h-4 w-4" />
-                </button>
+      <Card>
+        <CardContent className="pt-6">
+          <FieldSectionHeader title={`Imágenes (${images.length})`} subtitle="Fotografías del ejemplar" />
+          {images.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Esta ocurrencia no tiene imágenes asociadas.</p>
+          ) : (
+            <>
+              <div className="hb-image-grid">
+                {images.map((img, i) => (
+                  <div key={img.id} className="hb-image-card">
+                    <div className="hb-image-thumb">
+                      <img src={img.src} alt={img.name || "Imagen de la ocurrencia"} loading="lazy" />
+                      <button
+                        type="button"
+                        className="hb-image-view"
+                        onClick={() => setViewerIndex(i)}
+                        title="Ver en pantalla completa"
+                        aria-label="Ver en pantalla completa"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <div className="hb-image-body">
+                      <div className="hb-image-meta">
+                        <span className="hb-image-name" title={img.name}>
+                          {img.name}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Fotógrafo/a:{" "}
+                        {img.photographer ? (
+                          <span className="text-foreground">{img.photographer}</span>
+                        ) : (
+                          <span className="italic">no indicado</span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div className="hb-image-body">
-                <div className="hb-image-meta">
-                  <span className="hb-image-name" title={img.name}>
-                    {img.name}
-                  </span>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Fotógrafo/a:{" "}
-                  {img.photographer ? (
-                    <span className="text-foreground">{img.photographer}</span>
-                  ) : (
-                    <span className="italic">no indicado</span>
-                  )}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
 
-        <ImageLightbox
-          images={images.map((img) => ({
-            src: img.src,
-            title: img.name || "Imagen de la ocurrencia",
-            caption: img.photographer ? `Fotógrafo/a: ${img.photographer}` : undefined,
-          }))}
-          index={viewerIndex}
-          onIndexChange={setViewerIndex}
-          onClose={() => setViewerIndex(null)}
-        />
-      </div>
+              <ImageLightbox
+                images={images.map((img) => ({
+                  src: img.src,
+                  title: img.name || "Imagen de la ocurrencia",
+                  caption: img.photographer ? `Fotógrafo/a: ${img.photographer}` : undefined,
+                }))}
+                index={viewerIndex}
+                onIndexChange={setViewerIndex}
+                onClose={() => setViewerIndex(null)}
+              />
+            </>
+          )}
+        </CardContent>
+      </Card>
     );
   };
 
@@ -467,15 +528,15 @@ export function OccurrenceDetailPage({
             ? "Volver a Colección"
             : returnTo === "map"
               ? "Volver al Mapa"
-              : "Volver a ocurrencias"}
+              : "Volver a Ocurrencias"}
         </Button>
 
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-4">
             <Leaf className="h-8 w-8 text-primary mt-1 flex-shrink-0" />
             <div>
-              <h1 className="text-3xl mb-1 italic">{sciName}</h1>
-              {sciAuth && <p className="text-muted-foreground text-sm">{sciAuth}</p>}
+              <h1 className="text-3xl font-semibold tracking-tight mb-1 italic">{sciName}</h1>
+              {sciAuth && <p className="text-sm text-muted-foreground">{sciAuth}</p>}
               <div className="flex gap-2 mt-2 flex-wrap text-sm text-muted-foreground">
                 <span>Catálogo: {show(data.catalogNumber)}</span>
                 {data.collection?.collectionName && (
@@ -505,27 +566,31 @@ export function OccurrenceDetailPage({
       {/* Tabs navigation */}
       <div className="mb-6">
         <div className="flex gap-1.5 bg-muted rounded-xl p-1.5 overflow-x-auto">
-          {TABS.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setActiveTab(tab.key)}
-              className={[
-                "flex-1 min-w-fit px-5 py-2.5 text-sm whitespace-nowrap rounded-lg transition-all duration-200",
-                activeTab === tab.key
-                  ? "bg-white text-[rgb(117,26,29)] font-semibold shadow-sm"
-                  : "font-medium text-muted-foreground hover:text-foreground",
-              ].join(" ")}
-            >
-              {tab.label}
-              {tab.key === "taxon" && sortedIdentifications.length > 0 && (
-                <span className="inline-flex rounded-full" style={TAB_DOT_STYLE} />
-              )}
-              {tab.key === "images" && data.images && data.images.length > 0 && (
-                <span className="inline-flex rounded-full" style={TAB_DOT_STYLE} />
-              )}
-            </button>
-          ))}
+          {TABS.map((tab) => {
+            const Icon = TAB_ICONS[tab.key];
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveTab(tab.key)}
+                className={[
+                  "flex-1 min-w-fit flex items-center justify-center gap-2 px-4 py-3 text-sm whitespace-nowrap rounded-lg transition-all duration-200",
+                  activeTab === tab.key
+                    ? "bg-white text-[rgb(117,26,29)] font-semibold shadow-sm"
+                    : "font-medium text-muted-foreground hover:text-foreground",
+                ].join(" ")}
+              >
+                <Icon className="h-4 w-4" />
+                {tab.label}
+                {tab.key === "taxon" && sortedIdentifications.length > 0 && (
+                  <span className="inline-flex rounded-full" style={TAB_DOT_STYLE} />
+                )}
+                {tab.key === "images" && data.images && data.images.length > 0 && (
+                  <span className="inline-flex rounded-full" style={TAB_DOT_STYLE} />
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 
