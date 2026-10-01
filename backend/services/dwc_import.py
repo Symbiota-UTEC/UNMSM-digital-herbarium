@@ -93,18 +93,17 @@ def _to_float(v: Optional[str]) -> Optional[float]:
         return None
 
 
-def _to_json_value(v: Optional[str]) -> Any:
-    """
-    Intenta parsear JSON. Si falla, retorna el string original (válido como JSON string).
-    Preferimos objetos/dicts para dynamicProperties, pero aceptamos cualquier JSON válido.
-    """
+def _to_json_value(v: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Valida dynamicProperties como un objeto JSON o null."""
     if v is None:
         return None
     try:
-        return json.loads(v)
-    except Exception:
-        # Guarda la cadena tal cual; SQLAlchemy JSON la serializa como string JSON.
-        return v
+        parsed = json.loads(v)
+    except json.JSONDecodeError as e:
+        raise ValueError("dynamicProperties no es un JSON válido") from e
+    if parsed is not None and not isinstance(parsed, dict):
+        raise ValueError("dynamicProperties debe ser un objeto JSON o null")
+    return parsed
 
 
 def _to_bool(v: Optional[str]) -> Optional[bool]:
@@ -301,9 +300,7 @@ def _process_dwc_csv(
     try:
         for row in reader:
             if len(row) != len(headers):
-                raise ValueError(
-                    f"se esperaban {len(headers)} columnas, se encontraron {len(row)}"
-                )
+                raise ValueError(f"se esperaban {len(headers)} columnas, se encontraron {len(row)}")
             stats["rows"] += 1
 
             # Extract por entidad
