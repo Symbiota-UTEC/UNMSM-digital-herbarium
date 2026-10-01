@@ -9,15 +9,15 @@ export const API = {
       REG_REQUEST: "/auth/registration-request",
     },
     USERS: {
-      BY_EMAIL: "/users/by-email",
+      BASE: "/users",
       BY_ID: (userId: string) => `/users/${userId}`,
     },
     COLLECTIONS: {
       BASE: "/collections",
       BY_ID: (collectionId: string) => `/collections/${collectionId}`,
       ACCESS_USERS: (collectionId: string) => `/collections/${collectionId}/access-users`,
-      OCCURRENCES_BRIEF: (collectionId: string) => `/collections/${collectionId}/occurrences/brief`,
-      ADD_USER: (collectionId: string) => `/collections/${collectionId}/permissions/add-user`,
+      OCCURRENCES: (collectionId: string) => `/collections/${collectionId}/occurrences`,
+      PERMISSIONS: (collectionId: string) => `/collections/${collectionId}/permissions`,
     },
     OCCURRENCES: {
       BASE: "/occurrences",
@@ -26,8 +26,6 @@ export const API = {
       IDENTIFICATIONS: (occurrenceId: string) => `/occurrences/${occurrenceId}/identifications`,
       IDENTIFICATION_BY_ID: (occurrenceId: string, identificationId: string) =>
         `/occurrences/${occurrenceId}/identifications/${identificationId}`,
-      IDENTIFICATION_SET_CURRENT: (occurrenceId: string, identificationId: string) =>
-        `/occurrences/${occurrenceId}/identifications/${identificationId}/current`,
     },
     TAXON: {
       TREE: "/taxon/tree",

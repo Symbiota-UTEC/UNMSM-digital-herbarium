@@ -22,7 +22,7 @@ router = APIRouter(prefix="/institutions", tags=["Institutions"])
 @router.get(
     "",
     response_model=Page[InstitutionOut],
-    summary="Listar instituciones con paginación",
+    summary="Lista las instituciones (paginado)",
 )
 def list_institutions(
     db: Session = Depends(get_db),
@@ -40,7 +40,7 @@ def list_institutions(
 @router.get(
     "/{institution_id}",
     response_model=InstitutionOut,
-    summary="Obtener institución por id",
+    summary="Obtiene una institución por id",
 )
 def get_institution_by_id(
     institution_id: UUID,
@@ -53,7 +53,7 @@ def get_institution_by_id(
     "",
     response_model=InstitutionOut,
     status_code=status.HTTP_201_CREATED,
-    summary="Crear una nueva institución",
+    summary="Crea una nueva institución",
 )
 def create_institution(
     institution: InstitutionCreate,
@@ -66,7 +66,7 @@ def create_institution(
 @router.patch(
     "/{institution_id}",
     response_model=InstitutionOut,
-    summary="Actualizar información de una institución (parcial)",
+    summary="Actualiza la información de una institución (parcial)",
 )
 def update_institution(
     institution_id: UUID,

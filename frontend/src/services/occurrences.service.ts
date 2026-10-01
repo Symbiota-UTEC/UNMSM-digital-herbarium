@@ -244,8 +244,8 @@ export const occurrencesService = {
     identificationId: string,
   ): Promise<OccurrenceItem> {
     const res = await apiFetch(
-      `${API.BASE_URL}${API.PATHS.OCCURRENCES.IDENTIFICATION_SET_CURRENT(occurrenceId, identificationId)}`,
-      { method: "PATCH" },
+      `${API.BASE_URL}${API.PATHS.OCCURRENCES.IDENTIFICATION_BY_ID(occurrenceId, identificationId)}`,
+      { method: "PATCH", body: JSON.stringify({ isCurrent: true }) },
     );
     await throwIfError(res);
     return res.json();

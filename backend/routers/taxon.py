@@ -28,7 +28,7 @@ router = APIRouter(prefix="/taxon", tags=["Taxon"])
 @router.get(
     "/tree",
     response_model=Page[TaxonTreeNode],
-    summary="Devuelve nodos del árbol taxonómico (hijas de un taxón padre).",
+    summary="Devuelve nodos del árbol taxonómico (hijas de un taxón padre)",
 )
 def get_taxon_tree(
     parent_id: Optional[str] = Query(
@@ -66,7 +66,7 @@ def get_taxon_tree(
 @router.get(
     "/search",
     response_model=Page[TaxonSearchItem],
-    summary="Busca taxones por nombre científico.",
+    summary="Busca taxones por nombre científico",
 )
 def search_taxa(
     q: str = Query(..., min_length=1, description="Texto a buscar en scientificName."),
@@ -91,7 +91,7 @@ def search_taxa(
 @router.get(
     "/{taxon_id}",
     response_model=TaxonDetailOut,
-    summary="Devuelve un taxón del backbone (sin sus identificaciones: ver /{taxon_id}/identifications).",
+    summary="Devuelve un taxón del backbone (sin sus identificaciones: ver /{taxon_id}/identifications)",
 )
 def get_taxon_detail(
     taxon_id: str,
@@ -103,7 +103,7 @@ def get_taxon_detail(
 @router.get(
     "/{taxon_id}/identifications",
     response_model=Page[TaxonIdentificationOut],
-    summary="Identificaciones que usan este taxón, de ocurrencias visibles para el usuario (paginado).",
+    summary="Lista las identificaciones que usan este taxón, de ocurrencias visibles para el usuario (paginado)",
 )
 def list_taxon_identifications(
     taxon_id: str,

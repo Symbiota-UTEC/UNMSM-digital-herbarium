@@ -12,7 +12,7 @@ export const usersService = {
 
   async getByEmail(apiFetch: ApiFetch, email: string): Promise<ApiUserLookupResponse> {
     const params = new URLSearchParams({ email });
-    const res = await apiFetch(`${API.BASE_URL}${API.PATHS.USERS.BY_EMAIL}?${params.toString()}`);
+    const res = await apiFetch(`${API.BASE_URL}${API.PATHS.USERS.BASE}?${params.toString()}`);
     await throwIfError(res);
     return res.json();
   },

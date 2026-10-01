@@ -60,7 +60,7 @@ export const VISIBILITY = {
 
 export type Visibility = (typeof VISIBILITY)[keyof typeof VISIBILITY];
 
-/** Respuesta del endpoint /by-email */
+/** Respuesta de GET /users?email=... */
 export interface ApiUserLookupResponse {
   found: boolean;
   sameInstitution?: boolean; // puede omitirse si visibility='none'

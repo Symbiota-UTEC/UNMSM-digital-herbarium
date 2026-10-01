@@ -19,7 +19,7 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 @router.get(
     "/registration-requests",
-    summary="Listar solicitudes de registro (paginado, con permisos)",
+    summary="Lista las solicitudes de registro (paginado, según permisos)",
     response_model=Page[RegistrationRequestItem],
 )
 def list_registration_requests(
@@ -43,7 +43,9 @@ def list_registration_requests(
 
 
 # TODO: validar si el nuevo usuario a crear ha sido rejected anteriormente
-@router.post("/registration-request", summary="Creates a register request for a new user")
+@router.post(
+    "/registration-request", summary="Crea una solicitud de registro para un nuevo usuario"
+)
 def register_user(
     username: str = Body(..., embed=True),
     email: str = Body(..., embed=True),
@@ -72,7 +74,7 @@ def register_user(
 
 @router.patch(
     "/registration-request",
-    summary="Update status of a registration request",
+    summary="Actualiza el estado de una solicitud de registro",
 )
 def update_registration_request_status(
     payload: UpdateRequestStatusBody = Body(...),
@@ -82,7 +84,7 @@ def update_registration_request_status(
     return auth_service.update_registration_request_status(db, payload, current_user)
 
 
-@router.post("/login", summary="Authenticate user and return JWT token")
+@router.post("/login", summary="Autentica al usuario y devuelve un token JWT")
 def login_user(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),

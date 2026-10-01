@@ -8,10 +8,14 @@ from backend.models.models import User
 from backend.schemas.autocomplete import ScientificNameSuggestionList, SuggestionList
 from backend.services import autocomplete as autocomplete_service
 
-router = APIRouter(prefix="/autocomplete", tags=["autocomplete"])
+router = APIRouter(prefix="/autocomplete", tags=["Autocomplete"])
 
 
-@router.get("/scientific-name", response_model=ScientificNameSuggestionList)
+@router.get(
+    "/scientific-name",
+    response_model=ScientificNameSuggestionList,
+    summary="Sugiere nombres científicos para autocompletar",
+)
 def autocomplete_scientific_name(
     q: str = Query(..., min_length=1, description="Prefijo del nombre científico"),
     limit: int = Query(10, ge=1, le=50),
@@ -20,7 +24,11 @@ def autocomplete_scientific_name(
     return {"items": autocomplete_service.suggest_scientific_names(db, q, limit)}
 
 
-@router.get("/family", response_model=SuggestionList)
+@router.get(
+    "/family",
+    response_model=SuggestionList,
+    summary="Sugiere familias taxonómicas para autocompletar",
+)
 def autocomplete_family(
     q: str = Query(..., min_length=1),
     limit: int = Query(10, ge=1, le=50),
@@ -29,7 +37,11 @@ def autocomplete_family(
     return {"items": autocomplete_service.suggest_families(db, q, limit)}
 
 
-@router.get("/institution", response_model=SuggestionList)
+@router.get(
+    "/institution",
+    response_model=SuggestionList,
+    summary="Sugiere instituciones para autocompletar",
+)
 def autocomplete_institution(
     q: str = Query(..., min_length=1),
     limit: int = Query(10, ge=1, le=50),
@@ -38,7 +50,11 @@ def autocomplete_institution(
     return {"items": autocomplete_service.suggest_institutions(db, q, limit)}
 
 
-@router.get("/location", response_model=SuggestionList)
+@router.get(
+    "/location",
+    response_model=SuggestionList,
+    summary="Sugiere localidades para autocompletar",
+)
 def autocomplete_location(
     q: str = Query(..., min_length=1),
     limit: int = Query(10, ge=1, le=50),
@@ -48,7 +64,11 @@ def autocomplete_location(
     return {"items": autocomplete_service.suggest_locations(db, q, limit, current_user)}
 
 
-@router.get("/collector", response_model=SuggestionList)
+@router.get(
+    "/collector",
+    response_model=SuggestionList,
+    summary="Sugiere recolectores para autocompletar",
+)
 def autocomplete_collector(
     q: str = Query(..., min_length=1),
     limit: int = Query(10, ge=1, le=50),

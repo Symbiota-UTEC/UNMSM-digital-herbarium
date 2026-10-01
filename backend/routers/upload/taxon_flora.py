@@ -19,7 +19,7 @@ router = APIRouter(tags=["Files"])
 @router.get(
     "/taxon-flora-csv/jobs",
     response_model=Page[TaxonFloraImportJobOut],
-    summary="Lista los trabajos de importación del backbone Taxon (paginado).",
+    summary="Lista los trabajos de importación del backbone Taxon (paginado)",
 )
 def list_taxon_flora_import_jobs(
     page: int = Query(1, ge=1, description="Número de página (1-based)"),
@@ -34,7 +34,7 @@ def list_taxon_flora_import_jobs(
 @router.get(
     "/taxon-flora-csv/jobs/{job_id}",
     response_model=TaxonFloraImportJobOut,
-    summary="Obtiene el estado actual de un trabajo de importación del backbone Taxon.",
+    summary="Obtiene el estado actual de un trabajo de importación del backbone Taxon",
 )
 def get_taxon_flora_import_job(
     job_id: UUID,

@@ -11,7 +11,11 @@ from backend.services.admin_metrics import get_admin_metrics
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
 
-@router.get("/metrics", response_model=AdminMetricsOut)
+@router.get(
+    "/metrics",
+    response_model=AdminMetricsOut,
+    summary="Devuelve métricas agregadas de la plataforma",
+)
 def admin_metrics(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),

@@ -26,6 +26,7 @@ from backend.schemas import Page
 from backend.schemas.occurrence import (
     DynamicPropsIn,
     IdentificationCreateIn,
+    IdentificationUpdateIn,
     OccurrenceBriefItem,
     OccurrenceCreateIn,
     OccurrenceFilters,
@@ -687,9 +688,22 @@ def delete_identification(
     return _load_occurrence_full(db, occurrence_id)
 
 
-def set_current_identification(
-    db: Session, occurrence_id: UUID, identification_id: UUID, current_user: User
+def update_identification(
+    db: Session,
+    occurrence_id: UUID,
+    identification_id: UUID,
+    payload: IdentificationUpdateIn,
+    current_user: User,
 ) -> Occurrence:
+    if not payload.isCurrent:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Solo se soporta isCurrent=true; para quitar la identificación vigente, "
+                "marca otra como vigente."
+            ),
+        )
+
     occ = _load_occurrence_with_collection(db, occurrence_id)
     if not occ:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Occurrence not found")

@@ -302,6 +302,13 @@ class IdentificationCreateIn(StrictBaseModel):
     setAsCurrent: Optional[bool] = False
 
 
+class IdentificationUpdateIn(StrictBaseModel):
+    # Única transición soportada hoy: promover esta identificación a vigente (lo que ya
+    # implica degradar a las demás). Cualquier otro valor es un 400 — no hay forma de
+    # "quitar" la vigente sin promover otra en su lugar.
+    isCurrent: bool
+
+
 class DynamicPropsIn(StrictBaseModel):
     dynamicProperties: Optional[Dict[str, Any] | str] = None
 

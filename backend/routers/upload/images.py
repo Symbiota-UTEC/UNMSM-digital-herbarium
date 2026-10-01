@@ -19,7 +19,7 @@ router = APIRouter(tags=["Files"])
 @router.post(
     "/image",
     status_code=status.HTTP_201_CREATED,
-    summary="Subir una imagen y asociarla a una Occurrence a través de SeaweedFS",
+    summary="Sube una imagen y la asocia a una ocurrencia a través de SeaweedFS",
 )
 def upload_image_seaweedfs(
     occurrence_id: UUID = Form(..., description="ID de la Ocurrencia destino"),
@@ -36,7 +36,7 @@ def upload_image_seaweedfs(
 
 @router.patch(
     "/image/{image_id}",
-    summary="Editar los datos de una imagen (fotógrafo)",
+    summary="Edita los datos de una imagen (fotógrafo)",
 )
 def update_image(
     image_id: UUID,
@@ -50,7 +50,7 @@ def update_image(
 @router.delete(
     "/image/{image_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Eliminar una imagen por su ID",
+    summary="Elimina una imagen por su ID",
 )
 def delete_image(
     image_id: UUID,
@@ -62,7 +62,7 @@ def delete_image(
 
 @router.get(
     "/image/{image_id}",
-    summary="Descargar u obtener una imagen por su ID",
+    summary="Descarga u obtiene una imagen por su ID",
 )
 def get_image_seaweedfs(
     image_id: UUID,

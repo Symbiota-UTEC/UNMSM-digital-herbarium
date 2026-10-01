@@ -44,6 +44,6 @@ app.include_router(autocomplete.router, prefix="/api")
 app.include_router(admin_divisions.router, prefix="/api")
 
 
-@app.get("/", tags=["meta"])
+@app.get("/", tags=["Meta"], summary="Verifica que el servicio esté disponible")
 def root():
     return {"ok": True, "service": "UNMSM Digital Herbarium API"}

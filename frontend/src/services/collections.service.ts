@@ -59,7 +59,7 @@ export const collectionsService = {
     pageSize: number,
   ): Promise<PaginatedResponse<OccurrenceBriefItem>> {
     const res = await apiFetch(
-      `${API.BASE_URL}${API.PATHS.COLLECTIONS.OCCURRENCES_BRIEF(collectionId)}?page=${page}&pageSize=${pageSize}`,
+      `${API.BASE_URL}${API.PATHS.COLLECTIONS.OCCURRENCES(collectionId)}?page=${page}&pageSize=${pageSize}`,
     );
     await throwIfError(res);
     return res.json();
@@ -67,7 +67,7 @@ export const collectionsService = {
 
   /** Lanza ApiError con el status HTTP para que el componente maneje 409, 404, 403, etc. */
   async addUser(apiFetch: ApiFetch, collectionId: string, email: string): Promise<void> {
-    const res = await apiFetch(`${API.BASE_URL}${API.PATHS.COLLECTIONS.ADD_USER(collectionId)}`, {
+    const res = await apiFetch(`${API.BASE_URL}${API.PATHS.COLLECTIONS.PERMISSIONS(collectionId)}`, {
       method: "POST",
       body: JSON.stringify({ email }),
     });

@@ -14,6 +14,7 @@ from backend.schemas import Page
 from backend.schemas.occurrence import (
     DynamicPropsIn,
     IdentificationCreateIn,
+    IdentificationUpdateIn,
     OccurrenceBriefItem,
     OccurrenceCreateIn,
     OccurrenceFilters,
@@ -48,7 +49,7 @@ def create_occurrence(
 @router.get(
     "/map",
     response_model=OccurrenceMapOut,
-    summary="Puntos de ocurrencias para el mapa, con búsqueda por radio o polígono",
+    summary="Devuelve los puntos de ocurrencias para el mapa, con búsqueda por radio o polígono",
 )
 def list_occurrence_map_points(
     collection_id: Optional[UUID] = Query(
@@ -80,7 +81,7 @@ def list_occurrence_map_points(
     "/{occurrence_id}",
     response_model=OccurrenceOut,
     status_code=status.HTTP_200_OK,
-    summary="Detalle de ocurrencia por ID",
+    summary="Devuelve el detalle de una ocurrencia por ID",
 )
 def get_occurrence_by_id(
     occurrence_id: UUID,
@@ -100,7 +101,7 @@ def get_occurrence_by_id(
 @router.get(
     "",
     response_model=Page[OccurrenceBriefItem],
-    summary="Lista de ocurrencias visibles (vista breve) para el usuario actual",
+    summary="Lista las ocurrencias visibles (vista breve) del usuario actual",
 )
 def list_occurrences_basic(
     page: int = Query(1, ge=1, description="Número de página (1-based)"),
@@ -181,19 +182,20 @@ def delete_identification(
 
 
 @router.patch(
-    "/{occurrence_id}/identifications/{identification_id}/current",
+    "/{occurrence_id}/identifications/{identification_id}",
     response_model=OccurrenceOut,
     status_code=status.HTTP_200_OK,
-    summary="Establece una identificación como la vigente",
+    summary="Actualiza una identificación (hoy solo: marcarla como vigente con isCurrent=true)",
 )
-def set_current_identification(
+def update_identification(
     occurrence_id: UUID,
     identification_id: UUID,
+    payload: IdentificationUpdateIn,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    occ = occurrences_service.set_current_identification(
-        db, occurrence_id, identification_id, current_user
+    occ = occurrences_service.update_identification(
+        db, occurrence_id, identification_id, payload, current_user
     )
     return occurrences_service.to_occurrence_out(db, occ, current_user)
 

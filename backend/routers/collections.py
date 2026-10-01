@@ -28,7 +28,7 @@ router = APIRouter(prefix="/collections", tags=["Collections"])
 @router.get(
     "",
     response_model=Page[CollectionOut],
-    summary="Listar colecciones del usuario actual filtradas por tipo de acceso",
+    summary="Lista las colecciones del usuario actual filtradas por tipo de acceso",
 )
 def get_collections(
     access: CollectionAccess = Query(
@@ -62,7 +62,7 @@ def get_collections(
     "",
     response_model=CollectionOut,
     status_code=status.HTTP_201_CREATED,
-    summary="Crear una colección (requiere usuario activo)",
+    summary="Crea una colección (requiere usuario activo)",
 )
 def create_collection(
     payload: CollectionCreate,
@@ -75,7 +75,7 @@ def create_collection(
 @router.get(
     "/{collection_id}",
     response_model=CollectionOut,
-    summary="Detalle de una colección, con lo que el usuario actual puede hacer en ella",
+    summary="Devuelve el detalle de una colección, con lo que el usuario actual puede hacer en ella",
 )
 def get_collection(
     collection_id: UUID,
@@ -88,7 +88,7 @@ def get_collection(
 @router.get(
     "/{collection_id}/access-users",
     response_model=Page[CollectionAccessUser],
-    summary="Usuarios con acceso a una colección (paginado)",
+    summary="Lista los usuarios con acceso a una colección (paginado)",
 )
 def list_collection_access_users(
     collection_id: UUID,
@@ -105,9 +105,9 @@ def list_collection_access_users(
 
 
 @router.get(
-    "/{collection_id}/occurrences/brief",
+    "/{collection_id}/occurrences",
     response_model=Page[OccurrenceBriefItem],
-    summary="Ocurrencias por ID de colección (breve, paginado)",
+    summary="Lista las ocurrencias de una colección (vista breve, paginado)",
 )
 def list_occurrences_brief_by_collection_id(
     collection_id: UUID,
@@ -126,10 +126,10 @@ def list_occurrences_brief_by_collection_id(
 
 
 @router.post(
-    "/{collection_id}/permissions/add-user",
+    "/{collection_id}/permissions",
     response_model=CollectionPermissionOut,
     status_code=status.HTTP_201_CREATED,
-    summary="Agregar usuario (por email) a una colección con rol viewer/editor",
+    summary="Agrega un usuario (por email) a una colección con rol viewer/editor",
 )
 def add_user_to_collection(
     collection_id: UUID,
