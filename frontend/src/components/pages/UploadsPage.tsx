@@ -16,6 +16,12 @@ import type { TaxonFloraImportJob } from "@interfaces/upload";
 import { DataTable, type ColumnDef } from "../ui/data-table";
 import { totalPagesFor } from "@utils/pagination";
 import { formatDateTime } from "@utils/dates";
+import {
+  etaBaselineStorageKey,
+  formatImportEta,
+  restoreEtaBaseline,
+  type EtaBaseline,
+} from "@utils/taxonFloraProgress";
 
 const POLL_MS = 4000;
 
@@ -88,6 +94,7 @@ export function UploadsPage() {
   const { apiFetch, user } = useAuth();
   const isSuperuser = user?.role === Role.Admin;
   const completedJobSyncRef = useRef<string | null>(null);
+  const etaBaselineRef = useRef<EtaBaseline | null>(null);
 
   const [open, setOpen] = useState(false);
   const [csvFile, setCsvFile] = useState<File | null>(null);
@@ -98,6 +105,7 @@ export function UploadsPage() {
   const [jobHistoryPage, setJobHistoryPage] = useState(1);
   const [jobHistoryTotal, setJobHistoryTotal] = useState(0);
   const [expandedJobKey, setExpandedJobKey] = useState<string | null>(null);
+  const [etaClock, setEtaClock] = useState(() => Date.now());
 
   const syncActiveJobFromHistory = (jobs: TaxonFloraImportJob[], preferredJobId?: string | null) => {
     if (jobs.length === 0) {
@@ -207,6 +215,54 @@ export function UploadsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuperuser, activeJob?.jobId, activeJob?.status]);
 
+  useEffect(() => {
+    const seconds = activeJob?.estimatedSecondsRemaining;
+    if (!activeJob || activeJob.status !== ImportJobStatus.Running || seconds == null) {
+      etaBaselineRef.current = null;
+      if (activeJob?.jobId) {
+        try {
+          window.localStorage.removeItem(etaBaselineStorageKey(activeJob.jobId));
+        } catch {
+          // Storage can be unavailable; the ETA still works for this page session.
+        }
+      }
+      return;
+    }
+
+    const sample = {
+      jobId: activeJob.jobId,
+      stage: activeJob.stage,
+      seconds,
+      progressPercent: activeJob.progressPercent,
+    };
+    const storageKey = etaBaselineStorageKey(activeJob.jobId);
+    let storedValue: string | null = null;
+    try {
+      storedValue = window.localStorage.getItem(storageKey);
+    } catch {
+      // Use an in-memory baseline when storage is unavailable.
+    }
+    const baseline = restoreEtaBaseline(sample, storedValue, Date.now());
+    etaBaselineRef.current = baseline;
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(baseline));
+    } catch {
+      // The in-memory baseline still supports a countdown until this page closes.
+    }
+  }, [
+    activeJob?.jobId,
+    activeJob?.stage,
+    activeJob?.progressPercent,
+    activeJob?.estimatedSecondsRemaining,
+    activeJob?.status,
+  ]);
+
+  useEffect(() => {
+    if (activeJob?.status !== ImportJobStatus.Running) return;
+    const intervalId = window.setInterval(() => setEtaClock(Date.now()), 1000);
+    return () => window.clearInterval(intervalId);
+  }, [activeJob?.jobId, activeJob?.status]);
+
   const latestJob = activeJob ?? jobHistory[0] ?? null;
   const jobCurrentPage = jobHistoryPage;
   const jobTotalPages = totalPagesFor(jobHistoryTotal, PAGE_SIZE.TAXON_FLORA_JOBS);
@@ -229,12 +285,29 @@ export function UploadsPage() {
           reparte en menos columnas solo cuando de verdad no entran, sin depender de un
           breakpoint fijo. */}
       <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))" }}>
-        <StatTile label="ETA" value={formatSeconds(job.estimatedSecondsRemaining)} />
+        <StatTile
+          label="Tiempo restante de esta etapa"
+          value={formatImportEta(
+            job.status,
+            job.estimatedSecondsRemaining,
+            etaClock,
+            job.jobId,
+            job.stage,
+            job.progressPercent,
+            etaBaselineRef.current,
+          )}
+        />
         <StatTile label="Última fila" value={job.lastProcessedRow?.toLocaleString("es-PE") || "—"} />
         <StatTile label="Taxones insertados" value={job.taxaInserted.toLocaleString("es-PE")} />
         <StatTile label="Taxones actualizados" value={job.taxaUpdated.toLocaleString("es-PE")} />
         <StatTile label="Taxones vigentes" value={job.taxaSetCurrent.toLocaleString("es-PE")} />
       </div>
+
+      {job.status === ImportJobStatus.Running && (
+        <p className="text-xs text-muted-foreground">
+          Los contadores de taxones son provisionales hasta que se confirme la importación.
+        </p>
+      )}
 
       {job.errorMessage && (
         <Alert variant="destructive">
