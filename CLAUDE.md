@@ -9,31 +9,31 @@ UNMSM Digital Herbarium — a Darwin Core (DwC)-compliant web application for ma
 ### Environment files
 
 Three `.env.sample` files, one per level — copy each to `.env` next to it and fill in:
-- `/.env.sample` — only needed for `docker compose`/`make dev`/`make prd`; seeds the Postgres container.
+- `/.env.sample` — used by both Compose environments for database credentials and frontend build settings.
 - `backend/config/.env.sample` — the backend's only `.env` (see `backend/CLAUDE.md` > Environment Variables).
 - `frontend/.env.sample` — only needed to run `npm run dev` outside Docker.
 
 ## Commands
 
 ```bash
-# Development (backend --reload + Vite HMR)
+# Development (backend --reload + Vite HMR; uses docker-compose.dev.yaml)
 make dev          # Frontend: http://localhost:5173 | Backend: http://localhost:8001
 
-# Production (rebuilds without cache)
+# Production (uses docker-compose.prod.yaml; frontend :3000, backend :8000)
 make prd
 
 # Backend data (run by hand, never automatic)
-make seed-admin   # default admin (SERVICE=backend for make prd)
-make seed-geo     # countries + admin-divisions catalog (SERVICE=backend for make prd)
-make seed-all     # both of the above, once backend-dev is healthy
+make seed-admin   # default admin (ENV=prod for production; SERVICE=backend also selects prod)
+make seed-geo     # countries + admin-divisions catalog (ENV=prod for production)
+make seed-all     # both; run once the selected backend is healthy
 make reset-db     # destructive: wipes and recreates all tables (backend-dev only)
 
 # Stop/teardown
 make stop         # stops containers (keeps data)
 make stop-all     # stops + removes containers, networks, volumes
 
-make logs         # live logs
-make ps           # container status
+make logs         # live logs (ENV=prod for production)
+make ps           # container status (ENV=prod for production)
 
 # Frontend only (outside Docker) — see frontend/CLAUDE.md
 cd frontend && npm run dev    # port 3000
@@ -65,14 +65,13 @@ Cross-cutting rules that touch both:
 
 ## Docker Services
 
-```yaml
-db          # PostGIS (PostgreSQL 16)
-seaweedfs   # Image/file storage
-backend-dev # FastAPI --reload on port 8001
-frontend-dev# Vite dev server on port 5173
-```
+`docker-compose.yaml` contains the shared PostGIS and SeaweedFS services and named
+data volumes. `docker-compose.dev.yaml` adds `backend-dev` (FastAPI `--reload` on
+8001) and `frontend-dev` (Vite HMR on 5173), with source mounts. `docker-compose.prod.yaml`
+adds the built backend (port 8000) and frontend (port 3000); the database and
+SeaweedFS ports are not published in production.
 
-`backend`, `backend-dev` and `frontend` all build from a Dockerfile (`backend-dev`
-reuses `backend/Dockerfile`, just with `--reload` and a live-reload volume mount for
-`backend/`) — dependencies get installed once at `docker compose build`, not on every
-`up`. Only `frontend-dev` still installs live (`npm install` on each start).
+`make dev` and `make prd` select the appropriate files and switch stacks while
+preserving volumes. `make stop-all` is destructive and removes volumes. If an older
+SeaweedFS container already has uploaded images, export and migrate its `/data`
+directory before the first stack switch; see [`docs/deployment.md`](docs/deployment.md).
