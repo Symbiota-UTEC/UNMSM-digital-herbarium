@@ -1,7 +1,7 @@
 fastapi
 uvicorn[standard]
-sqlalchemy
-GeoAlchemy2>=0.14,<0.15
+sqlalchemy>=2.0,<2.2
+GeoAlchemy2>=0.20,<0.21
 psycopg2-binary
 python-dotenv
 python-jose
@@ -13,5 +13,4 @@ openpyxl>=3.1.2
 python-multipart>=0.0.9
 
 requests
-geoalchemy2
 rich
