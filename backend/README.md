@@ -4,7 +4,7 @@ REST API (FastAPI) for the herbarium: Darwin Core occurrences, taxonomy (WFO bac
 
 ## Stack
 
-FastAPI · SQLAlchemy 2.0 + GeoAlchemy2 · PostgreSQL 16 + PostGIS · JWT auth · Pydantic v2 · Python 3.10
+FastAPI · SQLAlchemy 2.0 + GeoAlchemy2 · PostgreSQL 16 + PostGIS · JWT auth · Pydantic v2 · Python 3.12
 
 ## Quick start
 
