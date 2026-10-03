@@ -703,33 +703,6 @@ export function CSVImportPage({ collectionId, onNavigate }: CSVImportPageProps) 
   };
 
   // ==============================
-  // Descarga CSV mapeado
-  // ==============================
-  const handleDownloadMappedCSV = () => {
-    if (headerDupReport.hasDuplicates) {
-      toast.error("No puedes descargar: hay encabezados DWC duplicados. Ajusta el mapeo.");
-      return;
-    }
-    if (!csvFile) return;
-    const out = buildMappedCSV();
-    if (!out) {
-      toast.error("No hay columnas mapeadas para exportar.");
-      return;
-    }
-    const blob = new Blob([out], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    const baseName = csvFile.name.replace(/\.csv$/i, "");
-    a.href = url;
-    a.download = `${baseName}.dwc-mapped.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    toast.success("CSV mapeado generado.");
-  };
-
-  // ==============================
   // Importar con reintentos de encabezado para dynamicProperties
   // ==============================
   const DYNAMIC_HEADER_TRY = [
@@ -882,11 +855,11 @@ export function CSVImportPage({ collectionId, onNavigate }: CSVImportPageProps) 
         </CardContent>
       </Card>
 
-      {/* Paso 1: Cargar archivo */}
+      {/* Selección del archivo */}
       {!csvFile ? (
         <Card>
           <CardHeader>
-            <CardTitle>Paso 1: Selecciona un archivo CSV</CardTitle>
+            <CardTitle>Seleccionar archivo CSV</CardTitle>
             <CardDescription>
               El archivo debe contener una fila de encabezados y al menos una fila de datos
             </CardDescription>
@@ -948,10 +921,10 @@ export function CSVImportPage({ collectionId, onNavigate }: CSVImportPageProps) 
             </CardContent>
           </Card>
 
-          {/* Paso 2: Mapeo */}
+          {/* Mapeo de columnas */}
           <Card className="mb-6">
             <CardHeader>
-              <CardTitle>Paso 2: Mapeo de columnas</CardTitle>
+              <CardTitle>Mapeo de columnas</CardTitle>
               <CardDescription>
                 Selecciona el término <span className="font-medium">Darwin Core</span> para cada columna del CSV.
               </CardDescription>
@@ -1030,37 +1003,6 @@ export function CSVImportPage({ collectionId, onNavigate }: CSVImportPageProps) 
                 * obligatorio para la importación • recomendado — Para Occurrence, las opciones aparecen como{" "}
                 <code className="px-1 rounded bg-muted">dwc:Entidad:termino</code>.
               </div>
-            </CardContent>
-          </Card>
-
-          {/* Paso 3: Descargar CSV mapeado */}
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle>Paso 3: Descargar CSV mapeado</CardTitle>
-              <CardDescription>
-                Se generará un archivo con <strong>solo</strong> las columnas mapeadas a Darwin Core, usando encabezados
-                en formato <code>dwc:Entidad:termino</code>.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex items-center justify-between gap-4">
-              <div className="text-sm text-muted-foreground">
-                Columnas seleccionadas: <span className="font-medium">{mappedCount}</span>
-              </div>
-              <Button
-                variant="outline"
-                onClick={handleDownloadMappedCSV}
-                disabled={mappedCount === 0 || headerDupReport.hasDuplicates}
-                title={
-                  headerDupReport.hasDuplicates
-                    ? "Hay encabezados DWC duplicados"
-                    : mappedCount === 0
-                      ? "Mapea al menos una columna"
-                      : "Descargar CSV mapeado"
-                }
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Descargar CSV mapeado
-              </Button>
             </CardContent>
           </Card>
 
