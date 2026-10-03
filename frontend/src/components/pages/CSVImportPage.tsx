@@ -15,7 +15,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../ui/alert-dialog";
-import { ArrowLeft, Upload, FileSpreadsheet, CheckCircle, X, Info, Download } from "lucide-react";
+import { ArrowLeft, Upload, FileSpreadsheet, CheckCircle, X, Info, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@contexts/AuthContext";
 import { ApiError } from "@services/api.error";
@@ -1072,7 +1072,7 @@ export function CSVImportPage({ collectionId, onNavigate }: CSVImportPageProps) 
             <Button onClick={handleImportClick} disabled={isProcessing || headerDupReport.hasDuplicates}>
               {isProcessing ? (
                 <>
-                  <Upload className="h-4 w-4 mr-2 animate-spin" />
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   Importando...
                 </>
               ) : (
