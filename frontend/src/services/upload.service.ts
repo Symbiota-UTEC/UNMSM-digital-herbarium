@@ -1,6 +1,12 @@
 import { API, PAGE_SIZE } from "@constants/api";
 import type { PaginatedResponse } from "@interfaces/utils/pagination";
-import type { DwcImportResult, TaxonFloraImportJob, TaxonFloraUploadAcceptedResponse } from "@interfaces/upload";
+import type {
+  DwcImportJob,
+  DwcImportJobAcceptedResponse,
+  DwcImportResult,
+  TaxonFloraImportJob,
+  TaxonFloraUploadAcceptedResponse,
+} from "@interfaces/upload";
 import { throwIfError, type ApiFetch } from "./api.error";
 
 export const uploadService = {
@@ -14,6 +20,41 @@ export const uploadService = {
       method: "POST",
       body: form,
     });
+    await throwIfError(res);
+    return res.json();
+  },
+
+  async uploadDwcCsvJob(apiFetch: ApiFetch, collectionId: string, file: File): Promise<DwcImportJobAcceptedResponse> {
+    const form = new FormData();
+    form.append("collection_id", collectionId);
+    form.append("file", file);
+
+    const res = await apiFetch(`${API.BASE_URL}${API.PATHS.UPLOAD.DWC_CSV_JOBS}`, {
+      method: "POST",
+      body: form,
+    });
+    await throwIfError(res);
+    return res.json();
+  },
+
+  async getDwcCsvJobs(
+    apiFetch: ApiFetch,
+    collectionId: string,
+    page: number = 1,
+    pageSize: number = 10,
+  ): Promise<PaginatedResponse<DwcImportJob>> {
+    const params = new URLSearchParams({
+      collectionId,
+      page: page.toString(),
+      pageSize: pageSize.toString(),
+    });
+    const res = await apiFetch(`${API.BASE_URL}${API.PATHS.UPLOAD.DWC_CSV_JOBS}?${params}`);
+    await throwIfError(res);
+    return res.json();
+  },
+
+  async getDwcCsvJobById(apiFetch: ApiFetch, jobId: string): Promise<DwcImportJob> {
+    const res = await apiFetch(`${API.BASE_URL}${API.PATHS.UPLOAD.DWC_CSV_JOB_BY_ID(jobId)}`);
     await throwIfError(res);
     return res.json();
   },

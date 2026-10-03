@@ -22,7 +22,7 @@ from backend.models.institution import Institution
 from backend.models.occurrence import Occurrence, OccurrenceImage
 from backend.models.registration_request import RegistrationRequest
 from backend.models.taxon import Taxon
-from backend.models.upload_jobs import TaxonFloraImportJob
+from backend.models.upload_jobs import DwcImportJob, TaxonFloraImportJob
 from backend.models.user import User
 
 __all__ = [
@@ -38,6 +38,7 @@ __all__ = [
     "Identifier",
     "User",
     "TaxonFloraImportJob",
+    "DwcImportJob",
     "Country",
     "AdminDivision",
 ]

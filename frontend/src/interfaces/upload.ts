@@ -1,4 +1,4 @@
-import type { ImportJobStatus } from "@constants/enums";
+import { ImportJobStatus } from "@constants/enums";
 
 export interface TaxonFloraImportJob {
   jobId: string;
@@ -41,4 +41,32 @@ export interface DwcImportResult {
   taxaMatched: number;
   identificationsInserted: number;
   identifiersInserted: number;
+}
+
+export interface DwcImportJobAcceptedResponse {
+  status: string;
+  detail: string;
+  jobId: string;
+}
+
+export interface DwcImportJob {
+  jobId: string;
+  collectionId: string;
+  filename: string;
+  status: ImportJobStatus;
+  stage: string;
+  detail: string | null;
+  errorMessage: string | null;
+  fileSizeBytes: number | null;
+  totalRows: number | null;
+  rowsProcessed: number;
+  progressPercent: number | null;
+  occurrencesInserted: number;
+  taxaMatched: number;
+  taxaUnmatched: number;
+  identificationsInserted: number;
+  identifiersInserted: number;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
 }

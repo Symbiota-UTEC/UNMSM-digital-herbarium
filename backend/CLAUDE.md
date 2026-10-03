@@ -32,7 +32,7 @@ backend/
 │   ├── taxon.py               # Taxon
 │   ├── occurrence.py          # Occurrence, OccurrenceImage
 │   ├── identification.py      # Identification, Identifier
-│   └── upload_jobs.py         # TaxonFloraImportJob
+│   └── upload_jobs.py         # DwcImportJob, TaxonFloraImportJob
 ├── schemas/
 │   ├── common/
 │   │   ├── base.py           # ORMBaseModel, StrictBaseModel
@@ -448,13 +448,17 @@ on every call). Unifying picked the formula the majority of endpoints already fo
 
 ## Darwin Core CSV Import
 
-`POST /api/upload/dwc-csv`
+`POST /api/upload/dwc-csv/jobs`
 
 - Accepts a `.csv` file with headers in the format `dwc:Entity:field` (e.g., `dwc:Occurrence:catalogNumber`).
+- Returns `202` with a persistent job ID. `GET /api/upload/dwc-csv/jobs?collectionId=...` lists collection history, and `GET /api/upload/dwc-csv/jobs/{jobId}` returns progress or the final result. Both are restricted to users who can edit the collection.
 - Validation logic lives in `utils/dwc.py` — `ALLOWED_FIELDS` maps Entity → allowed field names.
 - Invalid headers return a structured error listing the rejected columns.
 - `dwc:Occurrence:catalogNumber` is the only required column. Every row needs 1–100 digits after trimming; leading zeros are preserved. Duplicate numbers within an institution reject the whole import.
-- Rows are streamed in one transaction and inserted atomically.
+- The server validates/counts records, then imports in a background task. Progress is stored independently so it can be polled while occurrence inserts remain in one transaction.
+- Completion of the job is committed atomically with the occurrence inserts. Any import error rolls back every inserted occurrence; progress and history survive page refreshes.
+- Only one active DwC import per institution is allowed, enforced by a unique database index. A backend restart marks unfinished imports failed and releases their reservation; the user must upload again.
+- `POST /api/upload/dwc-csv` remains as a synchronous compatibility endpoint; the frontend uses the tracked job endpoint.
 
 ---
 

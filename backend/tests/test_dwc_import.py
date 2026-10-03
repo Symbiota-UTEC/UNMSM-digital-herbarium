@@ -28,6 +28,12 @@ class DwcUploadFileTests(unittest.TestCase):
         file = UploadFile(filename="specimens.csv", file=uploaded_file)
 
         with (
+            patch(
+                "backend.services.dwc_import._reserve_dwc_import_job",
+                return_value=Mock(jobId=uuid4()),
+            ),
+            patch("backend.services.dwc_import._commit_dwc_job_update"),
+            patch("backend.services.dwc_import._cleanup_dwc_job_file"),
             patch("backend.services.dwc_import.user_can_edit_collection", return_value=True),
             patch(
                 "backend.services.dwc_import._resolve_unique_taxon_for_identification",
@@ -79,6 +85,13 @@ class DwcUploadFileTests(unittest.TestCase):
         file = UploadFile(filename="specimens.csv", file=uploaded_file)
 
         with (
+            patch(
+                "backend.services.dwc_import._reserve_dwc_import_job",
+                return_value=Mock(jobId=uuid4()),
+            ),
+            patch("backend.services.dwc_import._commit_dwc_job_update"),
+            patch("backend.services.dwc_import._finish_dwc_job_failed"),
+            patch("backend.services.dwc_import._cleanup_dwc_job_file"),
             patch("backend.services.dwc_import.user_can_edit_collection", return_value=True),
             self.assertRaises(HTTPException) as raised,
         ):

@@ -13,9 +13,11 @@ from backend.routers import occurrence as occurrence_router
 from backend.routers import taxon as taxon_router
 from backend.routers import upload as upload_router
 from backend.routers import users as users_router
+from backend.services.dwc_import import recover_interrupted_dwc_import_jobs
 
 ensure_database_extensions()
 models_module.Base.metadata.create_all(bind=engine)
+recover_interrupted_dwc_import_jobs()
 
 app = FastAPI(
     title="UNMSM Digital Herbarium API",
