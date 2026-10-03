@@ -39,6 +39,7 @@ export interface DwcImportResult {
   rows: number;
   occurrencesInserted: number;
   taxaMatched: number;
+  taxaUnmatched: number;
   identificationsInserted: number;
   identifiersInserted: number;
 }

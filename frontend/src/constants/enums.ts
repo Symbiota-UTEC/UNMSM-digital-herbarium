@@ -34,3 +34,20 @@ export enum ImportJobStatus {
   Completed = "completed",
   Failed = "failed",
 }
+
+export enum TaxonMatchStatus {
+  Matched = "matched",
+  NotFound = "not_found",
+  Ambiguous = "ambiguous",
+  MissingName = "missing_name",
+}
+
+export enum TaxonMatchReason {
+  UniqueCandidate = "unique_candidate",
+  UniqueCurrent = "unique_current",
+  UniqueAcceptedValid = "unique_accepted_valid",
+  UniqueTplId = "unique_tpl_id",
+  NoCandidates = "no_candidates",
+  MultipleCandidates = "multiple_candidates",
+  MissingName = "missing_name",
+}

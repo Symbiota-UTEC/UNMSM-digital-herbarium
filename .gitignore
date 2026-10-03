@@ -12,3 +12,6 @@ backend/data/geonames/
 
 # Polígonos oficiales INEI (29 MB): se descargan solos al sembrar
 backend/data/inei/
+
+.venv/
+/data/

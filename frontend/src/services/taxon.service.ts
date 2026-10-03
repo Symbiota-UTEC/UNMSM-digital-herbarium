@@ -1,6 +1,13 @@
 import { API } from "@constants/api";
 import type { PaginatedResponse } from "@interfaces/utils/pagination";
-import type { TaxonDetailOut, TaxonIdentificationOut, TaxonSearchItem, TaxonTreeNode } from "@interfaces/taxon";
+import type {
+  TaxonDetailOut,
+  TaxonIdentificationOut,
+  TaxonMatchIn,
+  TaxonMatchOut,
+  TaxonSearchItem,
+  TaxonTreeNode,
+} from "@interfaces/taxon";
 import { throwIfError, type ApiFetch } from "./api.error";
 
 export interface TaxonTreeParams {
@@ -19,6 +26,16 @@ export interface TaxonSearchParams {
 }
 
 export const taxonService = {
+  async match(apiFetch: ApiFetch, input: TaxonMatchIn): Promise<TaxonMatchOut> {
+    const res = await apiFetch(`${API.BASE_URL}${API.PATHS.TAXON.MATCH}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    await throwIfError(res);
+    return res.json();
+  },
+
   async getTree(apiFetch: ApiFetch, params: TaxonTreeParams): Promise<PaginatedResponse<TaxonTreeNode>> {
     const query = new URLSearchParams({
       page: String(params.page ?? 1),

@@ -30,6 +30,7 @@ export const API = {
         `/occurrences/${occurrenceId}/identifications/${identificationId}/current`,
     },
     TAXON: {
+      MATCH: "/taxon/match",
       TREE: "/taxon/tree",
       SEARCH: "/taxon/search",
       BY_ID: (taxonId: string) => `/taxon/${taxonId}`,

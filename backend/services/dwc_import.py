@@ -10,11 +10,12 @@ from typing import Any, BinaryIO, Dict, List, Optional, TextIO, Tuple
 from uuid import UUID
 
 from fastapi import HTTPException, UploadFile, status
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from backend.models.models import Collection, Identification, Identifier, Occurrence, Taxon, User
+from backend.models.models import Collection, Identification, Identifier, Occurrence, User
+from backend.services import taxon_matching
 from backend.services.collection_permissions import user_can_edit_collection
 from backend.services.occurrences import sync_geo_columns
 from backend.utils.catalog import normalize_catalog_number
@@ -118,9 +119,21 @@ def _to_bool(v: Optional[str]) -> Optional[bool]:
 
 
 def _split_list(v: Optional[str]) -> List[str]:
-    """Separa por comas y limpia espacios; ignora entradas vacías."""
+    """Accept explicit name arrays, retaining comma-list support for legacy CSVs."""
     if not v:
         return []
+    if v.lstrip().startswith("["):
+        try:
+            names = json.loads(v)
+        except json.JSONDecodeError as exc:
+            raise ValueError("identifiedBy contiene un arreglo JSON inválido") from exc
+        if not isinstance(names, list) or any(
+            not isinstance(name, str) or not name.strip() for name in names
+        ):
+            raise ValueError("identifiedBy debe ser un arreglo JSON de nombres no vacíos")
+        if any(len(name.strip()) > 255 for name in names):
+            raise ValueError("identifiedBy contiene un nombre que excede 255 caracteres")
+        return [name.strip() for name in names]
     return [part.strip() for part in v.split(",") if part.strip()]
 
 
@@ -137,85 +150,6 @@ def _detect_csv_encoding(file_obj: BinaryIO) -> str:
         return "latin-1"
     finally:
         file_obj.seek(0)
-
-
-def _resolve_unique_taxon_for_identification(
-    db: Session,
-    scientific_name: str,
-    authorship: Optional[str],
-) -> Optional[Taxon]:
-    """
-    Intenta resolver un Taxon ÚNICO para una identificación, siguiendo esta lógica:
-
-    1. Buscar por scientificName + scientificNameAuthorship (cuando viene autoría),
-       o scientificName + (authorship IS NULL/'') cuando no viene autoría.
-    2. Si no hay resultados, reintentar ignorando la autoría (solo scientificName).
-    3. Si hay exactamente 1 candidato en cualquier paso, se usa ese.
-    4. Si hay múltiples, se intenta refinar:
-        - Priorizar isCurrent = True (si hay exactamente 1).
-        - Luego taxonomicStatus = "Accepted" y nomenclaturalStatus = "Valid" (si hay 1).
-        - Luego aquellos con tplID no nulo/vacío (si hay 1).
-    5. Si sigue habiendo múltiples o ninguno, devuelve None (no se asigna taxonId).
-    """
-    if not scientific_name:
-        return None
-
-    # 1) scientificName + authorship (o authorship vacío/nulo)
-    base_q = select(Taxon).where(Taxon.scientificName == scientific_name)
-    if authorship:
-        base_q = base_q.where(Taxon.scientificNameAuthorship == authorship)
-    else:
-        base_q = base_q.where(
-            or_(
-                Taxon.scientificNameAuthorship.is_(None),
-                Taxon.scientificNameAuthorship == "",
-            )
-        )
-
-    candidates = db.execute(base_q).scalars().all()
-
-    # 2) Fallback: ignorar autoría si no encontramos nada
-    if not candidates:
-        q2 = select(Taxon).where(Taxon.scientificName == scientific_name)
-        candidates = db.execute(q2).scalars().all()
-
-    # Si sigue sin haber nada, no hay taxon
-    if not candidates:
-        return None
-
-    # Si ya hay un único candidato, listo
-    if len(candidates) == 1:
-        return candidates[0]
-
-    # A partir de aquí hay múltiples: intentamos refinar
-    current = candidates
-
-    # 3) Priorizar isCurrent = True
-    current_only = [t for t in current if getattr(t, "isCurrent", False)]
-    if len(current_only) == 1:
-        return current_only[0]
-    if current_only:
-        current = current_only
-
-    # 4) Priorizar Accepted + Valid
-    accepted_valid = [
-        t
-        for t in current
-        if getattr(t, "taxonomicStatus", None) == "Accepted"
-        and getattr(t, "nomenclaturalStatus", None) == "Valid"
-    ]
-    if len(accepted_valid) == 1:
-        return accepted_valid[0]
-    if accepted_valid:
-        current = accepted_valid
-
-    # 5) Priorizar los que tienen tplID
-    with_tplid = [t for t in current if getattr(t, "tplID", None)]
-    if len(with_tplid) == 1:
-        return with_tplid[0]
-
-    # Sigue habiendo ambigüedad → no asignamos taxonId
-    return None
 
 
 # =========================
@@ -292,6 +226,7 @@ def _process_dwc_csv(
         "rows": 0,
         "occurrencesInserted": 0,
         "taxaMatched": 0,
+        "taxaUnmatched": 0,
         "identificationsInserted": 0,
         "identifiersInserted": 0,
     }
@@ -366,20 +301,17 @@ def _process_dwc_csv(
             sci_auth = tax_d.get("scientificNameAuthorship")  # puede ser None/''
 
             identified_by_text = ident_d.get("identifiedBy")
+            names_list = _split_list(identified_by_text)
 
             # -------- Resolver Taxon (no se crean taxones nuevos) --------
             # Lógica: solo asignar taxonId si se puede resolver un TAXON ÚNICO.
-            # Si no hay scientificName, _resolve_unique_taxon_for_identification devolverá None.
+            # Sin scientificName, el matcher devuelve un resultado sin taxón.
             tkey = _taxon_key(sci_name, sci_auth)
 
             if tkey in taxon_cache:
                 taxon_cache.move_to_end(tkey)
             else:
-                taxon_obj = _resolve_unique_taxon_for_identification(
-                    db=db,
-                    scientific_name=sci_name,
-                    authorship=sci_auth,
-                )
+                taxon_obj = taxon_matching.match_taxon(db, sci_name, sci_auth).taxon
                 taxon_cache[tkey] = taxon_obj.taxonId if taxon_obj is not None else None
                 if len(taxon_cache) > taxon_cache_size:
                     taxon_cache.popitem(last=False)
@@ -388,6 +320,8 @@ def _process_dwc_csv(
 
             if taxon_id is not None:
                 stats["taxaMatched"] += 1
+            else:
+                stats["taxaUnmatched"] += 1
 
             # -------- Crear Occurrence aplanado --------
             occ = Occurrence(**occ_d)
@@ -421,8 +355,6 @@ def _process_dwc_csv(
             stats["identificationsInserted"] += 1
 
             # Identificadores (personas) con orden — relación directa sin tabla intermedia
-            names_list = _split_list(identified_by_text)
-
             for name in names_list:
                 db.add(
                     Identifier(

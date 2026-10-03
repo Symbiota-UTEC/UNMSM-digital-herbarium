@@ -52,6 +52,23 @@ class ImportJobStatus(str, enum.Enum):
     FAILED = "failed"
 
 
+class TaxonMatchStatus(str, enum.Enum):
+    MATCHED = "matched"
+    NOT_FOUND = "not_found"
+    AMBIGUOUS = "ambiguous"
+    MISSING_NAME = "missing_name"
+
+
+class TaxonMatchReason(str, enum.Enum):
+    UNIQUE_CANDIDATE = "unique_candidate"
+    UNIQUE_CURRENT = "unique_current"
+    UNIQUE_ACCEPTED_VALID = "unique_accepted_valid"
+    UNIQUE_TPL_ID = "unique_tpl_id"
+    NO_CANDIDATES = "no_candidates"
+    MULTIPLE_CANDIDATES = "multiple_candidates"
+    MISSING_NAME = "missing_name"
+
+
 def db_enum(enum_cls: type[enum.Enum], name: str) -> SAEnum:
     """Columna ENUM nativa de PostgreSQL con los `value` como etiquetas (no los nombres)."""
     return SAEnum(enum_cls, name=name, values_callable=lambda e: [m.value for m in e])

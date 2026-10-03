@@ -15,14 +15,27 @@ from backend.schemas.taxon import (
     TaxonIdentificationOrder,
     TaxonIdentificationOut,
     TaxonIdentificationSort,
+    TaxonMatchIn,
+    TaxonMatchOut,
     TaxonSearchItem,
     TaxonSearchOrder,
     TaxonSearchSort,
     TaxonTreeNode,
 )
 from backend.services import taxon as taxon_service
+from backend.services import taxon_matching
 
 router = APIRouter(prefix="/taxon", tags=["Taxon"])
+
+
+@router.post("/match", response_model=TaxonMatchOut, summary="Prueba una asociación taxonómica.")
+def match_taxon(payload: TaxonMatchIn, db: Session = Depends(get_db)):
+    """Use the DwC importer's matching rules without importing or modifying records.
+
+    An unmatched or ambiguous name returns HTTP 200 with a null taxon. Like the
+    public taxon search, this lookup does not require authentication.
+    """
+    return taxon_matching.match_taxon(db, payload.scientificName, payload.scientificNameAuthorship)
 
 
 @router.get(

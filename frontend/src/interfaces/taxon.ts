@@ -1,3 +1,29 @@
+import type { TaxonMatchReason, TaxonMatchStatus } from "@constants/enums";
+
+export interface TaxonMatchIn {
+  scientificName: string;
+  scientificNameAuthorship?: string | null;
+}
+
+export interface TaxonMatchItem {
+  taxonId: string;
+  wfoTaxonId: string | null;
+  scientificName: string | null;
+  scientificNameAuthorship: string | null;
+  isCurrent: boolean;
+  taxonomicStatus: string | null;
+  nomenclaturalStatus: string | null;
+}
+
+export interface TaxonMatchOut {
+  status: TaxonMatchStatus;
+  reason: TaxonMatchReason;
+  taxon: TaxonMatchItem | null;
+  candidateCount: number;
+  usedAuthorshipFallback: boolean;
+  usedCaseInsensitiveFallback: boolean;
+}
+
 export interface TaxonSynonym {
   taxonId: string;
   wfoTaxonId: string | null;

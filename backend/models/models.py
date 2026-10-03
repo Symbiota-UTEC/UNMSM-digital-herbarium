@@ -59,6 +59,7 @@ Index("ix_occurrence_event_date", Occurrence.year, Occurrence.month, Occurrence.
 Index(
     "ix_taxon_name_auth_rank", Taxon.scientificName, Taxon.scientificNameAuthorship, Taxon.taxonRank
 )
+Index("ix_taxon_scientific_name_lower", func.lower(Taxon.scientificName))
 
 Index(
     "ix_taxon_scientific_name_unaccent_trgm",

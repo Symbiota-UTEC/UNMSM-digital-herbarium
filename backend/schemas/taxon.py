@@ -5,7 +5,50 @@ from datetime import date, datetime
 from typing import List, Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from backend.models.enums import TaxonMatchReason, TaxonMatchStatus
+from backend.schemas.common.base import ORMBaseModel, StrictBaseModel
+
+
+class TaxonMatchIn(StrictBaseModel):
+    scientificName: str = Field(min_length=1, max_length=500)
+    scientificNameAuthorship: Optional[str] = Field(default=None, max_length=255)
+
+    @field_validator("scientificName", "scientificNameAuthorship", mode="before")
+    @classmethod
+    def trim_input(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+
+class TaxonMatchItem(ORMBaseModel):
+    taxonId: UUID
+    wfoTaxonId: Optional[str] = None
+    scientificName: Optional[str] = None
+    scientificNameAuthorship: Optional[str] = None
+    isCurrent: bool
+    taxonomicStatus: Optional[str] = None
+    nomenclaturalStatus: Optional[str] = None
+
+
+class TaxonMatchOut(ORMBaseModel):
+    status: TaxonMatchStatus
+    reason: TaxonMatchReason
+    taxon: Optional[TaxonMatchItem] = None
+    candidateCount: int = Field(
+        ge=0,
+        description="Candidates from the initial or fallback query before preference filtering.",
+    )
+    usedAuthorshipFallback: bool = Field(
+        description="Whether a name-only query was attempted after finding no authorship candidates."
+    )
+    usedCaseInsensitiveFallback: bool = Field(
+        default=False,
+        description=(
+            "Whether the result's candidates came from a case-insensitive query; "
+            "false when no candidates were found."
+        ),
+    )
 
 
 class TaxonSynonym(BaseModel):

@@ -23,6 +23,7 @@ import { uploadService } from "@services/upload.service";
 import { collectionsService } from "@services/collections.service";
 import type { CollectionOut } from "@interfaces/collection";
 import { DWC_FIELDS, DwCFieldOption, DwCEntity } from "@constants/dwc";
+import { isPreparedDwcCsv, preparedDwcTarget, preparedDwcText } from "@utils/preparedDwcCsv";
 
 interface CSVImportPageProps {
   collectionId: string;
@@ -410,6 +411,8 @@ export function CSVImportPage({ collectionId, onNavigate }: CSVImportPageProps) 
 
   // Auto-map sólo a targets permitidos y usando encabezado normalizado
   const autoMapHeader = (header: string): string => {
+    const preparedTarget = preparedDwcTarget(header);
+    if (preparedTarget && ALLOWED_TARGETS.has(preparedTarget)) return preparedTarget;
     const norm = normalizeHeader(header);
     for (const rule of AUTO_MAP_RULES) {
       if (!ALLOWED_TARGETS.has(rule.target)) continue;
@@ -420,6 +423,7 @@ export function CSVImportPage({ collectionId, onNavigate }: CSVImportPageProps) 
 
   // La carga CSV requiere solo catalogNumber; los formularios usan otras reglas.
   const CATALOG_TARGET = "Occurrence.catalogNumber";
+  const isPreparedDwc = isPreparedDwcCsv(csvHeaders);
 
   const clearCsvState = () => {
     setCSVFile(null);
@@ -585,7 +589,9 @@ export function CSVImportPage({ collectionId, onNavigate }: CSVImportPageProps) 
   // Validación de la columna y sus valores antes de enviar el archivo.
   const validateRequired = (): { ok: boolean; messages: string[] } => {
     const messages: string[] = [];
-    const catalogIndex = csvHeaders.findIndex((header) => columnMapping[header] === CATALOG_TARGET);
+    const catalogIndex = isPreparedDwc
+      ? csvHeaders.findIndex((header) => header.trim() === "dwc:Occurrence:catalogNumber")
+      : csvHeaders.findIndex((header) => columnMapping[header] === CATALOG_TARGET);
     if (catalogIndex < 0) {
       messages.push("Debes mapear dwc:Occurrence:catalogNumber");
     } else {
@@ -626,6 +632,8 @@ export function CSVImportPage({ collectionId, onNavigate }: CSVImportPageProps) 
   // CSV mapeado (con override de labels por DWC value)
   // ==============================
   const buildMappedCSV = (labelOverride?: Record<string, string>): string => {
+    const prepared = preparedDwcText(csvHeaders, rawCSVText);
+    if (prepared !== null) return prepared;
     const dwcByHeader: Record<string, string> = {};
     Object.entries(columnMapping).forEach(([h, v]) => {
       if (v && v !== "ignore") dwcByHeader[h] = v;
@@ -761,14 +769,17 @@ export function CSVImportPage({ collectionId, onNavigate }: CSVImportPageProps) 
       setShowConfirmDialog(false);
 
       let lastText: string | null = null;
-      for (let i = 0; i < DYNAMIC_HEADER_TRY.length; i++) {
-        const label = DYNAMIC_HEADER_TRY[i];
+      const headerAttempts = isPreparedDwc ? DYNAMIC_HEADER_TRY.slice(0, 1) : DYNAMIC_HEADER_TRY;
+      for (let i = 0; i < headerAttempts.length; i++) {
+        const label = headerAttempts[i];
         try {
           const stats = await submitImportWithDynamicHeader(label);
           if (!stats) return;
 
           const msg = `Importadas ${stats.occurrencesInserted} ocurrencias.`;
-          toast.success(`${msg} (encabezado usado: ${label})`);
+          toast.success(
+            `${msg} ${stats.taxaMatched} con taxón vinculado; ${stats.taxaUnmatched} pendientes de vincular.`,
+          );
           onNavigate("collection-detail", { collectionId });
           return;
         } catch (err) {
@@ -783,9 +794,9 @@ export function CSVImportPage({ collectionId, onNavigate }: CSVImportPageProps) 
 
           if (err.status === 400) {
             lastText = txt;
-            if (txt && /dynamicProperties/i.test(txt) && i < DYNAMIC_HEADER_TRY.length - 1) {
+            if (txt && /dynamicProperties/i.test(txt) && i < headerAttempts.length - 1) {
               toast.message(`Reintentando con encabezado alternativo para dynamicProperties…`, {
-                description: DYNAMIC_HEADER_TRY[i + 1],
+                description: headerAttempts[i + 1],
               });
               continue;
             }
@@ -951,9 +962,15 @@ export function CSVImportPage({ collectionId, onNavigate }: CSVImportPageProps) 
           {/* Paso 2: Mapeo */}
           <Card className="mb-6">
             <CardHeader>
-              <CardTitle>Paso 2: Mapeo de columnas</CardTitle>
+              <CardTitle>{isPreparedDwc ? "Paso 2: CSV Darwin Core preparado" : "Paso 2: Mapeo de columnas"}</CardTitle>
               <CardDescription>
-                Selecciona el término <span className="font-medium">Darwin Core</span> para cada columna del CSV.
+                {isPreparedDwc ? (
+                  "El archivo ya está mapeado. Se conservarán sus columnas y valores; el servidor validará los campos."
+                ) : (
+                  <>
+                    Selecciona el término <span className="font-medium">Darwin Core</span> para cada columna del CSV.
+                  </>
+                )}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -1005,6 +1022,7 @@ export function CSVImportPage({ collectionId, onNavigate }: CSVImportPageProps) 
                       <TableCell className="font-medium">{column.name}</TableCell>
                       <TableCell>
                         <Select
+                          disabled={isPreparedDwc}
                           value={columnMapping[column.name] || "ignore"}
                           onValueChange={(value) => handleMappingChange(column.name, value)}
                         >
