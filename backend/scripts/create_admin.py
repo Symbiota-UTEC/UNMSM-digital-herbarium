@@ -1,12 +1,15 @@
 # backend/scripts/create_admin.py
 from __future__ import annotations
 
+from uuid import UUID
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.config.database import Base, SessionLocal, engine, ensure_database_extensions
 from backend.config.env import getenv
 from backend.models.models import Institution, User
+from backend.utils.catalog import normalize_institution_code
 from backend.utils.security import hash_password
 
 
@@ -27,8 +30,9 @@ def upsert_institution(db: Session) -> Institution:
     Crea o devuelve la institución objetivo. Usa variables de entorno con
     valores por defecto de la UNMSM.
     """
-    institution_id = getenv("INSTITUTION_ID", "ae3fa7bc-6437-4ffb-8e33-ec8935295289")
+    institution_id = UUID(getenv("INSTITUTION_ID", "ae3fa7bc-6437-4ffb-8e33-ec8935295289"))
     institution_name = getenv("INSTITUTION_NAME", "Universidad Nacional Mayor de San Marcos")
+    institution_code = normalize_institution_code(getenv("INSTITUTION_CODE", "USM"))
     website = getenv("INSTITUTION_WEBSITE", "https://www.unmsm.edu.pe/")
     country = getenv("INSTITUTION_COUNTRY", "Perú")
     city = getenv("INSTITUTION_CITY", "Lima")
@@ -72,6 +76,7 @@ def upsert_institution(db: Session) -> Institution:
 
     inst = Institution(
         institutionId=institution_id,
+        institutionCode=institution_code,
         institutionName=institution_name,
         country=country,
         city=city,
@@ -91,7 +96,7 @@ def upsert_admin(db: Session, institution: Institution) -> User:
     """
     Crea (o actualiza) un usuario admin global para la institución dada.
     """
-    admin_id = getenv("ADMIN_ID", "ae3fa7bc-6437-4ffb-8e33-ec8935295280")
+    admin_id = UUID(getenv("ADMIN_ID", "ae3fa7bc-6437-4ffb-8e33-ec8935295280"))
     admin_username = getenv("ADMIN_USERNAME", "admin")
     admin_email = getenv("ADMIN_EMAIL", "admin@gmail.com")
     admin_password = getenv("ADMIN_PASSWORD", "admin")

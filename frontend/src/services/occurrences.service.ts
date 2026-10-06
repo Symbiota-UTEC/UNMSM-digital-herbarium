@@ -105,9 +105,9 @@ export interface OccurrenceMapFilters extends CategoricalFilters {
 }
 
 export interface OccurrenceCreatePayload {
-  collectionId?: string | null;
+  collectionId: string;
   occurrenceID?: string | null;
-  catalogNumber?: string | null;
+  catalogNumber: string;
   recordNumber?: string | null;
   recordedBy?: string | null;
   eventDate?: string | null;

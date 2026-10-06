@@ -11,6 +11,7 @@ from backend.schemas.common.base import ORMBaseModel, StrictBaseModel
 
 class InstitutionOut(ORMBaseModel):
     institutionId: UUID
+    institutionCode: str
     institutionName: Optional[str] = None
 
 

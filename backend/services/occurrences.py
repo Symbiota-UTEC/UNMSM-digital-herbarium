@@ -10,7 +10,7 @@ from fastapi import HTTPException, status
 from geoalchemy2 import Geography, Geometry
 from geoalchemy2.elements import WKTElement
 from sqlalchemy import and_, case, cast, delete, func, select
-from sqlalchemy.exc import DataError, InternalError
+from sqlalchemy.exc import DataError, IntegrityError, InternalError
 from sqlalchemy.orm import Session, selectinload
 
 from backend.models.models import (
@@ -52,6 +52,26 @@ from backend.services.occurrence_filters import (
 )
 from backend.utils.dates import format_display_date
 
+
+def _catalog_code_expr():
+    return func.concat(Institution.institutionCode, " ", Occurrence.catalogNumber)
+
+
+def _ensure_catalog_available(
+    db: Session, institution_id: UUID, catalog_number: str, occurrence_id: Optional[UUID] = None
+) -> None:
+    stmt = select(Occurrence.occurrenceId).where(
+        Occurrence.institutionId == institution_id,
+        Occurrence.catalogNumber == catalog_number,
+    )
+    if occurrence_id is not None:
+        stmt = stmt.where(Occurrence.occurrenceId != occurrence_id)
+    if db.scalar(stmt.limit(1)) is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"El número de catálogo {catalog_number} ya existe en esta institución",
+        )
+
 # =========================
 # Helpers
 # =========================
@@ -63,7 +83,7 @@ def _load_occurrence_full(db: Session, occurrence_id: UUID) -> Optional[Occurren
     stmt = (
         select(Occurrence)
         .options(
-            selectinload(Occurrence.collection),
+            selectinload(Occurrence.collection).selectinload(Collection.institution),
             selectinload(Occurrence.identifications).selectinload(Identification.identifiers),
             selectinload(Occurrence.identifications).selectinload(Identification.taxon),
             selectinload(Occurrence.images),
@@ -145,6 +165,15 @@ def _flush_with_geo_validation(db: Session) -> None:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="footprintWKT inválido: debe ser un WKT válido, p. ej. POLYGON((-77.05 -12.04, -77.03 -12.04, -77.03 -12.06, -77.05 -12.06, -77.05 -12.04)).",
         )
+    except IntegrityError as e:
+        db.rollback()
+        constraint_name = getattr(getattr(e.orig, "diag", None), "constraint_name", None)
+        if constraint_name == "uq_occurrence_institution_catalog":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="El número de catálogo ya existe en esta institución",
+            ) from e
+        raise
 
 
 # =========================
@@ -185,7 +214,10 @@ def create_occurrence(db: Session, payload: OccurrenceCreateIn, current_user: Us
 
     occ = Occurrence(**occ_data)
     occ.collectionId = payload.collectionId
+    occ.institutionId = collection.institutionId
     occ.digitizerUserId = current_user.userId
+
+    _ensure_catalog_available(db, collection.institutionId, occ.catalogNumber)
 
     # Derivar year/month/day del eventDate si viene y no se enviaron explícitamente
     if payload.eventDate and occ.year is None:
@@ -323,7 +355,7 @@ def list_occurrences_basic(
     limit = page_size
     offset = (page - 1) * page_size
 
-    code_expr = func.coalesce(Occurrence.catalogNumber, Occurrence.recordNumber)
+    code_expr = _catalog_code_expr()
     location_expr = func.coalesce(
         Occurrence.locality,
         Occurrence.municipality,
@@ -401,7 +433,7 @@ def list_occurrence_map_points(
         else_="point",
     )
 
-    code_expr = func.coalesce(Occurrence.catalogNumber, Occurrence.recordNumber)
+    code_expr = _catalog_code_expr()
     fully_contained = build_full_containment_expr(filters)
 
     rows_select = _visible_occurrences_select(
@@ -477,9 +509,13 @@ def update_occurrence(
     }
 
     update_data = payload.model_dump(exclude=ID_FIELDS, exclude_unset=True)
+    catalog_number = update_data.pop("catalogNumber", None)
 
     for field, value in update_data.items():
         setattr(occ, field, value)
+
+    if catalog_number is not None:
+        _ensure_catalog_available(db, occ.institutionId, catalog_number, occ.occurrenceId)
 
     sync_geo_columns(db, occ)
 
@@ -582,6 +618,8 @@ def update_occurrence(
                 occ.currentIdentificationId = new_ident.identificationId
                 db.add(occ)
 
+    if catalog_number is not None:
+        occ.catalogNumber = catalog_number
     db.add(occ)
     _flush_with_geo_validation(db)
     db.commit()

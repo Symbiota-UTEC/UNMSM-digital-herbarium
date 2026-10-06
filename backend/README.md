@@ -4,7 +4,7 @@ REST API (FastAPI) for the herbarium: Darwin Core occurrences, taxonomy (WFO bac
 
 ## Stack
 
-FastAPI · SQLAlchemy 2.0 + GeoAlchemy2 · PostgreSQL 16 + PostGIS · JWT auth · Pydantic v2 · Python 3.10
+FastAPI · SQLAlchemy 2.0 + GeoAlchemy2 · PostgreSQL 16 + PostGIS · JWT auth · Pydantic v2 · Python 3.12
 
 ## Quick start
 
@@ -13,16 +13,22 @@ The easiest way is Docker, from the repo root:
 ```bash
 cp .env.sample .env                              # Postgres credentials for docker compose
 cp backend/config/.env.sample backend/config/.env   # backend settings (set SECRET_KEY)
-make dev                                         # API on http://localhost:8001
+make dev                                         # API on http://localhost:8001 (dev Compose)
 make seed-all                                    # once backend-dev is healthy: default admin + admin divisions
 ```
 
 Interactive docs (Swagger): http://localhost:8001/docs
 
-Neither `make dev` nor `make prd` ever wipes the database — tables and extensions are created
+Neither `make dev` nor `make prd` ever wipes the database or image volume — tables and extensions are created
 automatically (see "Database Initialization" in [`CLAUDE.md`](CLAUDE.md)). Want a clean local
 database instead? `make reset-db` (destructive, `backend-dev` only, run it yourself when you
 actually want one).
+
+Production uses `docker-compose.prod.yaml`; the frontend is at `http://localhost:3000`
+and the API at `http://localhost:8000`. Configure the public frontend origin and
+`VITE_API_URL` in the root `.env` before building. Compose sets the backend database
+host to `db` in both environments. For the one-time migration of images from an older
+SeaweedFS container, see [`../docs/deployment.md`](../docs/deployment.md).
 
 Without Docker (from the repo root, with a PostGIS database reachable as configured in `backend/config/.env`):
 

@@ -32,7 +32,7 @@ backend/
 │   ├── taxon.py               # Taxon
 │   ├── occurrence.py          # Occurrence, OccurrenceImage
 │   ├── identification.py      # Identification, Identifier
-│   └── upload_jobs.py         # TaxonFloraImportJob
+│   └── upload_jobs.py         # DwcImportJob, TaxonFloraImportJob
 ├── schemas/
 │   ├── common/
 │   │   ├── base.py           # ORMBaseModel, StrictBaseModel
@@ -169,7 +169,7 @@ there must match the same-named variables in `config/.env`.
 
 ### Start (development)
 
-Run from the **repo root** (the package is `backend`, so `backend.main` must be importable), with a PostGIS database up (`docker compose up db` exposes it on port 5433):
+Run from the **repo root** (the package is `backend`, so `backend.main` must be importable), with a PostGIS database up (`docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up db` exposes it on port 5433):
 
 ```bash
 pip install -r backend/requirements.txt
@@ -197,7 +197,7 @@ If a rule is wrong for a specific file, add a `per-file-ignores` entry with the 
 
 ### Start (Docker)
 
-From the repo root: `make dev` (backend with `--reload` on http://localhost:8001, plus db, SeaweedFS and the frontend) or `make prd` (backend on http://localhost:8000). Neither wipes the database on start (see "Database Initialization") and neither creates the default admin or the admin-divisions catalog — `make seed-admin` (`scripts/create_admin.py`), `make seed-geo` (`scripts/seed_admin_divisions.py`) and `make seed-all` (both) do that once the backend container is healthy; all three default to `backend-dev` and take `SERVICE=backend` to target `make prd` instead. Want a clean local database? `make reset-db` (destructive, `backend-dev` only, run on demand — never part of `make dev` itself). See the root `CLAUDE.md`.
+From the repo root: `make dev` (backend with `--reload` on http://localhost:8001, plus db, SeaweedFS and Vite) or `make prd` (frontend on :3000 and backend on :8000). The commands use separate `docker-compose.dev.yaml` and `docker-compose.prod.yaml` overlays on the shared `docker-compose.yaml`. Neither wipes the database or image volume; neither creates the default admin or admin-divisions catalog. Run `make seed-admin`, `make seed-geo` or `make seed-all` once the selected backend is healthy; use `ENV=prod` for production (`SERVICE=backend` also selects production when `ENV` is omitted). Want a clean local database? `make reset-db` (destructive, `backend-dev` only, run on demand — never part of `make dev` itself). See the root `CLAUDE.md` and [`../docs/deployment.md`](../docs/deployment.md).
 
 ---
 
@@ -448,12 +448,17 @@ on every call). Unifying picked the formula the majority of endpoints already fo
 
 ## Darwin Core CSV Import
 
-`POST /api/upload/dwc-csv`
+`POST /api/upload/dwc-csv/jobs`
 
 - Accepts a `.csv` file with headers in the format `dwc:Entity:field` (e.g., `dwc:Occurrence:catalogNumber`).
+- Returns `202` with a persistent job ID. `GET /api/upload/dwc-csv/jobs?collectionId=...` lists collection history, and `GET /api/upload/dwc-csv/jobs/{jobId}` returns progress or the final result. Both are restricted to users who can edit the collection.
 - Validation logic lives in `utils/dwc.py` — `ALLOWED_FIELDS` maps Entity → allowed field names.
 - Invalid headers return a structured error listing the rejected columns.
-- Rows are processed and inserted/updated in batch.
+- `dwc:Occurrence:catalogNumber` is the only required column. Every row needs 1–100 digits after trimming; leading zeros are preserved. Duplicate numbers within an institution reject the whole import.
+- The server validates/counts records, then imports in a background task. Progress is stored independently so it can be polled while occurrence inserts remain in one transaction.
+- Completion of the job is committed atomically with the occurrence inserts. Any import error rolls back every inserted occurrence; progress and history survive page refreshes.
+- Only one active DwC import per institution is allowed, enforced by a unique database index. A backend restart marks unfinished imports failed and releases their reservation; the user must upload again.
+- `POST /api/upload/dwc-csv` remains as a synchronous compatibility endpoint; the frontend uses the tracked job endpoint.
 
 ---
 

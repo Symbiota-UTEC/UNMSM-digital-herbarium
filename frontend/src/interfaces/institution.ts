@@ -3,6 +3,7 @@ import { PaginatedResponse } from "@interfaces/utils/pagination";
 export interface BasicInstitutionInfo {
   institutionId?: string;
   institutionName?: string;
+  institutionCode?: string;
 }
 
 export interface InstitutionAdminUser {
@@ -13,6 +14,7 @@ export interface InstitutionAdminUser {
 }
 
 export interface Institution extends BasicInstitutionInfo {
+  institutionCode: string;
   country?: string | null;
   city?: string | null;
   address?: string | null;
@@ -32,6 +34,7 @@ export function toBasicInstitutionInfo(inst: Institution | any): BasicInstitutio
   return {
     institutionId: inst.institutionId,
     institutionName: inst.institutionName,
+    institutionCode: inst.institutionCode,
   };
 }
 

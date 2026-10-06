@@ -12,7 +12,18 @@ from datetime import datetime
 from typing import Any, List, Optional
 
 from geoalchemy2 import Geography, Geometry
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, Uuid
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Float,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    Uuid,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -49,6 +60,17 @@ class Occurrence(Base):
     """
 
     __tablename__ = "occurrence"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["collection_id", "institution_id"],
+            ["collection.collection_id", "collection.institution_id"],
+            name="fk_occurrence_collection_institution",
+        ),
+        UniqueConstraint(
+            "institution_id", "catalog_number", name="uq_occurrence_institution_catalog"
+        ),
+        CheckConstraint("catalog_number ~ '^[0-9]{1,100}$'", name="ck_occurrence_catalog_digits"),
+    )
 
     occurrenceId: Mapped[uuid.UUID] = mapped_column(
         "occurrence_id", Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -69,11 +91,12 @@ class Occurrence(Base):
         String(255),
         doc="DwC recordedBy: nombres de colectores, en orden de importancia.",
     )
-    catalogNumber: Mapped[Optional[str]] = mapped_column(
+    catalogNumber: Mapped[str] = mapped_column(
         "catalog_number",
         String(100),
         index=True,
-        doc="DwC catalogNumber: identificador dentro de la colección (número de pliego, etc.).",
+        nullable=False,
+        doc="DwC catalogNumber: dígitos del número de catálogo; el código está en Institution.",
     )
 
     # ---- Event mínimo ----
@@ -303,10 +326,13 @@ class Occurrence(Base):
     # Relaciones (Collection, Agents, User, Identification)
     # ------------------------------------------------------------------
 
-    collectionId: Mapped[Optional[uuid.UUID]] = mapped_column(
-        "collection_id", ForeignKey("collection.collection_id")
+    collectionId: Mapped[uuid.UUID] = mapped_column(
+        "collection_id", Uuid(as_uuid=True), nullable=False
     )
-    collection: Mapped[Optional["Collection"]] = relationship(
+    institutionId: Mapped[uuid.UUID] = mapped_column(
+        "institution_id", Uuid(as_uuid=True), nullable=False
+    )
+    collection: Mapped["Collection"] = relationship(
         "Collection", back_populates="occurrences"
     )
 

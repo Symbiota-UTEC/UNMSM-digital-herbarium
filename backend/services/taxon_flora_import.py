@@ -7,12 +7,12 @@ import logging
 import os
 import tempfile
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from uuid import UUID
 
 from fastapi import BackgroundTasks, HTTPException, UploadFile, status
 from psycopg2 import sql
-from sqlalchemy import func, select, text, update
+from sqlalchemy import bindparam, func, select, text, update
 from sqlalchemy.inspection import inspect
 from sqlalchemy.orm import Session
 
@@ -25,6 +25,8 @@ from backend.schemas.upload import TaxonFloraImportJobOut
 logger = logging.getLogger(__name__)
 
 COPY_BATCH_SIZE = 10_000
+CSV_PROGRESS_WEIGHT = 40.0
+TAXON_MERGE_BATCH_SIZE = 10_000
 
 
 # ----------------------------
@@ -36,33 +38,43 @@ def _utcnow() -> datetime:
     return datetime.utcnow()
 
 
-def _calculate_progress_metrics(
-    *,
-    file_size_bytes: Optional[int],
-    bytes_processed: Optional[int],
-    started_at: Optional[datetime],
-) -> tuple[Optional[float], Optional[int]]:
+def _csv_progress_percent(file_size_bytes: Optional[int], bytes_processed: Optional[int]) -> float:
     if not file_size_bytes or file_size_bytes <= 0 or bytes_processed is None:
-        return None, None
+        return 0.0
+    fraction = min(max(bytes_processed / file_size_bytes, 0.0), 1.0)
+    return round(fraction * CSV_PROGRESS_WEIGHT, 2)
 
-    bounded_bytes = min(max(bytes_processed, 0), file_size_bytes)
-    progress_percent = round((bounded_bytes / file_size_bytes) * 100, 2)
 
-    if started_at is None or bounded_bytes <= 0 or bounded_bytes >= file_size_bytes:
-        eta_seconds = 0 if bounded_bytes >= file_size_bytes else None
-        return progress_percent, eta_seconds
+def _phase_progress_percent(
+    start_percent: float,
+    end_percent: float,
+    completed: int,
+    total: int,
+) -> float:
+    if total <= 0:
+        return end_percent
+    fraction = min(max(completed / total, 0.0), 1.0)
+    return round(start_percent + (end_percent - start_percent) * fraction, 2)
 
-    elapsed_seconds = (_utcnow() - started_at).total_seconds()
+
+def _estimate_stage_remaining_seconds(
+    completed_units: Optional[int],
+    total_units: Optional[int],
+    stage_started_at: Optional[datetime],
+) -> Optional[int]:
+    if completed_units is None or total_units is None or total_units <= 0:
+        return None
+    if completed_units >= total_units:
+        return 0
+    if completed_units <= 0 or stage_started_at is None:
+        return None
+
+    elapsed_seconds = (_utcnow() - stage_started_at).total_seconds()
     if elapsed_seconds <= 0:
-        return progress_percent, None
+        return None
 
-    bytes_per_second = bounded_bytes / elapsed_seconds
-    if bytes_per_second <= 0:
-        return progress_percent, None
-
-    remaining_bytes = max(file_size_bytes - bounded_bytes, 0)
-    eta_seconds = int(round(remaining_bytes / bytes_per_second))
-    return progress_percent, max(eta_seconds, 0)
+    remaining_units = total_units - completed_units
+    return max(int(round(elapsed_seconds * remaining_units / completed_units)), 0)
 
 
 def _queue_taxon_flora_job_update(
@@ -128,25 +140,11 @@ def _queue_taxon_flora_job_update(
 
     if force_percent is not None:
         values["progressPercent"] = force_percent
-    elif file_size_bytes is not None and bytes_processed is not None:
-        progress_percent, _ = _calculate_progress_metrics(
-            file_size_bytes=file_size_bytes,
-            bytes_processed=bytes_processed,
-            started_at=started_at,
-        )
-        values["progressPercent"] = progress_percent
 
     if clear_eta:
         values["estimatedSecondsRemaining"] = None
     elif force_eta_seconds is not None:
         values["estimatedSecondsRemaining"] = force_eta_seconds
-    elif file_size_bytes is not None and bytes_processed is not None:
-        _, eta_seconds = _calculate_progress_metrics(
-            file_size_bytes=file_size_bytes,
-            bytes_processed=bytes_processed,
-            started_at=started_at,
-        )
-        values["estimatedSecondsRemaining"] = eta_seconds
 
     if values:
         db.execute(
@@ -167,8 +165,13 @@ def _commit_taxon_flora_job_update(job_id: UUID, **kwargs: Any) -> None:
         progress_db.close()
 
 
-def _merge_staged_taxa(db: Session, mapped_fields: List[str]) -> Dict[str, int]:
-    """Merge the last CSV row for each WFO ID without replacing taxon UUIDs."""
+def _merge_staged_taxa(
+    db: Session,
+    mapped_fields: List[str],
+    *,
+    on_progress: Callable[[str, str, float, Dict[str, int], Optional[int]], None],
+) -> Dict[str, int]:
+    """Merge staged taxa in batches, retaining the last CSV row for each WFO ID."""
     db.execute(
         text(
             "CREATE TEMP TABLE flora_taxon_latest ON COMMIT DROP AS "
@@ -185,25 +188,17 @@ def _merge_staged_taxa(db: Session, mapped_fields: List[str]) -> Dict[str, int]:
             "El CSV no contiene ningún taxonID válido; el backbone anterior sigue intacto."
         )
 
+    on_progress(
+        "Preparando taxones",
+        f"Se identificaron {current_count:,} taxones únicos para combinar.".replace(",", "."),
+        45.0,
+        {},
+        None,
+    )
+
     mapper = inspect(Taxon)
     quote = db.get_bind().dialect.identifier_preparer.quote
     columns = [mapper.columns[field].name for field in mapped_fields if field != "wfoTaxonId"]
-    target_values = [f"t.{quote(column)}" for column in columns] + ["t.is_current"]
-    stage_values = [f"s.{quote(column)}" for column in columns] + ["TRUE"]
-    changed_from_stage = (
-        f"ROW({', '.join(target_values)}) IS DISTINCT FROM ROW({', '.join(stage_values)})"
-    )
-
-    inserted, updated = db.execute(
-        text(
-            "SELECT "
-            "count(*) FILTER (WHERE t.taxon_id IS NULL), "
-            f"count(*) FILTER (WHERE t.taxon_id IS NOT NULL AND ({changed_from_stage})) "
-            "FROM flora_taxon_latest AS s "
-            "LEFT JOIN taxon AS t ON t.wfo_taxon_id = s.wfo_taxon_id"
-        )
-    ).one()
-
     insert_columns = ["taxon_id", "wfo_taxon_id", *columns, "is_current"]
     insert_names = ", ".join(quote(column) for column in insert_columns)
     selected_values = []
@@ -224,26 +219,155 @@ def _merge_staged_taxa(db: Session, mapped_fields: List[str]) -> Dict[str, int]:
     changed_from_excluded = (
         f"ROW({', '.join(existing_values)}) IS DISTINCT FROM ROW({', '.join(conflict_values)})"
     )
-    db.execute(
-        text(
-            f"INSERT INTO taxon ({insert_names}) "
-            f"SELECT {insert_values} FROM flora_taxon_latest AS s WHERE TRUE "
-            "ON CONFLICT (wfo_taxon_id) DO UPDATE "
-            f"SET {assignments} WHERE {changed_from_excluded}"
+    upsert_statement = text(
+        f"INSERT INTO taxon ({insert_names}) "
+        f"SELECT {insert_values} FROM flora_taxon_latest AS s "
+        "WHERE s.wfo_taxon_id IN :wfo_ids "
+        "ON CONFLICT (wfo_taxon_id) DO UPDATE "
+        f"SET {assignments} WHERE {changed_from_excluded} "
+        "RETURNING (xmax = 0) AS was_inserted"
+    ).bindparams(bindparam("wfo_ids", expanding=True))
+
+    rows_merged = 0
+    taxa_inserted = 0
+    taxa_updated = 0
+    last_wfo_taxon_id = ""
+    merge_started_at = _utcnow()
+    on_progress(
+        "Actualizando taxones",
+        f"Actualizando taxones: 0 de {current_count:,}.".replace(",", "."),
+        45.0,
+        {"taxaInserted": taxa_inserted, "taxaUpdated": taxa_updated},
+        None,
+    )
+    while True:
+        wfo_taxon_ids = list(
+            db.scalars(
+                text(
+                    "SELECT wfo_taxon_id FROM flora_taxon_latest "
+                    "WHERE wfo_taxon_id > :last_wfo_taxon_id "
+                    "ORDER BY wfo_taxon_id LIMIT :batch_size"
+                ),
+                {
+                    "last_wfo_taxon_id": last_wfo_taxon_id,
+                    "batch_size": TAXON_MERGE_BATCH_SIZE,
+                },
+            )
         )
+        if not wfo_taxon_ids:
+            break
+
+        results = db.execute(upsert_statement, {"wfo_ids": wfo_taxon_ids})
+        for (was_inserted,) in results:
+            if was_inserted:
+                taxa_inserted += 1
+            else:
+                taxa_updated += 1
+
+        rows_merged += len(wfo_taxon_ids)
+        last_wfo_taxon_id = wfo_taxon_ids[-1]
+        on_progress(
+            "Actualizando taxones",
+            f"Actualizando taxones: {rows_merged:,} de {current_count:,}.".replace(",", "."),
+            _phase_progress_percent(45.0, 88.0, rows_merged, current_count),
+            {"taxaInserted": taxa_inserted, "taxaUpdated": taxa_updated},
+            _estimate_stage_remaining_seconds(rows_merged, current_count, merge_started_at),
+        )
+
+    on_progress(
+        "Buscando taxones obsoletos",
+        "Identificando taxones que ya no aparecen en el archivo.",
+        88.0,
+        {"taxaInserted": taxa_inserted, "taxaUpdated": taxa_updated},
+        None,
     )
 
-    deactivated = db.execute(
+    db.execute(
         text(
-            "UPDATE taxon AS t SET is_current = FALSE "
-            "WHERE t.is_current AND NOT EXISTS ("
+            "CREATE TEMP TABLE flora_taxon_obsolete ON COMMIT DROP AS "
+            "SELECT t.taxon_id FROM taxon AS t WHERE t.is_current AND NOT EXISTS ("
             "SELECT 1 FROM flora_taxon_latest AS s WHERE s.wfo_taxon_id = t.wfo_taxon_id"
             ")"
         )
-    ).rowcount
+    )
+    db.execute(text("CREATE UNIQUE INDEX ON flora_taxon_obsolete (taxon_id)"))
+    obsolete_count = db.scalar(text("SELECT count(*) FROM flora_taxon_obsolete")) or 0
+    deactivation_started_at = _utcnow()
+    on_progress(
+        "Desactivando taxones ausentes",
+        (
+            f"Desactivando 0 de {obsolete_count:,} taxones."
+            if obsolete_count
+            else "No hay taxones obsoletos que desactivar."
+        ).replace(",", "."),
+        88.5,
+        {"taxaInserted": taxa_inserted, "taxaUpdated": taxa_updated},
+        None if obsolete_count else 0,
+    )
+
+    deactivated = 0
+    processed_obsolete = 0
+    last_taxon_id = None
+    while processed_obsolete < obsolete_count:
+        if last_taxon_id is None:
+            obsolete_ids_query = text(
+                "SELECT taxon_id FROM flora_taxon_obsolete ORDER BY taxon_id LIMIT :batch_size"
+            )
+            obsolete_ids_params = {"batch_size": TAXON_MERGE_BATCH_SIZE}
+        else:
+            obsolete_ids_query = text(
+                "SELECT taxon_id FROM flora_taxon_obsolete "
+                "WHERE taxon_id > :last_taxon_id ORDER BY taxon_id LIMIT :batch_size"
+            )
+            obsolete_ids_params = {
+                "last_taxon_id": last_taxon_id,
+                "batch_size": TAXON_MERGE_BATCH_SIZE,
+            }
+        obsolete_taxon_ids = list(
+            db.scalars(obsolete_ids_query, obsolete_ids_params)
+        )
+        if not obsolete_taxon_ids:
+            break
+
+        result = db.execute(
+            update(Taxon)
+            .where(Taxon.taxonId.in_(obsolete_taxon_ids))
+            .values(isCurrent=False)
+        )
+        deactivated += max(result.rowcount or 0, 0)
+        processed_obsolete += len(obsolete_taxon_ids)
+        last_taxon_id = obsolete_taxon_ids[-1]
+        on_progress(
+            "Desactivando taxones ausentes",
+            (
+                f"Desactivando taxones: {processed_obsolete:,} de {obsolete_count:,}."
+                .replace(",", ".")
+            ),
+            _phase_progress_percent(88.5, 98.0, processed_obsolete, obsolete_count),
+            {
+                "taxaInserted": taxa_inserted,
+                "taxaUpdated": taxa_updated,
+                "taxaMarkedNotCurrent": deactivated,
+            },
+            _estimate_stage_remaining_seconds(
+                processed_obsolete, obsolete_count, deactivation_started_at
+            ),
+        )
+
+    on_progress(
+        "Importación lista para guardar",
+        "El backbone está actualizado. Guardando los cambios.",
+        99.0,
+        {
+            "taxaInserted": taxa_inserted,
+            "taxaUpdated": taxa_updated,
+            "taxaMarkedNotCurrent": deactivated,
+        },
+        None,
+    )
     return {
-        "taxaInserted": inserted,
-        "taxaUpdated": updated,
+        "taxaInserted": taxa_inserted,
+        "taxaUpdated": taxa_updated,
         "taxaSetCurrent": current_count,
         "taxaMarkedNotCurrent": deactivated,
     }
@@ -275,11 +399,10 @@ def process_taxon_flora_csv_background(
         "taxaUpdated": 0,
         "taxaSetCurrent": 0,
     }
+    last_progress_percent = 0.0
 
     def incomplete_percent(bytes_processed: Optional[int]) -> float:
-        if not file_size_bytes or bytes_processed is None:
-            return 0.0
-        return min(round(bytes_processed / file_size_bytes * 99, 2), 99.0)
+        return _csv_progress_percent(file_size_bytes, bytes_processed)
 
     def publish_progress(
         *,
@@ -293,9 +416,19 @@ def process_taxon_flora_csv_background(
         force_eta_seconds: Optional[int] = None,
         clear_eta: bool = False,
     ) -> None:
+        nonlocal last_progress_percent
         if status_value == "failed":
-            force_percent = incomplete_percent(bytes_processed)
+            stats["taxaInserted"] = 0
+            stats["taxaUpdated"] = 0
+            stats["taxaMarkedNotCurrent"] = 0
+            stats["taxaSetCurrent"] = 0
+            failure_percent = (
+                force_percent if force_percent is not None else incomplete_percent(bytes_processed)
+            )
+            force_percent = max(last_progress_percent, failure_percent)
             clear_eta = True
+        if force_percent is not None:
+            last_progress_percent = max(last_progress_percent, force_percent)
         _commit_taxon_flora_job_update(
             job_id,
             status_value=status_value,
@@ -316,6 +449,23 @@ def process_taxon_flora_csv_background(
             force_percent=force_percent,
             force_eta_seconds=force_eta_seconds,
             clear_eta=clear_eta,
+        )
+
+    def publish_merge_progress(
+        stage: str,
+        detail: str,
+        progress_percent: float,
+        stat_updates: Dict[str, int],
+        eta_seconds: Optional[int],
+    ) -> None:
+        stats.update(stat_updates)
+        publish_progress(
+            stage=stage,
+            detail=detail,
+            bytes_processed=file_size_bytes,
+            force_percent=progress_percent,
+            force_eta_seconds=eta_seconds,
+            clear_eta=eta_seconds is None,
         )
 
     def build_taxon_values(
@@ -354,7 +504,7 @@ def process_taxon_flora_csv_background(
             detail="Validando encabezados y preparando el archivo.",
             bytes_processed=0,
             force_percent=0.0,
-            force_eta_seconds=None,
+            clear_eta=True,
         )
 
         with open(file_path, "rb") as bin_file:
@@ -496,12 +646,28 @@ def process_taxon_flora_csv_background(
                         writer = csv.writer(batch_buffer, lineterminator="\n")
                         batch_rows = 0
 
-                    publish_progress(
-                        stage="Procesando filas",
-                        detail="Importando taxones desde el CSV.",
-                        bytes_processed=bin_file.tell(),
-                        force_percent=incomplete_percent(bin_file.tell()),
-                    )
+                    csv_processing_started_at = _utcnow()
+                    csv_stage_start_bytes = min(bin_file.tell(), file_size_bytes)
+                    csv_stage_total_bytes = file_size_bytes - csv_stage_start_bytes
+
+                    def publish_csv_progress() -> None:
+                        bytes_processed = min(bin_file.tell(), file_size_bytes)
+                        csv_stage_bytes = max(bytes_processed - csv_stage_start_bytes, 0)
+                        eta_seconds = _estimate_stage_remaining_seconds(
+                            csv_stage_bytes,
+                            csv_stage_total_bytes,
+                            csv_processing_started_at,
+                        )
+                        publish_progress(
+                            stage="Procesando filas",
+                            detail="Importando taxones desde el CSV.",
+                            bytes_processed=bytes_processed,
+                            force_percent=incomplete_percent(bytes_processed),
+                            force_eta_seconds=eta_seconds,
+                            clear_eta=eta_seconds is None,
+                        )
+
+                    publish_csv_progress()
                     with raw_connection.cursor() as cursor:
                         for row in reader:
                             row_number += 1
@@ -524,22 +690,24 @@ def process_taxon_flora_csv_background(
                             batch_rows += 1
                             if batch_rows >= COPY_BATCH_SIZE:
                                 copy_batch(cursor)
-                                publish_progress(
-                                    stage="Procesando filas",
-                                    detail="Importando taxones desde el CSV.",
-                                    bytes_processed=bin_file.tell(),
-                                    force_percent=incomplete_percent(bin_file.tell()),
-                                )
+                                publish_csv_progress()
                         copy_batch(cursor)
+                    publish_csv_progress()
 
                     publish_progress(
-                        stage="Combinando taxones",
-                        detail="Actualizando el backbone con los taxones del archivo.",
+                        stage="Preparando taxones",
+                        detail="CSV leído. Deduplicando y preparando los taxones.",
                         bytes_processed=file_size_bytes,
-                        force_percent=99.0,
+                        force_percent=CSV_PROGRESS_WEIGHT,
                         clear_eta=True,
                     )
-                    stats.update(_merge_staged_taxa(db, mapped_fields))
+                    stats.update(
+                        _merge_staged_taxa(
+                            db,
+                            mapped_fields,
+                            on_progress=publish_merge_progress,
+                        )
+                    )
 
                 publish_progress(
                     status_value=ImportJobStatus.COMPLETED,

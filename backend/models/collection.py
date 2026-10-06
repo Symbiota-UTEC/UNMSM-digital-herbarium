@@ -17,6 +17,9 @@ class Collection(Base):
     """Colección física o virtual que alberga especímenes/registros."""
 
     __tablename__ = "collection"
+    __table_args__ = (
+        UniqueConstraint("collection_id", "institution_id", name="uq_collection_institution"),
+    )
 
     collectionId: Mapped[uuid.UUID] = mapped_column(
         "collection_id", Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -24,10 +27,10 @@ class Collection(Base):
     collectionName: Mapped[Optional[str]] = mapped_column("collection_name", String(255))
     description: Mapped[Optional[str]] = mapped_column("description", Text())
 
-    institutionId: Mapped[Optional[uuid.UUID]] = mapped_column(
-        "institution_id", ForeignKey("institution.institution_id")
+    institutionId: Mapped[uuid.UUID] = mapped_column(
+        "institution_id", ForeignKey("institution.institution_id"), nullable=False
     )
-    institution: Mapped[Optional["Institution"]] = relationship(
+    institution: Mapped["Institution"] = relationship(
         "Institution", back_populates="collections"
     )
 

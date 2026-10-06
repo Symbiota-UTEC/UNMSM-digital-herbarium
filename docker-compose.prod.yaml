@@ -1,0 +1,50 @@
+services:
+  db:
+    restart: unless-stopped
+
+  seaweedfs:
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: herbarium_backend
+    env_file:
+      - backend/config/.env
+    environment:
+      HOST: db
+      PORT: "5432"
+      BACKEND_CORS_ALLOW_ORIGINS: ${BACKEND_CORS_ALLOW_ORIGINS:-http://localhost:3000}
+      SEAWEEDFS_INTERNAL_URL: http://herbarium_seaweedfs:8888
+      SEAWEEDFS_PUBLIC_URL: ${SEAWEEDFS_PUBLIC_URL:-http://localhost:8888}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    command: ["sh", "-c", "exec python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket,sys; s=socket.socket(); s.settimeout(2); sys.exit(0 if s.connect_ex(('127.0.0.1', 8000)) == 0 else 1)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+    networks: [appnet]
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000/api}
+        VITE_CAMERA_BASE_URL: ${VITE_CAMERA_BASE_URL:-http://172.31.99.9:8000}
+    container_name: herbarium_frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "3000:80"
+    restart: unless-stopped
+    networks: [appnet]

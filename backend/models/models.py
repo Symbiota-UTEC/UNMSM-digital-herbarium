@@ -22,7 +22,7 @@ from backend.models.institution import Institution
 from backend.models.occurrence import Occurrence, OccurrenceImage
 from backend.models.registration_request import RegistrationRequest
 from backend.models.taxon import Taxon
-from backend.models.upload_jobs import TaxonFloraImportJob
+from backend.models.upload_jobs import DwcImportJob, TaxonFloraImportJob
 from backend.models.user import User
 
 __all__ = [
@@ -38,6 +38,7 @@ __all__ = [
     "Identifier",
     "User",
     "TaxonFloraImportJob",
+    "DwcImportJob",
     "Country",
     "AdminDivision",
 ]
@@ -55,7 +56,6 @@ Index(
 
 Index("ix_occurrence_latlon", Occurrence.decimalLatitude, Occurrence.decimalLongitude)
 Index("ix_admin_division_boundary", AdminDivision.boundary, postgresql_using="gist")
-Index("ix_occurrence_catalog", Occurrence.catalogNumber, Occurrence.collectionId)
 Index("ix_occurrence_event_date", Occurrence.year, Occurrence.month, Occurrence.day)
 Index(
     "ix_taxon_name_auth_rank", Taxon.scientificName, Taxon.scientificNameAuthorship, Taxon.taxonRank

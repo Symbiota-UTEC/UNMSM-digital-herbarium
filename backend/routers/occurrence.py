@@ -115,7 +115,7 @@ def list_occurrences_basic(
 ):
     """
     Vista breve:
-    - code: catalogNumber o, si falta, recordNumber.
+    - code: número de catálogo o código institucional y número (p. ej. USM 00123).
     - scientificName, family: del taxón de la identificación marcada como isCurrent=True (si existe).
     - location: coalesce(locality, municipality, stateProvince, country).
     - collector: recordedBy.

@@ -85,6 +85,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
 
   // New institution form
   const [newInstitutionName, setNewInstitutionName] = useState("");
+  const [newInstitutionCode, setNewInstitutionCode] = useState("");
   const [newInstitutionCountry, setNewInstitutionCountry] = useState("");
   const [newInstitutionCity, setNewInstitutionCity] = useState("");
   const [newInstitutionAddress, setNewInstitutionAddress] = useState("");
@@ -100,6 +101,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
 
   const [editForm, setEditForm] = useState({
     institutionName: "",
+    institutionCode: "",
     country: "",
     city: "",
     address: "",
@@ -402,13 +404,14 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
   const handleCreateInstitution = async (e: FormEvent) => {
     e.preventDefault();
 
-    if (!newInstitutionName.trim()) {
-      toast.error("Por favor ingresa un nombre válido");
+    if (!newInstitutionName.trim() || !newInstitutionCode.trim()) {
+      toast.error("Ingresa un nombre y un código de institución válidos");
       return;
     }
 
     const institution: Partial<Institution> = {
       institutionName: newInstitutionName,
+      institutionCode: newInstitutionCode.trim(),
       country: newInstitutionCountry,
       city: newInstitutionCity,
       address: newInstitutionAddress,
@@ -422,6 +425,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
 
       setInstSearchText("");
       setNewInstitutionName("");
+      setNewInstitutionCode("");
       setNewInstitutionCountry("");
       setNewInstitutionCity("");
       setNewInstitutionAddress("");
@@ -438,7 +442,15 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       setInstitutionsPage(1);
     } catch (err) {
       console.error(err);
-      toast.error("Hubo un error al crear la institución");
+      let message = "Hubo un error al crear la institución";
+      if (err instanceof ApiError && err.detail) {
+        try {
+          message = JSON.parse(err.detail).detail || err.detail;
+        } catch {
+          message = err.detail;
+        }
+      }
+      toast.error(message);
     }
   };
 
@@ -462,6 +474,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
     setEditInstitution(institution);
     setEditForm({
       institutionName: institution.institutionName || "",
+      institutionCode: institution.institutionCode || "",
       country: institution.country || "",
       city: institution.city || "",
       address: institution.address || "",
@@ -555,6 +568,11 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
 
     if (!editInstitution?.institutionId) return;
 
+    if (!editForm.institutionCode.trim()) {
+      toast.error("Ingresa un código de institución válido");
+      return;
+    }
+
     if (editForm.adminEmail && adminEmailValidation.isValid === false) {
       toast.error("El email del administrador no es válido");
       return;
@@ -586,6 +604,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
 
     const payload = {
       institutionName: editForm.institutionName,
+      institutionCode: editForm.institutionCode.trim(),
       country: editForm.country,
       city: editForm.city,
       address: editForm.address,
@@ -611,7 +630,15 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
       setAdminEmailValidation({ isValid: null, message: "" });
     } catch (error) {
       console.error("Error al actualizar la institución:", error);
-      toast.error("Error al actualizar la institución");
+      let message = "Error al actualizar la institución";
+      if (error instanceof ApiError && error.detail) {
+        try {
+          message = JSON.parse(error.detail).detail || error.detail;
+        } catch {
+          message = error.detail;
+        }
+      }
+      toast.error(message);
     }
   };
 
@@ -733,6 +760,17 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
                         value={newInstitutionName}
                         onChange={(e) => setNewInstitutionName(e.target.value)}
                         placeholder="Ej: Universidad de Ciencias Botánicas"
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="newInstitutionCode">Código de la Institución</Label>
+                      <Input
+                        id="newInstitutionCode"
+                        value={newInstitutionCode}
+                        onChange={(e) => setNewInstitutionCode(e.target.value)}
+                        placeholder="Ej: USM"
                         required
                       />
                     </div>
@@ -865,6 +903,7 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
                       <div className="flex-1 min-w-0">
                         <p className="truncate">{institution.institutionName}</p>
                         <div className="flex items-center gap-2 mt-1">
+                          <Badge variant="outline" className="text-xs">{institution.institutionCode}</Badge>
                           <p className="text-sm text-muted-foreground">{institution.usersCount ?? 0} usuarios</p>
                           {institution.institutionAdminUser && (
                             <Badge variant="secondary" className="text-xs">
@@ -1094,6 +1133,11 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
                 <p className="text-sm">{viewInstitutionDetails.institutionName}</p>
               </div>
 
+              <div>
+                <Label className="text-sm text-muted-foreground">Código de la Institución</Label>
+                <p className="text-sm">{viewInstitutionDetails.institutionCode}</p>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-sm text-muted-foreground">País</Label>
@@ -1219,6 +1263,17 @@ export function AdminPage({ onNavigate }: { onNavigate: OnNavigate }) {
                     })
                   }
                   placeholder="Ej: Universidad Nacional de Botánica"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-institutionCode">Código de la Institución</Label>
+                <Input
+                  id="edit-institutionCode"
+                  value={editForm.institutionCode}
+                  onChange={(e) => setEditForm({ ...editForm, institutionCode: e.target.value })}
+                  placeholder="Ej: USM"
                   required
                 />
               </div>

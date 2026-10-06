@@ -149,6 +149,10 @@ export function OccurrenceDetailPage({
     );
   }
 
+  const catalogLabel = [data.collection?.institution?.institutionCode, data.catalogNumber]
+    .filter(Boolean)
+    .join(" ");
+
   // Mismo criterio que NewOccurrencePage.tsx (misma función compartida), pero contra lo ya
   // guardado en vez del estado editado: para que ambas vistas de una ocurrencia coincidan.
   const TAB_STATUSES: Record<TabKey, TabCompletionStatus> = {
@@ -167,7 +171,7 @@ export function OccurrenceDetailPage({
         <CardContent className="pt-6">
           <FieldSectionHeader title="Identificación del Ejemplar" subtitle="Campos clave para trazabilidad" />
           <div className="grid md:grid-cols-3 gap-4">
-            <ReadOnlyField label="Número de catálogo" value={data.catalogNumber} />
+            <ReadOnlyField label="Número de catálogo" value={catalogLabel} />
             <ReadOnlyField label="Número de registro" value={data.recordNumber} />
             <ReadOnlyField label="Registrado por" value={data.recordedBy} />
           </div>
@@ -507,7 +511,7 @@ export function OccurrenceDetailPage({
               <h1 className="text-3xl font-semibold tracking-tight mb-1 italic">{sciName}</h1>
               {sciAuth && <p className="text-sm text-muted-foreground">{sciAuth}</p>}
               <div className="flex gap-2 mt-2 flex-wrap text-sm text-muted-foreground">
-                <span>Catálogo: {show(data.catalogNumber)}</span>
+                <span>Catálogo: {show(catalogLabel)}</span>
                 {data.collection?.collectionName && (
                   <>
                     <span>•</span>

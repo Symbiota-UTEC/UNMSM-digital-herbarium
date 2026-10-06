@@ -1,4 +1,4 @@
-"""Modelo: TaxonFloraImportJob (seguimiento de importaciones async del backbone Taxon)."""
+"""Seguimiento persistente de importaciones asíncronas."""
 
 from __future__ import annotations
 
@@ -21,6 +21,77 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.config.database import Base
 from backend.models.enums import ImportJobStatus, db_enum
+
+
+class DwcImportJob(Base):
+    """Progreso y resultado de una importación DwC atómica."""
+
+    __tablename__ = "dwc_import_job"
+    __table_args__ = (
+        Index("ix_dwc_import_job_collection_created", "collection_id", "created_at"),
+        Index(
+            "uq_dwc_import_one_active_per_institution",
+            "active_institution_id",
+            unique=True,
+        ),
+    )
+
+    jobId: Mapped[uuid.UUID] = mapped_column(
+        "job_id", Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    collectionId: Mapped[uuid.UUID] = mapped_column(
+        "collection_id", ForeignKey("collection.collection_id", ondelete="CASCADE"), nullable=False
+    )
+    institutionId: Mapped[uuid.UUID] = mapped_column(
+        "institution_id",
+        ForeignKey("institution.institution_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    activeInstitutionId: Mapped[Optional[uuid.UUID]] = mapped_column(
+        "active_institution_id",
+        ForeignKey("institution.institution_id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    uploadedByUserId: Mapped[Optional[uuid.UUID]] = mapped_column(
+        "uploaded_by_user_id", ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True
+    )
+
+    filename: Mapped[str] = mapped_column("filename", String(255), nullable=False)
+    status: Mapped[ImportJobStatus] = mapped_column(
+        "status", db_enum(ImportJobStatus, "dwc_import_job_status_enum"), nullable=False
+    )
+    stage: Mapped[str] = mapped_column("stage", String(100), nullable=False)
+    detail: Mapped[Optional[str]] = mapped_column("detail", Text(), nullable=True)
+    errorMessage: Mapped[Optional[str]] = mapped_column("error_message", Text(), nullable=True)
+    temporaryFilePath: Mapped[Optional[str]] = mapped_column("temporary_file_path", Text())
+
+    fileSizeBytes: Mapped[Optional[int]] = mapped_column("file_size_bytes", BigInteger())
+    totalRows: Mapped[Optional[int]] = mapped_column("total_rows", Integer())
+    rowsProcessed: Mapped[int] = mapped_column(
+        "rows_processed", Integer(), nullable=False, default=0, server_default="0"
+    )
+    progressPercent: Mapped[Optional[float]] = mapped_column("progress_percent", Float())
+    occurrencesInserted: Mapped[int] = mapped_column(
+        "occurrences_inserted", Integer(), nullable=False, default=0, server_default="0"
+    )
+    taxaMatched: Mapped[int] = mapped_column(
+        "taxa_matched", Integer(), nullable=False, default=0, server_default="0"
+    )
+    taxaUnmatched: Mapped[int] = mapped_column(
+        "taxa_unmatched", Integer(), nullable=False, default=0, server_default="0"
+    )
+    identificationsInserted: Mapped[int] = mapped_column(
+        "identifications_inserted", Integer(), nullable=False, default=0, server_default="0"
+    )
+    identifiersInserted: Mapped[int] = mapped_column(
+        "identifiers_inserted", Integer(), nullable=False, default=0, server_default="0"
+    )
+
+    createdAt: Mapped[datetime] = mapped_column(
+        "created_at", DateTime(), nullable=False, default=datetime.utcnow, index=True
+    )
+    startedAt: Mapped[Optional[datetime]] = mapped_column("started_at", DateTime())
+    finishedAt: Mapped[Optional[datetime]] = mapped_column("finished_at", DateTime())
 
 
 class TaxonFloraImportJob(Base):

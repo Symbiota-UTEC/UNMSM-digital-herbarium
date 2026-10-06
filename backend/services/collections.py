@@ -259,6 +259,8 @@ def create_collection(db: Session, payload: CollectionCreate, current_user: User
 
     # Resolver institución por defecto desde el usuario
     institution_id = payload.institutionId or current_user.institutionId
+    if institution_id is None:
+        raise HTTPException(status_code=422, detail="La colección requiere una institución")
 
     # Reglas de seguridad para no-superusers
     if not current_user.isSuperuser:
@@ -267,6 +269,9 @@ def create_collection(db: Session, payload: CollectionCreate, current_user: User
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No puedes crear colecciones en otra institución.",
             )
+
+    if db.get(Institution, institution_id) is None:
+        raise HTTPException(status_code=404, detail="Institution not found")
 
     # Crear la colección (creador = current_user)
     col = Collection(
@@ -416,7 +421,7 @@ def list_occurrences_brief_by_collection_id(
         )
 
     # 3) Expresiones para campos
-    code_expr = func.coalesce(Occurrence.catalogNumber, Occurrence.recordNumber)
+    code_expr = func.concat(Institution.institutionCode, " ", Occurrence.catalogNumber)
     sci_name_expr = Taxon.scientificName
     family_expr = Taxon.family
     location_expr = func.coalesce(
@@ -445,6 +450,8 @@ def list_occurrences_brief_by_collection_id(
     # 4) Total (join con Identification isCurrent=True y Taxon)
     total_subq = (
         select(Occurrence.occurrenceId)
+        .join(Collection, Occurrence.collectionId == Collection.collectionId)
+        .join(Institution, Collection.institutionId == Institution.institutionId)
         .outerjoin(
             Identification,
             and_(
@@ -469,6 +476,8 @@ def list_occurrences_brief_by_collection_id(
             collector_expr.label("collector"),
             date_expr.label("date"),
         )
+        .join(Collection, Occurrence.collectionId == Collection.collectionId)
+        .join(Institution, Collection.institutionId == Institution.institutionId)
         .outerjoin(
             Identification,
             and_(
