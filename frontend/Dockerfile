@@ -38,6 +38,7 @@ RUN printf 'server {\n\
   server_name _;\n\
   root /usr/share/nginx/html;\n\
   index index.html;\n\
+  client_max_body_size 100m;\n\
   location /api/ { proxy_pass http://herbarium_backend:8000; }\n\
   location / { try_files $uri /index.html; }\n\
 }\n' > /etc/nginx/conf.d/default.conf
