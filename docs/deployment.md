@@ -45,6 +45,18 @@ For operations, `make ps ENV=prod` and `make logs ENV=prod` select the productio
 Compose files. `make prd` rebuilds the images and restarts the stack without deleting
 its volumes.
 
+## HPC deployment with Apptainer
+
+For HPC hosts without Docker, the repository includes a rootless Apptainer
+deployment that converts the existing app images and upstream services into
+four SIF images, then runs them as named instances. A single frontend Nginx
+serves React, terminates HTTPS, and forwards API requests to FastAPI. It
+stores Postgres and SeaweedFS data outside the SIF files and keeps all service
+ports private except for the configurable HTTPS port. Image requests go through
+FastAPI; Nginx does not forward requests directly to SeaweedFS. See the
+[Apptainer deployment guide](../apptainer/README.md) for image building,
+configuration, certificate generation, startup, and manual seeding.
+
 ## Moving existing SeaweedFS data to the persistent volume
 
 The previous Compose configuration stored SeaweedFS files in the container's writable

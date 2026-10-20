@@ -1,0 +1,12 @@
+Bootstrap: docker-daemon
+From: herbarium/backend:apptainer
+
+%startscript
+    #!/bin/sh
+    set -eu
+    cd /app
+    exec python -m uvicorn backend.main:app \
+        --host 127.0.0.1 \
+        --port 8000 \
+        --proxy-headers \
+        --forwarded-allow-ips=127.0.0.1

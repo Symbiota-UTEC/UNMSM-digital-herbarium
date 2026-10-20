@@ -12,3 +12,12 @@ backend/data/geonames/
 
 # Polígonos oficiales INEI (29 MB): se descargan solos al sembrar
 backend/data/inei/
+
+# Apptainer deployment artifacts and local secrets/data
+/apptainer/deploy.env
+/apptainer/certs/
+/apptainer/data/
+/apptainer/run/
+/apptainer/images/*.sif
+/apptainer/images/SHA256SUMS
+/apptainer/images/.build-*/

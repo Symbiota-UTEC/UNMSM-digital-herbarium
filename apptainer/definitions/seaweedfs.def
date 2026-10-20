@@ -1,0 +1,7 @@
+Bootstrap: docker-daemon
+From: chrislusf/seaweedfs:latest
+
+%startscript
+    #!/bin/sh
+    set -eu
+    exec weed server -dir=/data -s3 -ip=127.0.0.1 -ip.bind=127.0.0.1
